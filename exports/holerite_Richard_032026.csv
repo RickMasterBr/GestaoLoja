@@ -1,0 +1,9 @@
+﻿Funcionário,Richard
+Mês/Ano,03/2026
+
+Descrição,Valor (R$)
+Salário base mensal,1400.00
+Feriados: 1 × R$ 60.00,+60.00
+Faltas: 1 × R$ 60.00,-60.00
+Consumos (80% de R$ 60.00),-48.00
+TOTAL LÍQUIDO,1352.00

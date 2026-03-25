@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:flet.dev)",
+      "WebFetch(domain:docs.flet.dev)",
+      "Bash(python -c \"import flet; print\\(flet.__version__\\)\")",
+      "Bash(python -c \"import flet as ft; help\\(ft.Tab.__init__\\)\")",
+      "Bash(python -c \"import flet as ft; help\\(ft.ElevatedButton.__init__\\)\")",
+      "Bash(python -c \"import flet as ft; help\\(ft.TextButton.__init__\\)\")",
+      "Bash(python -c \"import flet as ft; help\\(ft.Tabs.__init__\\)\")",
+      "Bash(python -c \"import inspect, flet; print\\(inspect.getfile\\(flet.Tab\\)\\)\")",
+      "Bash(python -c \":*)",
+      "Bash(python -m py_compile main.py views/pdv.py views/parametros.py views/extras.py views/relatorio_diario.py views/relatorio_periodo.py views/funcionarios.py views/entregadores.py database.py)",
+      "Bash(python -m py_compile views/pdv.py)",
+      "Bash(python database.py)",
+      "Bash(python -m py_compile views/funcionarios.py main.py)",
+      "Bash(python -m py_compile views/funcionarios.py)",
+      "Bash(python -m py_compile main.py views/funcionarios.py)",
+      "Bash(python -m py_compile views/entregadores.py)",
+      "Bash(python -m py_compile views/parametros.py database.py)",
+      "Bash(python -m py_compile views/relatorio_diario.py)"
+    ]
+  }
+}
