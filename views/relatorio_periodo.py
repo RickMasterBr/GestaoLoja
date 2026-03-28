@@ -9,6 +9,8 @@ from datetime import date, timedelta
 import flet as ft
 
 import database
+from relatorios.pdf_gerador import gerar_pdf_periodo, abrir_pdf
+from relatorios.excel_gerador import excel_relatorio_periodo
 
 
 # ── Utilitários ───────────────────────────────────────────────────────────────
@@ -73,7 +75,7 @@ def _tabela(colunas: list, linhas: list) -> ft.Row:
                 rows=linhas,
                 column_spacing=16,
                 horizontal_lines=ft.BorderSide(
-                    1, ft.Colors.with_opacity(0.08, ft.Colors.WHITE)
+                    1, ft.Colors.with_opacity(0.15, ft.Colors.BLACK)
                 ),
             )
         ],
@@ -83,7 +85,7 @@ def _tabela(colunas: list, linhas: list) -> ft.Row:
 def _row_total(*celulas_txt: str) -> ft.DataRow:
     return ft.DataRow(
         cells=[ft.DataCell(ft.Text(t, weight=ft.FontWeight.BOLD)) for t in celulas_txt],
-        color=ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
+        color=None,
     )
 
 
@@ -164,6 +166,7 @@ def view(page: ft.Page) -> ft.Control:
 
     col_relatorio = ft.Column(spacing=16, expand=True)
     _dados_csv: dict = {}
+    _dados_pdf: dict = {}
 
     # ─────────────────────────────────────────────────────────────────────
     def _gerar(e=None):
@@ -232,29 +235,29 @@ def view(page: ft.Page) -> ft.Control:
                     spacing=32, wrap=True,
                     controls=[
                         ft.Column(spacing=4, controls=[
-                            ft.Text("Total de Pedidos", size=12, color=ft.Colors.GREY_400),
+                            ft.Text("Total de Pedidos", size=12, color=ft.Colors.GREY_500),
                             ft.Text(str(total_pedidos), size=26, weight=ft.FontWeight.BOLD),
                         ]),
                         ft.Column(spacing=4, controls=[
-                            ft.Text("Valor Bruto", size=12, color=ft.Colors.GREY_400),
+                            ft.Text("Valor Bruto", size=12, color=ft.Colors.GREY_500),
                             ft.Text(f"R$ {valor_bruto:.2f}", size=26, weight=ft.FontWeight.BOLD),
                         ]),
                         ft.Column(spacing=4, controls=[
-                            ft.Text("Total Cortesias", size=12, color=ft.Colors.GREY_400),
+                            ft.Text("Total Cortesias", size=12, color=ft.Colors.GREY_500),
                             ft.Text(
                                 f"R$ {total_cortesias:.2f}", size=26,
                                 weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_300,
                             ),
                         ]),
                         ft.Column(spacing=4, controls=[
-                            ft.Text("Faturamento Real", size=12, color=ft.Colors.GREY_400),
+                            ft.Text("Faturamento Real", size=12, color=ft.Colors.GREY_500),
                             ft.Text(
                                 f"R$ {fat_real:.2f}", size=26,
                                 weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_300,
                             ),
                         ]),
                         ft.Column(spacing=4, controls=[
-                            ft.Text("Taxas de Entrega Recebidas", size=12, color=ft.Colors.GREY_400),
+                            ft.Text("Taxas de Entrega Recebidas", size=12, color=ft.Colors.GREY_500),
                             ft.Text(
                                 f"R$ {total_taxas:.2f}", size=26,
                                 weight=ft.FontWeight.BOLD, color=ft.Colors.TEAL_300,
@@ -477,6 +480,8 @@ def view(page: ft.Page) -> ft.Control:
                     "comissao_online": comissao_online, "tx_trans": tx_trans,
                     "comissao_maq": comissao_maq, "subsidio": subsidio,
                     "liquido": liquido, "dt_repasse": dt_repasse,
+                    "comissao_pct": comissao_pct, "tx_trans_pct": tx_trans_pct,
+                    "subsidio_pp": subsidio_pp,
                 }
 
                 return ft.Container(
@@ -732,7 +737,7 @@ def view(page: ft.Page) -> ft.Control:
                 ft.Divider(height=1),
                 ft.Row(spacing=32, wrap=True, controls=[
                     ft.Column(spacing=2, controls=[
-                        ft.Text("Total Líquido Plataformas", size=12, color=ft.Colors.GREY_400),
+                        ft.Text("Total Líquido Plataformas", size=12, color=ft.Colors.GREY_500),
                         ft.Text(
                             f"R$ {total_liquido_plats:.2f}", size=20,
                             weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_300,
@@ -740,7 +745,7 @@ def view(page: ft.Page) -> ft.Control:
                     ]),
                     ft.Column(spacing=2, controls=[
                         ft.Text("Taxas de Entrega Recebidas (motoboys próprios)",
-                                size=12, color=ft.Colors.GREY_400),
+                                size=12, color=ft.Colors.GREY_500),
                         ft.Text(
                             f"R$ {total_taxas:.2f}", size=20,
                             weight=ft.FontWeight.BOLD, color=ft.Colors.TEAL_300,
@@ -751,6 +756,18 @@ def view(page: ft.Page) -> ft.Control:
 
         finally:
             conn.close()
+
+        # Populando _dados_pdf a partir dos dados já calculados
+        _dados_pdf.clear()
+        _dados_pdf["nome_loja"]    = database.config_obter("nome_loja", "Gestão Loja")
+        _dados_pdf["resumo_geral"] = _dados_csv.get("resumo_geral", {})
+        _dados_pdf["canais"]       = [
+            dict(r, canal_amigavel=CANAL_NOMES.get(r["canal"], r["canal"]))
+            for r in _dados_csv.get("canais", [])
+        ]
+        _dados_pdf["pagamentos"]   = _dados_csv.get("pagamentos", [])
+        _dados_pdf["plataformas"]  = _dados_csv.get("plataformas", {})
+        _dados_pdf["entregadores"] = _dados_csv.get("entregadores", [])
 
         col_relatorio.controls.clear()
         col_relatorio.controls += [
@@ -858,6 +875,72 @@ def view(page: ft.Page) -> ft.Control:
         ))
         page.update()
 
+    # ── Exportar PDF ──────────────────────────────────────────────────────
+
+    def _exportar_pdf(e):
+        if not _dados_pdf:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Gere o relatório antes de exportar."),
+                bgcolor=ft.Colors.ORANGE_700, open=True,
+            ))
+            page.update()
+            return
+        data_ini_iso = _data_br_para_iso(tf_inicio.value or inicio_br)
+        data_fim_iso = _data_br_para_iso(tf_fim.value    or hoje_br)
+        caminho      = gerar_pdf_periodo(data_ini_iso, data_fim_iso, _dados_pdf)
+        abrir_pdf(caminho)
+        page.overlay.append(ft.SnackBar(
+            content=ft.Text("PDF gerado e aberto para impressão."),
+            bgcolor=ft.Colors.GREEN_700, open=True,
+        ))
+        page.update()
+
+    btn_exportar_pdf = ft.ElevatedButton(
+        "PDF",
+        icon=ft.Icons.PICTURE_AS_PDF,
+        on_click=_exportar_pdf,
+        style=ft.ButtonStyle(
+            bgcolor=ft.Colors.RED_800,
+            color=ft.Colors.WHITE,
+        ),
+    )
+
+    def _exportar_excel(e):
+        if not _dados_pdf:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Gere o relatório antes de exportar."),
+                bgcolor=ft.Colors.ORANGE_700, open=True,
+            ))
+            page.update()
+            return
+        try:
+            dados = dict(_dados_pdf)
+            dados["funcionarios"] = _dados_csv.get("funcionarios", [])
+            ini_br = tf_inicio.value or inicio_br
+            fim_br = tf_fim.value    or hoje_br
+            caminho = excel_relatorio_periodo(ini_br, fim_br, dados)
+            import os; os.startfile(caminho)
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Arquivo aberto para visualização."),
+                bgcolor=ft.Colors.GREEN_700, open=True,
+            ))
+        except Exception as exc:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text(f"Erro ao gerar arquivo: {exc}"),
+                bgcolor=ft.Colors.RED_700, open=True,
+            ))
+        page.update()
+
+    btn_exportar_excel = ft.ElevatedButton(
+        "Excel",
+        icon=ft.Icons.TABLE_VIEW,
+        on_click=_exportar_excel,
+        style=ft.ButtonStyle(
+            bgcolor=ft.Colors.GREEN_800,
+            color=ft.Colors.WHITE,
+        ),
+    )
+
     # ── Layout do topo ────────────────────────────────────────────────────
 
     btn_gerar = ft.ElevatedButton(
@@ -883,7 +966,7 @@ def view(page: ft.Page) -> ft.Control:
                     controls=[
                         tf_inicio, btn_cal_ini,
                         tf_fim,    btn_cal_fim,
-                        btn_gerar, btn_exportar,
+                        btn_gerar, btn_exportar, btn_exportar_excel, btn_exportar_pdf,
                     ],
                     spacing=8,
                     wrap=True,

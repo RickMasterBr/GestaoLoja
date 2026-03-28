@@ -28,6 +28,37 @@ def _snack(page: ft.Page, msg: str, cor=ft.Colors.GREEN_700):
 #  VIEW PRINCIPAL
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _fechar(e, dlg, page):
+    dlg.open = False
+    page.update()
+
+
+def _confirmar_exclusao(page, descricao: str, on_confirmar) -> None:
+    """Abre um AlertDialog pedindo confirmação antes de excluir."""
+    dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Confirmar exclusão"),
+        content=ft.Text(
+            f"Deseja excluir {descricao}? Esta ação não pode ser desfeita."
+        ),
+        actions=[
+            ft.TextButton("Cancelar",
+                          on_click=lambda e: _fechar(e, dlg, page)),
+            ft.ElevatedButton(
+                "Excluir",
+                on_click=lambda e: (_fechar(e, dlg, page), on_confirmar()),
+                style=ft.ButtonStyle(
+                    bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE,
+                ),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg)
+    dlg.open = True
+    page.update()
+
+
 def view(page: ft.Page) -> ft.Control:
 
     # ══════════════════════════════════════════
@@ -58,6 +89,15 @@ def view(page: ft.Page) -> ft.Control:
     cb_p_ativo    = ft.Checkbox(label="Ativo", value=True)
     txt_p_erro    = ft.Text("", color=ft.Colors.RED_400, size=12)
     lbl_p_titulo  = ft.Text("Nova Pessoa", size=14, weight=ft.FontWeight.BOLD)
+
+    # Dados pessoais
+    tf_dp_cpf     = ft.TextField(label="CPF",              width=160, hint_text="000.000.000-00")
+    tf_dp_rg      = ft.TextField(label="RG",               width=160, hint_text="00.000.000-0")
+    tf_dp_nasc    = ft.TextField(label="Data Nascimento",  width=160, hint_text="DD/MM/AAAA")
+    tf_dp_tel     = ft.TextField(label="Telefone",         width=180, hint_text="(21) 99999-9999")
+    tf_dp_end     = ft.TextField(label="Endereço",         expand=True)
+    tf_dp_obs     = ft.TextField(label="Observações",      expand=True,
+                                  multiline=True, min_lines=2, max_lines=3)
 
     linha_p_salario  = ft.Row([tf_p_salario], visible=True)
     linha_p_diaria   = ft.Row([tf_p_diaria],  visible=False)
@@ -134,6 +174,21 @@ def view(page: ft.Page) -> ft.Control:
                     linha_p_diaria.visible   = (ts in ("DIARIO", "ENTREGADOR"))
                     linha_p_holerite.visible = (ts != "ENTREGADOR")
                     txt_p_erro.value = ""
+                    _carregar_dias_fixos(pid)
+                    card_dias_fixos.visible = True
+                    # Dados pessoais
+                    def _iso_para_br(iso):
+                        try:
+                            return f"{iso[8:10]}/{iso[5:7]}/{iso[:4]}" if iso else ""
+                        except Exception:
+                            return ""
+                    tf_dp_cpf.value  = r["cpf"]  or ""
+                    tf_dp_rg.value   = r["rg"]   or ""
+                    tf_dp_nasc.value = _iso_para_br(r["data_nascimento"])
+                    tf_dp_tel.value  = r["telefone"] or ""
+                    tf_dp_end.value  = r["endereco"] or ""
+                    tf_dp_obs.value  = r["observacoes_pessoais"] or ""
+                    card_dados_pessoais.visible = True
                     page.update()
                 return handler
 
@@ -203,6 +258,15 @@ def view(page: ft.Page) -> ft.Control:
         linha_p_diaria.visible   = False
         linha_p_holerite.visible = True
         txt_p_erro.value         = ""
+        _limpar_dias_fixos()
+        card_dias_fixos.visible  = False
+        tf_dp_cpf.value  = ""
+        tf_dp_rg.value   = ""
+        tf_dp_nasc.value = ""
+        tf_dp_tel.value  = ""
+        tf_dp_end.value  = ""
+        tf_dp_obs.value  = ""
+        card_dados_pessoais.visible = False
 
     def _salvar_pessoa(e):
         txt_p_erro.value = ""
@@ -261,6 +325,147 @@ def view(page: ft.Page) -> ft.Control:
         _limpar_pessoa()
         page.update()
 
+    # ── Dias Fixos de Trabalho ─────────────────────────────────────────────
+    # Ter=1, Qua=2, Qui=3, Sex=4, Sáb=5, Dom=6  (Segunda=0 é folga geral)
+    _DIAS_FIXOS = [
+        (1, "Terça"),
+        (2, "Quarta"),
+        (3, "Quinta"),
+        (4, "Sexta"),
+        (5, "Sábado"),
+        (6, "Domingo"),
+    ]
+
+    _df_checks: dict = {}
+    _df_horas:  dict = {}
+
+    for _dia, _nome in _DIAS_FIXOS:
+        _cb = ft.Checkbox(label=_nome, value=False)
+        _tf = ft.TextField(width=90, hint_text="HH:MM", disabled=True)
+        _df_checks[_dia] = _cb
+        _df_horas[_dia]  = _tf
+
+        def _on_df_change(e, d=_dia):
+            _df_horas[d].disabled = not _df_checks[d].value
+            if not _df_checks[d].value:
+                _df_horas[d].value = ""
+            page.update()
+
+        _cb.on_change = _on_df_change
+
+    def _limpar_dias_fixos():
+        for d, _ in _DIAS_FIXOS:
+            _df_checks[d].value   = False
+            _df_horas[d].value    = ""
+            _df_horas[d].disabled = True
+
+    def _carregar_dias_fixos(pid: int):
+        _limpar_dias_fixos()
+        for row in database.dias_fixos_listar(pid):
+            d = row["dia_semana"]
+            if d in _df_checks:
+                _df_checks[d].value   = True
+                _df_horas[d].value    = row["horario_entrada"] or ""
+                _df_horas[d].disabled = False
+
+    def _salvar_dias_fixos(e):
+        pid = _pessoa_id["v"]
+        if pid is None:
+            return
+        dias = [
+            {"dia_semana": d, "horario_entrada": _df_horas[d].value.strip() or None}
+            for d, _ in _DIAS_FIXOS
+            if _df_checks[d].value
+        ]
+        database.dias_fixos_salvar(pid, dias)
+        _snack(page, "Dias fixos salvos!")
+
+    # Grade: 2 dias por linha
+    _df_grade_linhas = []
+    for i in range(0, len(_DIAS_FIXOS), 2):
+        par = _DIAS_FIXOS[i:i + 2]
+        row_ctrls = []
+        for d, _ in par:
+            row_ctrls += [_df_checks[d], _df_horas[d]]
+        _df_grade_linhas.append(ft.Row(controls=row_ctrls, spacing=16))
+
+    card_dias_fixos = ft.Card(
+        visible=False,
+        content=ft.Container(
+            padding=ft.Padding.all(16),
+            content=ft.Column(
+                spacing=12,
+                controls=[
+                    ft.Text("Dias Fixos de Trabalho",
+                            size=14, weight=ft.FontWeight.BOLD),
+                    ft.Divider(height=1),
+                    *_df_grade_linhas,
+                    ft.ElevatedButton(
+                        "Salvar Dias Fixos",
+                        icon=ft.Icons.CALENDAR_MONTH,
+                        on_click=_salvar_dias_fixos,
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.INDIGO_600,
+                            color=ft.Colors.WHITE,
+                        ),
+                    ),
+                ],
+            ),
+        ),
+    )
+
+    def _salvar_dados_pessoais(e):
+        pid = _pessoa_id["v"]
+        if pid is None:
+            return
+        nasc_val = tf_dp_nasc.value.strip()
+        if nasc_val and "/" in nasc_val:
+            try:
+                d, m, a = nasc_val.split("/")
+                nasc_iso = f"{a}-{m.zfill(2)}-{d.zfill(2)}"
+            except Exception:
+                nasc_iso = nasc_val
+        else:
+            nasc_iso = nasc_val or None
+        nome = database.pessoa_buscar(pid)["nome"]
+        database.pessoa_atualizar(
+            pid,
+            cpf=tf_dp_cpf.value.strip() or None,
+            rg=tf_dp_rg.value.strip() or None,
+            data_nascimento=nasc_iso,
+            telefone=tf_dp_tel.value.strip() or None,
+            endereco=tf_dp_end.value.strip() or None,
+            observacoes_pessoais=tf_dp_obs.value.strip() or None,
+        )
+        _snack(page, f"Dados pessoais de {nome} salvos.")
+
+    card_dados_pessoais = ft.Card(
+        visible=False,
+        content=ft.Container(
+            padding=ft.Padding.all(16),
+            content=ft.Column(
+                spacing=12,
+                controls=[
+                    ft.Text("Dados Pessoais", size=14, weight=ft.FontWeight.BOLD),
+                    ft.Divider(height=1),
+                    ft.Row([tf_dp_cpf, tf_dp_rg], spacing=12),
+                    ft.Row([tf_dp_nasc, tf_dp_tel], spacing=12),
+                    ft.Row([tf_dp_end], spacing=12),
+                    ft.Row([tf_dp_obs], spacing=12),
+                    ft.ElevatedButton(
+                        "Salvar Dados Pessoais",
+                        icon=ft.Icons.PERSON,
+                        on_click=_salvar_dados_pessoais,
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.TEAL_700,
+                            color=ft.Colors.WHITE,
+                        ),
+                    ),
+                ],
+            ),
+        ),
+    )
+
     _refresh_pessoas()
 
     tab_pessoas = ft.Column(
@@ -284,6 +489,8 @@ def view(page: ft.Page) -> ft.Control:
                     ]),
                 ]),
             )),
+            card_dias_fixos,
+            card_dados_pessoais,
             ft.Card(content=ft.Container(
                 padding=ft.Padding.all(16),
                 content=ft.Column(spacing=8, controls=[
@@ -327,11 +534,13 @@ def view(page: ft.Page) -> ft.Control:
                     page.update()
                 return handler
 
-            def _on_excluir_bairro(bid):
+            def _on_excluir_bairro(bid, nome):
                 def handler(e):
-                    database.bairro_excluir(bid)
-                    _refresh_bairros()
-                    page.update()
+                    def _excluir():
+                        database.bairro_excluir(bid)
+                        _refresh_bairros()
+                        page.update()
+                    _confirmar_exclusao(page, f"o bairro '{nome}'", _excluir)
                 return handler
 
             linhas.append(ft.DataRow(cells=[
@@ -344,7 +553,7 @@ def view(page: ft.Page) -> ft.Control:
                         icon=ft.Icons.DELETE_OUTLINE,
                         icon_color=ft.Colors.RED_400,
                         tooltip="Excluir bairro",
-                        on_click=_on_excluir_bairro(b["id"]),
+                        on_click=_on_excluir_bairro(b["id"], b["nome_bairro"]),
                     ),
                 ])),
             ]))
@@ -528,9 +737,11 @@ def view(page: ft.Page) -> ft.Control:
         for m in rows:
             def _on_excluir_metodo(mid):
                 def handler(e):
-                    database.metodo_pag_excluir(mid)
-                    _refresh_metodos()
-                    page.update()
+                    def _excluir():
+                        database.metodo_pag_excluir(mid)
+                        _refresh_metodos()
+                        page.update()
+                    _confirmar_exclusao(page, "este método de pagamento", _excluir)
                 return handler
 
             linhas.append(ft.DataRow(cells=[
@@ -629,9 +840,11 @@ def view(page: ft.Page) -> ft.Control:
 
             def _on_excluir_cat(cid):
                 def handler(e):
-                    database.categoria_extra_excluir(cid)
-                    _refresh_cats()
-                    page.update()
+                    def _excluir():
+                        database.categoria_extra_excluir(cid)
+                        _refresh_cats()
+                        page.update()
+                    _confirmar_exclusao(page, "esta categoria", _excluir)
                 return handler
 
             linhas.append(ft.DataRow(cells=[
@@ -728,14 +941,23 @@ def view(page: ft.Page) -> ft.Control:
         width=260,
         hint_text="Padrão ao cadastrar novo entregador",
     )
+    tf_cfg_limite = ft.TextField(
+        label="Limite de divergência de caixa (R$)",
+        value=database.config_obter("limite_divergencia_caixa", "5.00"),
+        keyboard_type=ft.KeyboardType.NUMBER,
+        width=280,
+        hint_text="Diferença acima deste valor gera alerta",
+    )
     txt_cfg_ok = ft.Text("", color=ft.Colors.GREEN_400, size=13)
 
     def _salvar_cfg(e):
         nome_loja = tf_cfg_loja.value.strip()
         diaria    = tf_cfg_diaria.value.strip() or "40.00"
+        limite    = tf_cfg_limite.value.strip() or "5.00"
         if nome_loja:
             database.config_salvar("nome_loja", nome_loja)
         database.config_salvar("diaria_padrao_entregador", diaria)
+        database.config_salvar("limite_divergencia_caixa", limite)
         txt_cfg_ok.value = "Configurações salvas!"
         page.update()
 
@@ -752,6 +974,11 @@ def view(page: ft.Page) -> ft.Control:
                     ft.Row([tf_cfg_diaria], spacing=12),
                     ft.Text(
                         "A diária padrão é usada como valor inicial ao cadastrar novos entregadores.",
+                        size=12, color=ft.Colors.GREY_500, italic=True,
+                    ),
+                    ft.Row([tf_cfg_limite], spacing=12),
+                    ft.Text(
+                        "Divergências de caixa acima deste valor exibem um alerta no fechamento.",
                         size=12, color=ft.Colors.GREY_500, italic=True,
                     ),
                     txt_cfg_ok,

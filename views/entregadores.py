@@ -3,11 +3,14 @@ views/entregadores.py — Painel diário de entregadores.
 Exibe resumo do dia, acumulado da semana e histórico de corridas extras/reentregas.
 """
 
+import os
 from datetime import date, timedelta
 
 import flet as ft
 
 import database
+from relatorios.pdf_gerador import gerar_pdf_entregadores, abrir_pdf
+from relatorios.excel_gerador import excel_entregadores
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -51,7 +54,7 @@ def _tabela(colunas: list, linhas: list) -> ft.Row:
                 rows=linhas,
                 column_spacing=16,
                 horizontal_lines=ft.BorderSide(
-                    1, ft.Colors.with_opacity(0.08, ft.Colors.WHITE)
+                    1, ft.Colors.with_opacity(0.15, ft.Colors.BLACK)
                 ),
             )
         ],
@@ -103,6 +106,7 @@ def view(page: ft.Page) -> ft.Control:
     )
 
     col_conteudo = ft.Column(spacing=16)
+    _dados_export: dict = {}
 
     # ─────────────────────────────────────────────────────────────────────
     def _carregar(e=None):
@@ -129,6 +133,7 @@ def view(page: ft.Page) -> ft.Control:
                 "Corridas Extra", "Vales", "Total a Pagar", "Ação",
             ]
             linhas_b1 = []
+            _dia_lista = []
 
             for ent in entregadores:
                 r = database.calcular_pagamento_entregador(ent["id"], data_iso)
@@ -212,6 +217,15 @@ def view(page: ft.Page) -> ft.Control:
                     )),
                     ft.DataCell(btn_pagar),
                 ]))
+                _dia_lista.append({
+                    "nome": ent["nome"],
+                    "entregas": r["total_entregas"],
+                    "soma_taxas": r["soma_taxas"],
+                    "diaria": r["diaria"],
+                    "corridas_extras": r["corridas_extras"],
+                    "vales": r["vales"],
+                    "total_a_pagar": r["total_liquido"],
+                })
 
             # Total de taxas do dia (apenas canais com entregador próprio)
             row_taxas_dia = conn.execute("""
@@ -237,6 +251,7 @@ def view(page: ft.Page) -> ft.Control:
             #  BLOCO 2 — Acumulado da Semana (7 dias até a data selecionada)
             # ══════════════════════════════════════════════════════════════
             linhas_b2 = []
+            _semana_lista = []
             for ent in entregadores:
                 row_entr = conn.execute(
                     """SELECT COUNT(*) AS qtd,
@@ -303,6 +318,15 @@ def view(page: ft.Page) -> ft.Control:
                         color=ft.Colors.GREEN_300,
                     )),
                 ]))
+                _semana_lista.append({
+                    "nome": ent["nome"],
+                    "entregas": qtd_sem,
+                    "soma_taxas": soma_taxas_s,
+                    "diaria": diarias_s,
+                    "corridas_extras": extras_s,
+                    "vales": vales_s,
+                    "total_a_pagar": total_s,
+                })
 
             # Total de taxas da semana (apenas canais com entregador próprio)
             row_taxas_sem = conn.execute("""
@@ -365,11 +389,61 @@ def view(page: ft.Page) -> ft.Control:
             ),
         )
 
+        _dados_export.update({
+            "data_br": data_br,
+            "dia": _dia_lista,
+            "semana": _semana_lista,
+        })
+
         col_conteudo.controls.clear()
         col_conteudo.controls += [bloco1, bloco2, bloco3]
         page.update()
 
     # ── Layout ────────────────────────────────────────────────────────────
+
+    def _exportar_excel(e):
+        if not _dados_export:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Gere o relatório antes de exportar."),
+                bgcolor=ft.Colors.ORANGE_700, open=True,
+            ))
+            page.update()
+            return
+        try:
+            caminho = excel_entregadores(_dados_export["data_br"], _dados_export)
+            os.startfile(caminho)
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Arquivo aberto para visualização."),
+                bgcolor=ft.Colors.GREEN_700, open=True,
+            ))
+        except Exception as exc:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text(f"Erro ao gerar arquivo: {exc}"),
+                bgcolor=ft.Colors.RED_700, open=True,
+            ))
+        page.update()
+
+    def _exportar_pdf(e):
+        if not _dados_export:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Gere o relatório antes de exportar."),
+                bgcolor=ft.Colors.ORANGE_700, open=True,
+            ))
+            page.update()
+            return
+        try:
+            caminho = gerar_pdf_entregadores(_dados_export["data_br"], _dados_export)
+            abrir_pdf(caminho)
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Arquivo aberto para visualização."),
+                bgcolor=ft.Colors.GREEN_700, open=True,
+            ))
+        except Exception as exc:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text(f"Erro ao gerar arquivo: {exc}"),
+                bgcolor=ft.Colors.RED_700, open=True,
+            ))
+        page.update()
 
     btn_carregar = ft.ElevatedButton(
         "Carregar",
@@ -385,7 +459,21 @@ def view(page: ft.Page) -> ft.Control:
         expand=True,
         spacing=16,
         controls=[
-            ft.Row(controls=[tf_data, btn_calendario, btn_carregar], spacing=8),
+            ft.Row(controls=[
+                tf_data, btn_calendario, btn_carregar,
+                ft.ElevatedButton(
+                    "Excel",
+                    icon=ft.Icons.TABLE_VIEW,
+                    on_click=_exportar_excel,
+                    style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_800, color=ft.Colors.WHITE),
+                ),
+                ft.ElevatedButton(
+                    "PDF",
+                    icon=ft.Icons.PICTURE_AS_PDF,
+                    on_click=_exportar_pdf,
+                    style=ft.ButtonStyle(bgcolor=ft.Colors.RED_800, color=ft.Colors.WHITE),
+                ),
+            ], spacing=8),
             ft.Text(
                 "Selecione a data e clique em Carregar.",
                 color=ft.Colors.GREY_500, italic=True, size=12,

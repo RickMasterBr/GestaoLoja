@@ -10,6 +10,8 @@ from datetime import date
 import flet as ft
 
 import database
+from relatorios.pdf_gerador import gerar_pdf_holerite, abrir_pdf
+from relatorios.excel_gerador import excel_holerite
 
 
 # ── Constantes ────────────────────────────────────────────────────────────────
@@ -84,7 +86,7 @@ def _mini_tabela(colunas: list, linhas: list) -> ft.Row:
                 data_row_min_height=32,
                 data_row_max_height=40,
                 horizontal_lines=ft.BorderSide(
-                    1, ft.Colors.with_opacity(0.06, ft.Colors.WHITE)
+                    1, ft.Colors.with_opacity(0.15, ft.Colors.BLACK)
                 ),
             )
         ],
@@ -188,7 +190,7 @@ def view(page: ft.Page) -> ft.Control:
                     alignment=ft.Alignment(0, 0),
                     content=ft.Text(
                         d, size=12, weight=ft.FontWeight.BOLD,
-                        color=ft.Colors.BLUE_300 if i >= 5 else ft.Colors.GREY_400,
+                        color=ft.Colors.BLUE_300 if i >= 5 else ft.Colors.GREY_500,
                     ),
                 )
                 for i, d in enumerate(DIA_SEMANA)
@@ -236,7 +238,7 @@ def view(page: ft.Page) -> ft.Control:
                         controls=[
                             ft.Text(
                                 str(dia), size=12, weight=ft.FontWeight.BOLD,
-                                color=ft.Colors.BLUE_300 if eh_fds else ft.Colors.GREY_300,
+                                color=ft.Colors.BLUE_300 if eh_fds else ft.Colors.GREY_500,
                             ),
                             dd_cel,
                         ],
@@ -510,18 +512,162 @@ def view(page: ft.Page) -> ft.Control:
             controls=[
                 ft.Divider(height=1),
                 ft.Text("Detalhamento", size=15, weight=ft.FontWeight.BOLD,
-                        color=ft.Colors.GREY_300),
-                ft.Text("Vales e Adiantamentos", size=13, color=ft.Colors.GREY_400),
+                        color=None),
+                ft.Text("Vales e Adiantamentos", size=13, color=ft.Colors.GREY_500),
                 _mini_tabela(["Data", "Valor", "Obs"], linhas_vales),
-                ft.Text("Consumos", size=13, color=ft.Colors.GREY_400),
+                ft.Text("Consumos", size=13, color=ft.Colors.GREY_500),
                 _mini_tabela(
                     ["Data", "Valor Original", "Desconto (80%)", "Obs"],
                     linhas_consumos,
                 ),
-                ft.Text("Ocorrências de Escala", size=13, color=ft.Colors.GREY_400),
+                ft.Text("Ocorrências de Escala", size=13, color=ft.Colors.GREY_500),
                 _mini_tabela(["Data", "Tipo", "Impacto"], linhas_ocorr),
             ],
         )
+
+        # ══════════════════════════════════════════════════════════════
+        #  SEÇÃO PONTO — apenas para FIXO e DIARIO (não ENTREGADOR)
+        # ══════════════════════════════════════════════════════════════
+        secao_ponto = None
+        if tipo_sal != "ENTREGADOR":
+            try:
+                ch_diaria = float(func["carga_horaria_diaria"] or 8.0)
+            except Exception:
+                ch_diaria = 8.0
+
+            resumo_pt = database.ponto_resumo_mensal(
+                id_func,
+                data_ini_iso,
+                data_fim_iso,
+                salario_base=func["salario_base"] or 0.0,
+                diaria_valor=func["diaria_valor"] or 0.0,
+                tipo_salario=tipo_sal,
+                carga_horaria=ch_diaria,
+            )
+
+            # Cards de resumo
+            def _card_pt(titulo, valor_str, cor):
+                return ft.Container(
+                    content=ft.Column(
+                        spacing=2, tight=True,
+                        controls=[
+                            ft.Text(titulo, size=11, color=ft.Colors.GREY_500),
+                            ft.Text(valor_str, size=15,
+                                    weight=ft.FontWeight.BOLD, color=cor),
+                        ],
+                    ),
+                    bgcolor=None,
+                    border_radius=8,
+                    padding=ft.Padding.all(10),
+                )
+
+            valor_ext_str = (
+                f"R$ {resumo_pt['valor_total_extras']:.2f}"
+                if resumo_pt["valor_hora_normal"] > 0
+                else "—"
+            )
+            cards_resumo = ft.Row(
+                spacing=10,
+                wrap=True,
+                controls=[
+                    _card_pt("Dias c/ ponto",
+                             str(resumo_pt["dias_com_ponto"]),
+                             ft.Colors.GREY_500),
+                    _card_pt("Jornadas completas",
+                             str(resumo_pt["dias_completos"]),
+                             ft.Colors.GREY_500),
+                    _card_pt("Horas trabalhadas",
+                             f"{resumo_pt['total_horas_liquidas']:.1f}h",
+                             ft.Colors.BLUE_300),
+                    _card_pt("Horas extras",
+                             f"+{resumo_pt['total_horas_extras']:.1f}h",
+                             ft.Colors.GREEN_400 if resumo_pt["total_horas_extras"] > 0
+                             else ft.Colors.GREY_600),
+                    _card_pt("Horas faltantes",
+                             f"-{resumo_pt['total_horas_faltantes']:.1f}h",
+                             ft.Colors.ORANGE_400 if resumo_pt["total_horas_faltantes"] > 0
+                             else ft.Colors.GREY_600),
+                    _card_pt("Valor est. extras (info)",
+                             valor_ext_str,
+                             ft.Colors.YELLOW_600),
+                ],
+            )
+
+            # Tabela de detalhamento por dia
+            dias_com_escala = {
+                row["data"]
+                for row in database.escala_listar_por_pessoa(
+                    id_func, data_ini_iso, data_fim_iso
+                )
+                if row["tipo"] in ("TRABALHOU", "EXTRA")
+            }
+
+            linhas_ponto = []
+            for det in resumo_pt["detalhes"]:
+                if det["data"] not in dias_com_escala:
+                    continue
+                data_br = det["data"][8:10] + "/" + det["data"][5:7]
+                ent_str = det["hora_entrada"] or "—"
+                sai_str = det["hora_saida"]   or "—"
+                int_str = (
+                    f"{det['hora_ini_int']}–{det['hora_fim_int']}"
+                    if det["hora_ini_int"] and det["hora_fim_int"]
+                    else f"{det['minutos_intervalo']}min" if det["completo"] else "—"
+                )
+                bru_str = f"{det['horas_brutas']:.1f}h"   if det["completo"] else "—"
+                liq_str = f"{det['horas_liquidas']:.1f}h" if det["completo"] else "—"
+
+                if not det["hora_entrada"]:
+                    ext_txt, ext_cor = "—", ft.Colors.GREY_600
+                elif not det["hora_saida"]:
+                    ext_txt, ext_cor = "Incompleto", ft.Colors.GREY_500
+                elif det["horas_extras"] > 0:
+                    ext_txt, ext_cor = f"+{det['horas_extras']:.1f}h", ft.Colors.GREEN_400
+                elif det["horas_extras"] < 0:
+                    ext_txt, ext_cor = f"{det['horas_extras']:.1f}h", ft.Colors.ORANGE_400
+                else:
+                    ext_txt, ext_cor = "Cumprida", ft.Colors.GREEN_300
+
+                linhas_ponto.append(ft.DataRow(cells=[
+                    ft.DataCell(ft.Text(data_br, size=12)),
+                    ft.DataCell(ft.Text(ent_str, size=12)),
+                    ft.DataCell(ft.Text(sai_str, size=12)),
+                    ft.DataCell(ft.Text(int_str, size=12)),
+                    ft.DataCell(ft.Text(bru_str, size=12)),
+                    ft.DataCell(ft.Text(liq_str, size=12)),
+                    ft.DataCell(ft.Text(
+                        ext_txt, size=12,
+                        weight=ft.FontWeight.BOLD if det.get("horas_extras", 0) > 0
+                        else ft.FontWeight.NORMAL,
+                        color=ext_cor,
+                    )),
+                ]))
+
+            nota_ponto = ft.Text(
+                "Cálculo: (Saída − Entrada) − 1h intervalo padrão. "
+                "Hora extra = valor/hora × 150%. "
+                "Valor hora = Salário ÷ 220 (fixo) ou Diária ÷ 8h (diário). "
+                "Os valores de horas extras são apenas informativos.",
+                size=11,
+                italic=True,
+                color=ft.Colors.GREY_500,
+            )
+
+            secao_ponto = ft.Column(
+                spacing=12,
+                controls=[
+                    ft.Divider(height=1),
+                    ft.Text("Controle de Ponto", size=15,
+                            weight=ft.FontWeight.BOLD, color=None),
+                    cards_resumo,
+                    _mini_tabela(
+                        ["Data", "Entrada", "Saída", "Intervalo",
+                         "H. Brutas", "H. Líquidas", "Extras/Faltantes"],
+                        linhas_ponto,
+                    ),
+                    nota_ponto,
+                ],
+            )
 
         bloco2 = _card(
             "Holerite do Mês",
@@ -536,9 +682,28 @@ def view(page: ft.Page) -> ft.Control:
                         color=ft.Colors.WHITE,
                     ),
                 ),
+                ft.ElevatedButton(
+                    "Excel",
+                    icon=ft.Icons.TABLE_VIEW,
+                    on_click=_exportar_excel,
+                    style=ft.ButtonStyle(
+                        bgcolor=ft.Colors.GREEN_800,
+                        color=ft.Colors.WHITE,
+                    ),
+                ),
+                ft.ElevatedButton(
+                    "PDF",
+                    icon=ft.Icons.PICTURE_AS_PDF,
+                    on_click=_exportar_pdf,
+                    style=ft.ButtonStyle(
+                        bgcolor=ft.Colors.RED_800,
+                        color=ft.Colors.WHITE,
+                    ),
+                ),
                 btn_registrar,
             ]),
             secao_det,
+            *([] if secao_ponto is None else [secao_ponto]),
         )
 
         col_conteudo.controls.clear()
@@ -605,6 +770,81 @@ def view(page: ft.Page) -> ft.Control:
             content=ft.Text(f"Holerite exportado: {caminho}"),
             bgcolor=ft.Colors.GREEN_700, open=True,
         ))
+        page.update()
+
+    def _holerite_para_dados() -> dict:
+        """Converte _holerite_dados para o formato esperado pelas funções de exportação."""
+        d = _holerite_dados
+        resumo = [{"descricao": d["desc_base"], "valor": d["base"], "tipo": "receita"}]
+        if d.get("val_extras", 0) > 0:
+            resumo.append({
+                "descricao": f"Extras: {d['dias_extra']} dia(s) × R$ {d['valor_extra']:.2f}",
+                "valor": d["val_extras"], "tipo": "receita",
+            })
+        if d.get("val_feriados", 0) > 0:
+            resumo.append({
+                "descricao": f"Feriados trabalhados: {d['dias_feriado']} × R$ {d['valor_feriado']:.2f}",
+                "valor": d["val_feriados"], "tipo": "receita",
+            })
+        if d.get("val_faltas", 0) > 0:
+            resumo.append({
+                "descricao": f"Faltas: {d['dias_falta']} × R$ {d['valor_falta']:.2f}",
+                "valor": d["val_faltas"], "tipo": "desconto",
+            })
+        if d.get("soma_vales", 0) > 0:
+            resumo.append({"descricao": "Vales / Adiantamentos", "valor": d["soma_vales"], "tipo": "desconto"})
+        if d.get("soma_consumos", 0) > 0:
+            resumo.append({
+                "descricao": f"Consumos (80% de R$ {d['soma_consumos']:.2f})",
+                "valor": d["val_consumos"], "tipo": "desconto",
+            })
+        resumo.append({"descricao": "TOTAL LÍQUIDO", "valor": d["total_liquido"], "tipo": "total"})
+        return {"resumo": resumo, "vales": [], "consumos": [], "ocorrencias": [], "ponto": []}
+
+    def _exportar_excel(e):
+        if not _holerite_dados:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Gere o relatório antes de exportar."),
+                bgcolor=ft.Colors.ORANGE_700, open=True,
+            ))
+            page.update()
+            return
+        try:
+            d = _holerite_dados
+            caminho = excel_holerite(d["funcionario"], d["mes_ano"], _holerite_para_dados())
+            os.startfile(caminho)
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Arquivo aberto para visualização."),
+                bgcolor=ft.Colors.GREEN_700, open=True,
+            ))
+        except Exception as exc:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text(f"Erro ao gerar arquivo: {exc}"),
+                bgcolor=ft.Colors.RED_700, open=True,
+            ))
+        page.update()
+
+    def _exportar_pdf(e):
+        if not _holerite_dados:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Gere o relatório antes de exportar."),
+                bgcolor=ft.Colors.ORANGE_700, open=True,
+            ))
+            page.update()
+            return
+        try:
+            d = _holerite_dados
+            caminho = gerar_pdf_holerite(d["funcionario"], d["mes_ano"], _holerite_para_dados())
+            abrir_pdf(caminho)
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Arquivo aberto para visualização."),
+                bgcolor=ft.Colors.GREEN_700, open=True,
+            ))
+        except Exception as exc:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text(f"Erro ao gerar arquivo: {exc}"),
+                bgcolor=ft.Colors.RED_700, open=True,
+            ))
         page.update()
 
     # ── Layout ────────────────────────────────────────────────────────────

@@ -18,7 +18,8 @@
       "Bash(python -m py_compile main.py views/funcionarios.py)",
       "Bash(python -m py_compile views/entregadores.py)",
       "Bash(python -m py_compile views/parametros.py database.py)",
-      "Bash(python -m py_compile views/relatorio_diario.py)"
+      "Bash(python -m py_compile views/relatorio_diario.py)",
+      "Bash(python -c \"from relatorios import excel_gerador, pdf_gerador; print\\(''OK''\\)\")"
     ]
   }
 }

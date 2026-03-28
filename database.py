@@ -28,6 +28,33 @@ def _encontrar_banco():
 DB_PATH = _encontrar_banco()
 
 
+def banco_status() -> dict:
+    """Retorna informações sobre o banco de dados ativo."""
+    from datetime import datetime
+
+    eh_drive = DB_PATH != LOCAL_PATH
+    existe   = os.path.exists(DB_PATH)
+
+    try:
+        tamanho    = os.path.getsize(DB_PATH) if existe else 0
+        modificado = (
+            datetime.fromtimestamp(os.path.getmtime(DB_PATH)).strftime("%d/%m/%Y %H:%M")
+            if existe else "—"
+        )
+    except Exception:
+        tamanho    = 0
+        modificado = "—"
+
+    return {
+        "caminho":    DB_PATH,
+        "eh_drive":   eh_drive,
+        "existe":     existe,
+        "tamanho_kb": round(tamanho / 1024, 1),
+        "modificado": modificado,
+        "local_path": LOCAL_PATH,
+    }
+
+
 # ══════════════════════════════════════════════
 #  CONEXÃO E INICIALIZAÇÃO
 # ══════════════════════════════════════════════
@@ -49,6 +76,9 @@ def inicializar_banco():
         _migrar_colunas_plataformas(conn)
         _migrar_tipo_salario_entregador(conn)
         _migrar_colunas_pessoas(conn)
+        _migrar_carga_horaria(conn)
+        _migrar_dados_pessoais(conn)
+        _migrar_obs_fechamento(conn)
         conn.commit()
         _popular_dados_iniciais(conn)
         conn.commit()
@@ -198,6 +228,95 @@ def _criar_tabelas(conn: sqlite3.Connection):
         valor TEXT NOT NULL DEFAULT ''
     );
 
+    -- Dias fixos de trabalho por pessoa (grade semanal)
+    CREATE TABLE IF NOT EXISTS cad_dias_fixos (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_pessoa       INTEGER NOT NULL REFERENCES cad_pessoas(id) ON DELETE CASCADE,
+        dia_semana      INTEGER NOT NULL,   -- 0=Segunda ... 6=Domingo
+        horario_entrada TEXT,               -- HH:MM, nullable
+        UNIQUE(id_pessoa, dia_semana)
+    );
+
+    -- Controle de fiados (clientes que levaram sem pagar)
+    CREATE TABLE IF NOT EXISTS fiados (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        data_lancamento TEXT    NOT NULL,  -- YYYY-MM-DD
+        nome_cliente    TEXT    NOT NULL,
+        descricao       TEXT,
+        valor           REAL    NOT NULL DEFAULT 0,
+        pago            INTEGER NOT NULL DEFAULT 0,  -- 0=aberto, 1=quitado
+        data_pagamento  TEXT,                        -- YYYY-MM-DD
+        obs             TEXT
+    );
+
+    -- Registro de ponto diário por pessoa
+    CREATE TABLE IF NOT EXISTS registros_ponto (
+        id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+        data                    TEXT    NOT NULL,  -- YYYY-MM-DD
+        id_pessoa               INTEGER NOT NULL REFERENCES cad_pessoas(id) ON DELETE CASCADE,
+        hora_entrada            TEXT,              -- HH:MM
+        hora_inicio_intervalo   TEXT,              -- HH:MM, nullable
+        hora_fim_intervalo      TEXT,              -- HH:MM, nullable
+        hora_saida              TEXT,              -- HH:MM, nullable
+        obs                     TEXT,
+        UNIQUE(data, id_pessoa)
+    );
+
+    -- Módulo de estoque interno
+    CREATE TABLE IF NOT EXISTS estoque_categorias (
+        id    INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome  TEXT    NOT NULL UNIQUE,
+        ativo INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS estoque_produtos (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome              TEXT    NOT NULL,
+        id_categoria      INTEGER REFERENCES estoque_categorias(id) ON DELETE SET NULL,
+        unidade           TEXT    NOT NULL DEFAULT 'un',
+        preco_custo       REAL    NOT NULL DEFAULT 0,
+        quantidade_atual  REAL    NOT NULL DEFAULT 0,
+        quantidade_minima REAL    NOT NULL DEFAULT 0,
+        ativo             INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS estoque_movimentacoes (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        data         TEXT    NOT NULL,
+        hora         TEXT,
+        id_produto   INTEGER NOT NULL REFERENCES estoque_produtos(id) ON DELETE CASCADE,
+        tipo         TEXT    NOT NULL CHECK(tipo IN ('ENTRADA','SAIDA','AJUSTE')),
+        quantidade   REAL    NOT NULL,
+        preco_custo  REAL    NOT NULL DEFAULT 0,
+        valor_total  REAL    NOT NULL DEFAULT 0,
+        motivo       TEXT,
+        obs          TEXT
+    );
+
+    CREATE TRIGGER IF NOT EXISTS trg_estoque_entrada
+    AFTER INSERT ON estoque_movimentacoes
+    WHEN NEW.tipo = 'ENTRADA'
+    BEGIN
+        UPDATE estoque_produtos SET quantidade_atual = quantidade_atual + NEW.quantidade
+        WHERE id = NEW.id_produto;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_estoque_saida
+    AFTER INSERT ON estoque_movimentacoes
+    WHEN NEW.tipo = 'SAIDA'
+    BEGIN
+        UPDATE estoque_produtos SET quantidade_atual = quantidade_atual - NEW.quantidade
+        WHERE id = NEW.id_produto;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_estoque_ajuste
+    AFTER INSERT ON estoque_movimentacoes
+    WHEN NEW.tipo = 'AJUSTE'
+    BEGIN
+        UPDATE estoque_produtos SET quantidade_atual = NEW.quantidade
+        WHERE id = NEW.id_produto;
+    END;
+
     -- Canais com '_Deles' usam entregador da plataforma: taxa e repasse devem ser zero.
     -- Trigger AFTER INSERT: corrige caso a camada Python envie valores incorretos.
     CREATE TRIGGER IF NOT EXISTS trg_zerar_taxas_deles_insert
@@ -307,6 +426,44 @@ def _migrar_colunas_pessoas(conn: sqlite3.Connection):
             conn.execute(
                 f"ALTER TABLE cad_pessoas ADD COLUMN {nome_col} {definicao}"
             )
+
+
+def _migrar_carga_horaria(conn: sqlite3.Connection):
+    """
+    Adiciona coluna carga_horaria_diaria em cad_pessoas se não existir.
+    Idempotente.
+    """
+    colunas = {row["name"] for row in conn.execute("PRAGMA table_info(cad_pessoas)")}
+    if "carga_horaria_diaria" not in colunas:
+        conn.execute(
+            "ALTER TABLE cad_pessoas ADD COLUMN carga_horaria_diaria REAL NOT NULL DEFAULT 8.0"
+        )
+
+
+def _migrar_dados_pessoais(conn: sqlite3.Connection):
+    """
+    Adiciona colunas de dados pessoais em cad_pessoas se não existirem.
+    Idempotente.
+    """
+    colunas = {row["name"] for row in conn.execute("PRAGMA table_info(cad_pessoas)")}
+    novas = [
+        ("cpf",                    "TEXT"),
+        ("rg",                     "TEXT"),
+        ("data_nascimento",        "TEXT"),
+        ("telefone",               "TEXT"),
+        ("endereco",               "TEXT"),
+        ("observacoes_pessoais",   "TEXT"),
+    ]
+    for nome_col, definicao in novas:
+        if nome_col not in colunas:
+            conn.execute(f"ALTER TABLE cad_pessoas ADD COLUMN {nome_col} {definicao}")
+
+
+def _migrar_obs_fechamento(conn: sqlite3.Connection):
+    """Adiciona coluna obs_fechamento em fluxo_caixa_diario se não existir."""
+    colunas = {row["name"] for row in conn.execute("PRAGMA table_info(fluxo_caixa_diario)")}
+    if "obs_fechamento" not in colunas:
+        conn.execute("ALTER TABLE fluxo_caixa_diario ADD COLUMN obs_fechamento TEXT")
 
 
 # ══════════════════════════════════════════════
@@ -1261,19 +1418,49 @@ def fluxo_caixa_recalcular(data: str) -> dict:
         conn.close()
 
 
-def fluxo_caixa_fechar(data: str, saldo_gaveta_real: float) -> dict:
+def fluxo_caixa_fechar(data: str, saldo_gaveta_real: float,
+                       obs_fechamento: str | None = None) -> dict:
     """
     Registra o saldo físico da gaveta, calcula a diferença e fecha o caixa.
     Retorna o resumo completo do fechamento.
     """
     calc = fluxo_caixa_recalcular(data)
     diferenca = saldo_gaveta_real - calc["saldo_teorico"]
-    fluxo_caixa_atualizar(
-        data,
-        saldo_gaveta_real=saldo_gaveta_real,
-        diferenca=diferenca
-    )
-    return {**calc, "saldo_gaveta_real": saldo_gaveta_real, "diferenca": diferenca}
+    kwargs = dict(saldo_gaveta_real=saldo_gaveta_real, diferenca=diferenca)
+    if obs_fechamento is not None:
+        kwargs["obs_fechamento"] = obs_fechamento
+    fluxo_caixa_atualizar(data, **kwargs)
+    return {**calc, "saldo_gaveta_real": saldo_gaveta_real, "diferenca": diferenca,
+            "obs_fechamento": obs_fechamento}
+
+
+def fluxo_caixa_historico_divergencias(
+    data_inicio: str,
+    data_fim: str,
+    apenas_divergencias: bool = False,
+) -> list:
+    """
+    Retorna histórico de fechamentos no período.
+    Se apenas_divergencias=True, filtra apenas dias com diferença != 0.
+    Cada item: data, troco_inicial, saldo_teorico, saldo_gaveta_real,
+               diferenca, obs_fechamento.
+    """
+    conn = conectar()
+    try:
+        rows = conn.execute(
+            """SELECT data, troco_inicial, saldo_teorico, saldo_gaveta_real,
+                      diferenca, obs_fechamento
+               FROM fluxo_caixa_diario
+               WHERE data BETWEEN ? AND ?
+               ORDER BY data""",
+            (data_inicio, data_fim),
+        ).fetchall()
+        result = [dict(r) for r in rows]
+        if apenas_divergencias:
+            result = [r for r in result if abs(r.get("diferenca") or 0.0) > 0.001]
+        return result
+    finally:
+        conn.close()
 
 
 # ══════════════════════════════════════════════
@@ -1374,6 +1561,360 @@ def escala_excluir(data: str, id_pessoa: int) -> bool:
 
 
 # ══════════════════════════════════════════════
+#  CRUD — cad_dias_fixos
+# ══════════════════════════════════════════════
+
+def dias_fixos_salvar(id_pessoa: int, dias: list) -> None:
+    """
+    Substitui todos os dias fixos de uma pessoa.
+    Recebe lista de dicts com chaves 'dia_semana' (int) e 'horario_entrada' (str|None).
+    Apaga todos os registros da pessoa e reinsere (replace completo).
+    """
+    conn = conectar()
+    try:
+        conn.execute(
+            "DELETE FROM cad_dias_fixos WHERE id_pessoa = ?", (id_pessoa,)
+        )
+        if dias:
+            conn.executemany(
+                """INSERT INTO cad_dias_fixos (id_pessoa, dia_semana, horario_entrada)
+                   VALUES (?, ?, ?)""",
+                [(id_pessoa, d["dia_semana"], d.get("horario_entrada")) for d in dias],
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def dias_fixos_listar(id_pessoa: int) -> list:
+    """Retorna os dias fixos de uma pessoa ordenados por dia_semana."""
+    conn = conectar()
+    try:
+        return conn.execute(
+            """SELECT * FROM cad_dias_fixos
+               WHERE id_pessoa = ?
+               ORDER BY dia_semana""",
+            (id_pessoa,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def dias_fixos_listar_todos() -> list:
+    """Retorna todos os dias fixos com nome e tipo da pessoa (JOIN cad_pessoas)."""
+    conn = conectar()
+    try:
+        return conn.execute(
+            """SELECT df.*, p.nome, p.tipo
+               FROM cad_dias_fixos df
+               JOIN cad_pessoas p ON p.id = df.id_pessoa
+               ORDER BY p.nome, df.dia_semana"""
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════
+#  CRUD — registros_ponto
+# ══════════════════════════════════════════════
+
+def ponto_registrar_entrada(data: str, id_pessoa: int, hora_entrada: str) -> int:
+    """
+    Upsert: cria o registro do dia ou atualiza hora_entrada se já existir.
+    Retorna o id do registro.
+    """
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """INSERT INTO registros_ponto (data, id_pessoa, hora_entrada)
+               VALUES (?, ?, ?)
+               ON CONFLICT(data, id_pessoa) DO UPDATE SET hora_entrada = excluded.hora_entrada""",
+            (data, id_pessoa, hora_entrada),
+        )
+        conn.commit()
+        if cur.lastrowid:
+            return cur.lastrowid
+        row = conn.execute(
+            "SELECT id FROM registros_ponto WHERE data = ? AND id_pessoa = ?",
+            (data, id_pessoa),
+        ).fetchone()
+        return row["id"] if row else -1
+    finally:
+        conn.close()
+
+
+def ponto_registrar_intervalo(data: str, id_pessoa: int,
+                               hora_inicio: str, hora_fim: str) -> bool:
+    """
+    Atualiza hora_inicio_intervalo e hora_fim_intervalo do registro do dia.
+    Retorna True se o registro foi encontrado e atualizado.
+    """
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """UPDATE registros_ponto
+               SET hora_inicio_intervalo = ?, hora_fim_intervalo = ?
+               WHERE data = ? AND id_pessoa = ?""",
+            (hora_inicio, hora_fim, data, id_pessoa),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def ponto_registrar_saida(data: str, id_pessoa: int, hora_saida: str) -> bool:
+    """
+    Atualiza hora_saida do registro do dia.
+    Retorna True se o registro foi encontrado e atualizado.
+    """
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """UPDATE registros_ponto
+               SET hora_saida = ?
+               WHERE data = ? AND id_pessoa = ?""",
+            (hora_saida, data, id_pessoa),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def ponto_buscar(data: str, id_pessoa: int) -> sqlite3.Row | None:
+    """Retorna o registro de ponto de uma pessoa em uma data, ou None."""
+    conn = conectar()
+    try:
+        return conn.execute(
+            "SELECT * FROM registros_ponto WHERE data = ? AND id_pessoa = ?",
+            (data, id_pessoa),
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def ponto_listar_por_data(data: str) -> list:
+    """Retorna todos os registros de ponto de uma data, com nome e tipo da pessoa."""
+    conn = conectar()
+    try:
+        return conn.execute(
+            """SELECT rp.*, p.nome, p.tipo
+               FROM registros_ponto rp
+               JOIN cad_pessoas p ON p.id = rp.id_pessoa
+               WHERE rp.data = ?
+               ORDER BY p.nome""",
+            (data,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def ponto_listar_periodo(id_pessoa: int, data_inicio: str, data_fim: str) -> list:
+    """Retorna os registros de ponto de uma pessoa em um intervalo de datas."""
+    conn = conectar()
+    try:
+        return conn.execute(
+            """SELECT * FROM registros_ponto
+               WHERE id_pessoa = ? AND data BETWEEN ? AND ?
+               ORDER BY data""",
+            (id_pessoa, data_inicio, data_fim),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def ponto_calcular_horas(
+    hora_entrada: str,
+    hora_saida: str,
+    hora_ini_intervalo: str = None,
+    hora_fim_intervalo: str = None,
+    carga_horaria: float = 8.0,
+) -> dict:
+    """
+    Calcula horas trabalhadas e extras a partir dos registros de ponto.
+    Retorna dict com horas_brutas, minutos_intervalo, horas_liquidas,
+    horas_extras, completo e erro.
+    """
+    from datetime import datetime, timedelta
+
+    if not hora_entrada or not hora_saida:
+        return {
+            "horas_brutas":      0.0,
+            "minutos_intervalo": 0,
+            "horas_liquidas":    0.0,
+            "horas_extras":      0.0,
+            "completo":          False,
+            "erro":              "Entrada ou saída não registrada",
+        }
+
+    try:
+        fmt    = "%H:%M"
+        entrada = datetime.strptime(hora_entrada, fmt)
+        saida   = datetime.strptime(hora_saida,   fmt)
+
+        if saida < entrada:
+            saida += timedelta(days=1)
+
+        horas_brutas = (saida - entrada).total_seconds() / 3600
+
+        if hora_ini_intervalo and hora_fim_intervalo:
+            ini_int = datetime.strptime(hora_ini_intervalo, fmt)
+            fim_int = datetime.strptime(hora_fim_intervalo, fmt)
+            if fim_int < ini_int:
+                fim_int += timedelta(days=1)
+            minutos_intervalo = int((fim_int - ini_int).total_seconds() / 60)
+        else:
+            minutos_intervalo = 60
+
+        horas_liquidas = horas_brutas - minutos_intervalo / 60
+        horas_extras   = horas_liquidas - carga_horaria
+
+        return {
+            "horas_brutas":      round(horas_brutas, 2),
+            "minutos_intervalo": minutos_intervalo,
+            "horas_liquidas":    round(horas_liquidas, 2),
+            "horas_extras":      round(horas_extras, 2),
+            "completo":          True,
+            "erro":              None,
+        }
+    except Exception as ex:
+        return {
+            "horas_brutas":      0.0,
+            "minutos_intervalo": 0,
+            "horas_liquidas":    0.0,
+            "horas_extras":      0.0,
+            "completo":          False,
+            "erro":              str(ex),
+        }
+
+
+def ponto_resumo_mensal(
+    id_pessoa: int,
+    data_inicio: str,
+    data_fim: str,
+    salario_base: float = 0.0,
+    diaria_valor: float = 0.0,
+    tipo_salario: str = "FIXO",
+    carga_horaria: float = 8.0,
+) -> dict:
+    """
+    Calcula resumo de horas do mês para uma pessoa.
+    Retorna dict com totais de horas, valor das extras e lista de detalhes por dia.
+    """
+    conn = conectar()
+    try:
+        registros = conn.execute(
+            """SELECT * FROM registros_ponto
+               WHERE id_pessoa = ? AND data BETWEEN ? AND ?
+               ORDER BY data""",
+            (id_pessoa, data_inicio, data_fim),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if tipo_salario == "FIXO":
+        valor_hora = salario_base / 220 if salario_base > 0 else 0.0
+    elif tipo_salario == "DIARIO":
+        valor_hora = diaria_valor / carga_horaria if diaria_valor > 0 else 0.0
+    else:
+        valor_hora = 0.0
+
+    valor_adicional  = valor_hora * 0.5
+    valor_hora_extra = valor_hora + valor_adicional
+
+    detalhes        = []
+    total_brutas    = 0.0
+    total_liquidas  = 0.0
+    total_extras    = 0.0
+    total_faltantes = 0.0
+    dias_completos  = 0
+
+    for r in registros:
+        calc = ponto_calcular_horas(
+            r["hora_entrada"],
+            r["hora_saida"],
+            r["hora_inicio_intervalo"],
+            r["hora_fim_intervalo"],
+            carga_horaria,
+        )
+        if calc["completo"]:
+            dias_completos  += 1
+            total_brutas    += calc["horas_brutas"]
+            total_liquidas  += calc["horas_liquidas"]
+            if calc["horas_extras"] > 0:
+                total_extras    += calc["horas_extras"]
+            else:
+                total_faltantes += abs(calc["horas_extras"])
+
+        detalhes.append({
+            "data":         r["data"],
+            "hora_entrada": r["hora_entrada"],
+            "hora_saida":   r["hora_saida"],
+            "hora_ini_int": r["hora_inicio_intervalo"],
+            "hora_fim_int": r["hora_fim_intervalo"],
+            **calc,
+        })
+
+    return {
+        "dias_com_ponto":        len(registros),
+        "dias_completos":        dias_completos,
+        "total_horas_brutas":    round(total_brutas,    2),
+        "total_horas_liquidas":  round(total_liquidas,  2),
+        "total_horas_extras":    round(total_extras,    2),
+        "total_horas_faltantes": round(total_faltantes, 2),
+        "valor_hora_normal":     round(valor_hora,       2),
+        "valor_adicional_extra": round(valor_adicional,  2),
+        "valor_total_extras":    round(total_extras * valor_hora_extra, 2),
+        "detalhes":              detalhes,
+    }
+
+
+# ══════════════════════════════════════════════
+#  AUXILIAR — pré-população de escala pelo grade
+# ══════════════════════════════════════════════
+
+def escala_pre_popular_do_dia(data_iso: str) -> int:
+    """
+    Para cada pessoa ativa que tem aquela data como dia fixo de trabalho
+    (weekday do Python == dia_semana cadastrado) e ainda NÃO tem registro
+    em escalas_trabalho para aquela data, insere com tipo='TRABALHOU'.
+    Retorna a quantidade de registros inseridos.
+    """
+    from datetime import date as _date
+    dia_semana_alvo = _date.fromisoformat(data_iso).weekday()
+
+    conn = conectar()
+    try:
+        candidatos = conn.execute(
+            """SELECT df.id_pessoa
+               FROM cad_dias_fixos df
+               JOIN cad_pessoas p ON p.id = df.id_pessoa
+               WHERE df.dia_semana = ?
+                 AND p.status_ativo = 1
+                 AND NOT EXISTS (
+                     SELECT 1 FROM escalas_trabalho e
+                     WHERE e.data = ? AND e.id_pessoa = df.id_pessoa
+                 )""",
+            (dia_semana_alvo, data_iso),
+        ).fetchall()
+
+        inseridos = 0
+        for row in candidatos:
+            conn.execute(
+                """INSERT OR IGNORE INTO escalas_trabalho (data, id_pessoa, tipo)
+                   VALUES (?, ?, 'TRABALHOU')""",
+                (data_iso, row["id_pessoa"]),
+            )
+            inseridos += 1
+
+        conn.commit()
+        return inseridos
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════
 #  CÁLCULO DE PAGAMENTO — ENTREGADOR
 # ══════════════════════════════════════════════
 
@@ -1443,6 +1984,475 @@ def calcular_pagamento_entregador(id_pessoa: int, data: str) -> dict:
             "vales":           vales,
             "total_liquido":   diaria + soma_taxas + corridas_extras - vales,
         }
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════
+#  CRUD — fiados
+# ══════════════════════════════════════════════
+
+def fiado_inserir(data: str, nome_cliente: str, valor: float,
+                  descricao: str = None, obs: str = None) -> int:
+    """Registra um novo fiado. Retorna o id gerado."""
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """INSERT INTO fiados (data_lancamento, nome_cliente, valor, descricao, obs)
+               VALUES (?, ?, ?, ?, ?)""",
+            (data, nome_cliente, valor, descricao, obs),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def fiado_listar(apenas_abertos: bool = True) -> list:
+    """Lista fiados. Se apenas_abertos=True, filtra pago=0."""
+    conn = conectar()
+    try:
+        sql = "SELECT * FROM fiados"
+        if apenas_abertos:
+            sql += " WHERE pago = 0"
+        sql += " ORDER BY pago ASC, data_lancamento DESC"
+        return conn.execute(sql).fetchall()
+    finally:
+        conn.close()
+
+
+def fiado_quitar(id_fiado: int, data_pagamento: str) -> bool:
+    """Marca o fiado como quitado. Retorna True se encontrado."""
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            "UPDATE fiados SET pago = 1, data_pagamento = ? WHERE id = ?",
+            (data_pagamento, id_fiado),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def fiado_buscar(id_fiado: int) -> sqlite3.Row | None:
+    """Retorna um fiado pelo id, ou None."""
+    conn = conectar()
+    try:
+        return conn.execute(
+            "SELECT * FROM fiados WHERE id = ?", (id_fiado,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def fiado_excluir(id_fiado: int) -> bool:
+    """Remove um fiado pelo id. Retorna True se excluído."""
+    conn = conectar()
+    try:
+        cur = conn.execute("DELETE FROM fiados WHERE id = ?", (id_fiado,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def fiado_total_aberto() -> float:
+    """Retorna a soma dos valores de fiados ainda não quitados."""
+    conn = conectar()
+    try:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(valor), 0) AS total FROM fiados WHERE pago = 0"
+        ).fetchone()
+        return row["total"] if row else 0.0
+    finally:
+        conn.close()
+
+
+def fluxo_caixa_listar_lancamentos(data_inicio: str, data_fim: str) -> list:
+    """
+    Retorna extrato cronológico de lançamentos do caixa no período.
+    Inclui: troco inicial, vendas (pedidos), extras (exceto Pagamento) e
+    movimentações de categoria Pagamento.
+    Colunas: data, hora, seq, ref_id, tipo, descricao,
+             entrada, saida, metodo, canal, nome_pessoa
+    """
+    conn = conectar()
+    try:
+        sql = """
+            WITH pag_count AS (
+                SELECT id_pedido, COUNT(*) AS qtd_pags
+                FROM vendas_pagamentos
+                GROUP BY id_pedido
+            )
+            SELECT
+                fcd.data,
+                '00:00'           AS hora,
+                1                 AS seq,
+                NULL              AS ref_id,
+                'TROCO_INICIAL'   AS tipo,
+                'Troco inicial'   AS descricao,
+                fcd.troco_inicial AS entrada,
+                0.0               AS saida,
+                'Dinheiro'        AS metodo,
+                NULL              AS canal,
+                NULL              AS nome_pessoa
+            FROM fluxo_caixa_diario fcd
+            WHERE fcd.data BETWEEN ? AND ?
+
+            UNION ALL
+
+            SELECT
+                p.data,
+                COALESCE(p.hora, '23:59')  AS hora,
+                2                           AS seq,
+                p.id                        AS ref_id,
+                'VENDA'                     AS tipo,
+                'Pedido #' || p.id ||
+                    CASE WHEN COALESCE(pc.qtd_pags, 1) > 1
+                         THEN ' (' || pc.qtd_pags || ' pagtos)'
+                         ELSE ''
+                    END                     AS descricao,
+                p.valor_total               AS entrada,
+                0.0                         AS saida,
+                NULL                        AS metodo,
+                p.canal                     AS canal,
+                NULL                        AS nome_pessoa
+            FROM vendas_pedidos p
+            LEFT JOIN pag_count pc ON pc.id_pedido = p.id
+            WHERE p.data BETWEEN ? AND ?
+
+            UNION ALL
+
+            SELECT
+                me.data,
+                NULL    AS hora,
+                3       AS seq,
+                me.id   AS ref_id,
+                'EXTRA' AS tipo,
+                ce.descricao || COALESCE(' — ' || cp.nome, '') AS descricao,
+                CASE WHEN me.fluxo = 'ENTRADA' THEN me.valor ELSE 0.0 END AS entrada,
+                CASE WHEN me.fluxo = 'SAIDA'   THEN me.valor ELSE 0.0 END AS saida,
+                me.metodo  AS metodo,
+                NULL       AS canal,
+                cp.nome    AS nome_pessoa
+            FROM movimentacoes_extras me
+            LEFT JOIN cad_categorias_extra ce ON ce.id = me.id_categoria
+            LEFT JOIN cad_pessoas cp ON cp.id = me.id_pessoa
+            WHERE me.data BETWEEN ? AND ?
+              AND ce.descricao != 'Pagamento'
+
+            UNION ALL
+
+            SELECT
+                me.data,
+                NULL        AS hora,
+                4           AS seq,
+                me.id       AS ref_id,
+                'PAGAMENTO' AS tipo,
+                ce.descricao || COALESCE(' — ' || cp.nome, '') AS descricao,
+                CASE WHEN me.fluxo = 'ENTRADA' THEN me.valor ELSE 0.0 END AS entrada,
+                CASE WHEN me.fluxo = 'SAIDA'   THEN me.valor ELSE 0.0 END AS saida,
+                me.metodo  AS metodo,
+                NULL       AS canal,
+                cp.nome    AS nome_pessoa
+            FROM movimentacoes_extras me
+            LEFT JOIN cad_categorias_extra ce ON ce.id = me.id_categoria
+            LEFT JOIN cad_pessoas cp ON cp.id = me.id_pessoa
+            WHERE me.data BETWEEN ? AND ?
+              AND ce.descricao = 'Pagamento'
+
+            ORDER BY data, hora, seq, ref_id
+        """
+        return conn.execute(
+            sql,
+            (data_inicio, data_fim,
+             data_inicio, data_fim,
+             data_inicio, data_fim,
+             data_inicio, data_fim)
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════
+#  CRUD — estoque_categorias
+# ══════════════════════════════════════════════
+
+def estoque_categoria_inserir(nome: str) -> int:
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            "INSERT INTO estoque_categorias (nome) VALUES (?)", (nome,)
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def estoque_categoria_listar(apenas_ativas: bool = True) -> list:
+    conn = conectar()
+    try:
+        sql = "SELECT * FROM estoque_categorias"
+        if apenas_ativas:
+            sql += " WHERE ativo = 1"
+        sql += " ORDER BY nome"
+        return conn.execute(sql).fetchall()
+    finally:
+        conn.close()
+
+
+def estoque_categoria_atualizar(id_cat: int, **campos) -> bool:
+    if not campos:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in campos)
+    valores    = list(campos.values()) + [id_cat]
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            f"UPDATE estoque_categorias SET {set_clause} WHERE id = ?", valores
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════
+#  CRUD — estoque_produtos
+# ══════════════════════════════════════════════
+
+def estoque_produto_inserir(
+    nome: str,
+    id_categoria: int | None,
+    unidade: str,
+    preco_custo: float,
+    quantidade_atual: float,
+    quantidade_minima: float,
+) -> int:
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """INSERT INTO estoque_produtos
+               (nome, id_categoria, unidade, preco_custo,
+                quantidade_atual, quantidade_minima)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (nome, id_categoria, unidade, preco_custo,
+             quantidade_atual, quantidade_minima),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def estoque_produto_buscar(id_produto: int):
+    conn = conectar()
+    try:
+        return conn.execute(
+            """SELECT ep.*, ec.nome AS nome_categoria
+               FROM estoque_produtos ep
+               LEFT JOIN estoque_categorias ec ON ec.id = ep.id_categoria
+               WHERE ep.id = ?""",
+            (id_produto,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def estoque_produto_listar(
+    apenas_ativos: bool = True,
+    id_categoria: int | None = None,
+) -> list:
+    conn = conectar()
+    try:
+        conds  = []
+        params = []
+        if apenas_ativos:
+            conds.append("ep.ativo = 1")
+        if id_categoria is not None:
+            conds.append("ep.id_categoria = ?")
+            params.append(id_categoria)
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
+        return conn.execute(
+            f"""SELECT ep.*,
+                       ec.nome AS nome_categoria,
+                       CASE WHEN ep.quantidade_atual <= ep.quantidade_minima
+                            THEN 1 ELSE 0 END AS abaixo_minimo
+               FROM estoque_produtos ep
+               LEFT JOIN estoque_categorias ec ON ec.id = ep.id_categoria
+               {where}
+               ORDER BY ep.nome""",
+            params,
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def estoque_produto_atualizar(id_produto: int, **campos) -> bool:
+    if not campos:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in campos)
+    valores    = list(campos.values()) + [id_produto]
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            f"UPDATE estoque_produtos SET {set_clause} WHERE id = ?", valores
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════
+#  CRUD — estoque_movimentacoes
+# ══════════════════════════════════════════════
+
+def estoque_mov_inserir(
+    data: str,
+    id_produto: int,
+    tipo: str,
+    quantidade: float,
+    preco_custo: float,
+    motivo: str | None = None,
+    obs: str | None = None,
+) -> int:
+    from datetime import datetime
+    hora        = datetime.now().strftime("%H:%M")
+    valor_total = quantidade * preco_custo
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """INSERT INTO estoque_movimentacoes
+               (data, hora, id_produto, tipo, quantidade,
+                preco_custo, valor_total, motivo, obs)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (data, hora, id_produto, tipo, quantidade,
+             preco_custo, valor_total, motivo, obs),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def estoque_mov_listar(
+    data_inicio: str,
+    data_fim: str,
+    id_produto: int | None = None,
+    tipo: str | None = None,
+) -> list:
+    conn = conectar()
+    try:
+        conds  = ["em.data BETWEEN ? AND ?"]
+        params = [data_inicio, data_fim]
+        if id_produto is not None:
+            conds.append("em.id_produto = ?")
+            params.append(id_produto)
+        if tipo is not None:
+            conds.append("em.tipo = ?")
+            params.append(tipo)
+        where = "WHERE " + " AND ".join(conds)
+        return conn.execute(
+            f"""SELECT em.*, ep.nome AS nome_produto, ep.unidade
+               FROM estoque_movimentacoes em
+               JOIN estoque_produtos ep ON ep.id = em.id_produto
+               {where}
+               ORDER BY em.data DESC, em.hora DESC, em.id DESC""",
+            params,
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def estoque_mov_excluir(id_mov: int) -> bool:
+    conn = conectar()
+    try:
+        row = conn.execute(
+            "SELECT id_produto FROM estoque_movimentacoes WHERE id = ?",
+            (id_mov,),
+        ).fetchone()
+        if not row:
+            return False
+        id_produto = row["id_produto"]
+        conn.execute("DELETE FROM estoque_movimentacoes WHERE id = ?", (id_mov,))
+        # Recalcula quantidade_atual ignorando triggers (que já dispararam)
+        conn.execute(
+            """UPDATE estoque_produtos
+               SET quantidade_atual = (
+                   SELECT COALESCE(SUM(
+                       CASE tipo
+                           WHEN 'ENTRADA' THEN quantidade
+                           WHEN 'SAIDA'   THEN -quantidade
+                           ELSE 0
+                       END
+                   ), 0)
+                   FROM estoque_movimentacoes
+                   WHERE id_produto = ?
+               )
+               WHERE id = ?""",
+            (id_produto, id_produto),
+        )
+        # Para AJUSTE a lógica acima é incorreta — o último AJUSTE define a base.
+        # Recalcula corretamente: encontra o último AJUSTE e aplica entradas/saídas após ele.
+        ultimo_ajuste = conn.execute(
+            """SELECT id, quantidade FROM estoque_movimentacoes
+               WHERE id_produto = ? AND tipo = 'AJUSTE'
+               ORDER BY data DESC, hora DESC, id DESC
+               LIMIT 1""",
+            (id_produto,),
+        ).fetchone()
+        if ultimo_ajuste:
+            base = ultimo_ajuste["quantidade"]
+            delta = conn.execute(
+                """SELECT COALESCE(SUM(
+                       CASE tipo WHEN 'ENTRADA' THEN quantidade
+                                 WHEN 'SAIDA'   THEN -quantidade
+                                 ELSE 0 END
+                   ), 0) AS d
+                   FROM estoque_movimentacoes
+                   WHERE id_produto = ? AND id > ?""",
+                (id_produto, ultimo_ajuste["id"]),
+            ).fetchone()["d"]
+            conn.execute(
+                "UPDATE estoque_produtos SET quantidade_atual = ? WHERE id = ?",
+                (base + delta, id_produto),
+            )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════
+#  CONSULTAS — alertas e valor
+# ══════════════════════════════════════════════
+
+def estoque_produtos_abaixo_minimo() -> list:
+    conn = conectar()
+    try:
+        return conn.execute(
+            """SELECT ep.*, ec.nome AS nome_categoria
+               FROM estoque_produtos ep
+               LEFT JOIN estoque_categorias ec ON ec.id = ep.id_categoria
+               WHERE ep.ativo = 1
+                 AND ep.quantidade_atual <= ep.quantidade_minima
+               ORDER BY ep.nome""",
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def estoque_valor_total() -> float:
+    conn = conectar()
+    try:
+        row = conn.execute(
+            """SELECT COALESCE(SUM(quantidade_atual * preco_custo), 0) AS total
+               FROM estoque_produtos WHERE ativo = 1"""
+        ).fetchone()
+        return row["total"] if row else 0.0
     finally:
         conn.close()
 

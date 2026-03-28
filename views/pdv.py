@@ -48,6 +48,37 @@ CANAL_NOMES = {
 
 # ── View principal ────────────────────────────────────────────────────────────
 
+def _fechar(e, dlg, page):
+    dlg.open = False
+    page.update()
+
+
+def _confirmar_exclusao(page, descricao: str, on_confirmar) -> None:
+    """Abre um AlertDialog pedindo confirmação antes de excluir."""
+    dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Confirmar exclusão"),
+        content=ft.Text(
+            f"Deseja excluir {descricao}? Esta ação não pode ser desfeita."
+        ),
+        actions=[
+            ft.TextButton("Cancelar",
+                          on_click=lambda e: _fechar(e, dlg, page)),
+            ft.ElevatedButton(
+                "Excluir",
+                on_click=lambda e: (_fechar(e, dlg, page), on_confirmar()),
+                style=ft.ButtonStyle(
+                    bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE,
+                ),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg)
+    dlg.open = True
+    page.update()
+
+
 def view(page: ft.Page) -> ft.Control:
     hoje_br = date.today().strftime("%d/%m/%Y")
 
@@ -205,56 +236,39 @@ def view(page: ft.Page) -> ft.Control:
 
     txt_erro = ft.Text("", color=ft.Colors.RED_400, size=13)
 
+    _editando  = {"id": None}
+    txt_titulo = ft.Text("Novo Pedido", size=18, weight=ft.FontWeight.BOLD)
+
     # ── Tabela de pedidos do dia ──────────────────────────────────────────
-    col_tabela = ft.Column(spacing=0, expand=True)
+    col_tabela    = ft.Column(spacing=0, expand=True)
+    _todos_pedidos: list = []
 
-    def _atualizar_tabela():
-        data_iso = _data_br_para_iso(tf_data.value or hoje_br)
-        pedidos  = database.pedido_listar_por_data(data_iso)
+    tf_filtro = ft.TextField(
+        label="Buscar pedido...",
+        hint_text="Canal, operador, valor ou método",
+        prefix_icon=ft.Icons.SEARCH,
+        expand=True,
+    )
+    btn_limpar_filtro = ft.IconButton(
+        ft.Icons.CLEAR,
+        tooltip="Limpar filtro",
+    )
 
-        def _on_excluir(id_pedido):
-            def handler(e):
-                database.pedido_excluir(id_pedido)
-                _atualizar_tabela()
-                page.update()
-            return handler
-
-        linhas = []
-        for p in pedidos:
-            pags    = database.pagamento_buscar_por_pedido(p["id"])
-            pag_txt = " | ".join(
-                f"{pg['metodo']} R${pg['valor']:.2f}" for pg in pags
-            ) or "—"
-            nome_op  = pessoa_map.get(p["id_operador"], "—")
-            bairro_n = bairro_nome_map.get(p["id_bairro"], "—") if p["id_bairro"] else "—"
-
-            linhas.append(ft.DataRow(cells=[
-                ft.DataCell(ft.Text(p["hora"] or "—")),
-                ft.DataCell(ft.Text(CANAL_NOMES.get(p["canal"], p["canal"]))),
-                ft.DataCell(ft.Text(f"R$ {p['valor_total']:.2f}")),
-                ft.DataCell(ft.Text(pag_txt)),
-                ft.DataCell(ft.Text(nome_op)),
-                ft.DataCell(ft.Text(bairro_n)),
-                ft.DataCell(ft.Text(
-                    f"R$ {p['taxa_entrega']:.2f}" if p["taxa_entrega"] else "—"
-                )),
-                ft.DataCell(ft.Text(p["obs"] or "")),
-                ft.DataCell(ft.IconButton(
-                    icon=ft.Icons.DELETE_OUTLINE,
-                    icon_color=ft.Colors.RED_400,
-                    tooltip="Excluir pedido",
-                    on_click=_on_excluir(p["id"]),
-                )),
-            ]))
-
+    def _filtrar(termo: str):
         col_tabela.controls.clear()
-        if not linhas:
+        filtradas = (
+            [r for r in _todos_pedidos if termo.lower() in (r.data or "")]
+            if termo
+            else _todos_pedidos
+        )
+        if not filtradas:
+            msg = (
+                f"Nenhum pedido encontrado para '{termo}'."
+                if termo
+                else "Nenhum pedido registrado nesta data."
+            )
             col_tabela.controls.append(
-                ft.Text(
-                    "Nenhum pedido registrado nesta data.",
-                    italic=True,
-                    color=ft.Colors.GREY_500,
-                )
+                ft.Text(msg, italic=True, color=ft.Colors.GREY_500)
             )
         else:
             col_tabela.controls.append(
@@ -273,15 +287,93 @@ def view(page: ft.Page) -> ft.Control:
                                 ft.DataColumn(ft.Text("Obs")),
                                 ft.DataColumn(ft.Text("")),
                             ],
-                            rows=linhas,
+                            rows=filtradas,
                             column_spacing=14,
                             horizontal_lines=ft.BorderSide(
-                                1, ft.Colors.with_opacity(0.08, ft.Colors.WHITE)
+                                1, ft.Colors.with_opacity(0.15, ft.Colors.BLACK)
                             ),
                         )
                     ],
                 )
             )
+
+    def _on_filtro_change(e):
+        _filtrar(tf_filtro.value or "")
+        page.update()
+
+    def _limpar_filtro(e):
+        tf_filtro.value = ""
+        _filtrar("")
+        page.update()
+
+    tf_filtro.on_change         = _on_filtro_change
+    btn_limpar_filtro.on_click  = _limpar_filtro
+
+    def _atualizar_tabela():
+        data_iso = _data_br_para_iso(tf_data.value or hoje_br)
+        pedidos  = database.pedido_listar_por_data(data_iso)
+
+        def _on_excluir(id_pedido):
+            def handler(e):
+                def _excluir():
+                    database.pedido_excluir(id_pedido)
+                    _atualizar_tabela()
+                    page.update()
+                _confirmar_exclusao(page, "este pedido", _excluir)
+            return handler
+
+        def _on_editar(id_pedido):
+            return _iniciar_edicao(id_pedido)
+
+        linhas = []
+        for p in pedidos:
+            pags    = database.pagamento_buscar_por_pedido(p["id"])
+            pag_txt = " | ".join(
+                f"{pg['metodo']} R${pg['valor']:.2f}" for pg in pags
+            ) or "—"
+            nome_op  = pessoa_map.get(p["id_operador"], "—")
+            bairro_n = bairro_nome_map.get(p["id_bairro"], "—") if p["id_bairro"] else "—"
+
+            canal_amigavel = CANAL_NOMES.get(p["canal"], p["canal"])
+            em_edicao = _editando["id"] == p["id"]
+            busca_data = (
+                f"{canal_amigavel} {nome_op} {bairro_n} "
+                f"{p['valor_total']:.2f} {pag_txt}"
+            ).lower()
+            linhas.append(ft.DataRow(
+                data=busca_data,
+                color=ft.Colors.with_opacity(0.08, ft.Colors.BLUE) if em_edicao else None,
+                cells=[
+                    ft.DataCell(ft.Text(p["hora"] or "—")),
+                    ft.DataCell(ft.Text(canal_amigavel)),
+                    ft.DataCell(ft.Text(f"R$ {p['valor_total']:.2f}")),
+                    ft.DataCell(ft.Text(pag_txt)),
+                    ft.DataCell(ft.Text(nome_op)),
+                    ft.DataCell(ft.Text(bairro_n)),
+                    ft.DataCell(ft.Text(
+                        f"R$ {p['taxa_entrega']:.2f}" if p["taxa_entrega"] else "—"
+                    )),
+                    ft.DataCell(ft.Text(p["obs"] or "")),
+                    ft.DataCell(ft.Row(spacing=0, controls=[
+                        ft.IconButton(
+                            icon=ft.Icons.EDIT_OUTLINED,
+                            icon_color=ft.Colors.BLUE_300,
+                            tooltip="Editar pedido",
+                            on_click=_on_editar(p["id"]),
+                        ),
+                        ft.IconButton(
+                            icon=ft.Icons.DELETE_OUTLINE,
+                            icon_color=ft.Colors.RED_400,
+                            tooltip="Excluir pedido",
+                            on_click=_on_excluir(p["id"]),
+                        ),
+                    ])),
+                ],
+            ))
+
+        _todos_pedidos.clear()
+        _todos_pedidos.extend(linhas)
+        _filtrar(tf_filtro.value or "")
 
     # ── Lógica dinâmica ───────────────────────────────────────────────────
 
@@ -348,6 +440,77 @@ def view(page: ft.Page) -> ft.Control:
 
         tf_data.value = data_atual  # mantém a data selecionada
 
+        _editando["id"]      = None
+        txt_titulo.value     = "Novo Pedido"
+        txt_titulo.color     = None
+        btn_cancelar.visible = False
+
+    # ── Iniciar edição de pedido existente ────────────────────────────────
+
+    def _iniciar_edicao(pid):
+        def handler(e):
+            p = database.pedido_buscar(pid)
+            if not p:
+                return
+
+            # Data
+            try:
+                a, m, d = p["data"].split("-")
+                tf_data.value = f"{d}/{m}/{a}"
+            except Exception:
+                tf_data.value = hoje_br
+
+            dd_canal.value    = p["canal"]
+            tf_valor.value    = f"{p['valor_total']:.2f}"
+            dd_operador.value = str(p["id_operador"]) if p["id_operador"] else None
+            tf_obs.value      = p["obs"] or ""
+
+            # Bairro
+            if p["id_bairro"]:
+                dd_bairro.value      = str(p["id_bairro"])
+                linha_bairro.visible = True
+            else:
+                dd_bairro.value      = None
+                linha_bairro.visible = False
+
+            # Taxas
+            taxa    = p["taxa_entrega"]        or 0.0
+            repasse = p["repasse_entregador"]  or 0.0
+            tf_taxa.value    = f"{taxa:.2f}"
+            tf_repasse.value = f"{repasse:.2f}"
+            info     = canal_info.get(p["canal"], {})
+            eh_deles = bool(info.get("entregador_plataforma", 0))
+            linha_taxas.visible = bool(p["id_bairro"]) and not eh_deles
+
+            # Pagamentos: reduzir para uma linha e repopular
+            while len(_pag_itens) > 1:
+                _, _, row = _pag_itens.pop()
+                col_pag.controls.remove(row)
+            pags = database.pagamento_buscar_por_pedido(pid)
+            if pags:
+                dd_m0, tf_v0, _ = _pag_itens[0]
+                dd_m0.value = pags[0]["metodo"]
+                tf_v0.value = f"{pags[0]['valor']:.2f}"
+                for pg in pags[1:]:
+                    _nova_linha_pag()
+                    dd_m, tf_v, _ = _pag_itens[-1]
+                    dd_m.value = pg["metodo"]
+                    tf_v.value = f"{pg['valor']:.2f}"
+            else:
+                dd_m0, tf_v0, _ = _pag_itens[0]
+                dd_m0.value = None
+                tf_v0.value = ""
+
+            _editando["id"]      = pid
+            txt_titulo.value     = f"Editando Pedido #{pid}"
+            txt_titulo.color     = ft.Colors.ORANGE_400
+            btn_cancelar.visible = True
+            txt_erro.value       = ""
+
+            page.scroll_to(offset=0)
+            page.update()
+        return handler
+
     # ── Salvar ────────────────────────────────────────────────────────────
 
     def _salvar(e):
@@ -395,36 +558,71 @@ def view(page: ft.Page) -> ft.Control:
         repasse = 0.0 if eh_deles else _to_float(tf_repasse.value)
         obs     = tf_obs.value.strip() or None
 
-        id_pedido = database.pedido_inserir(
-            data=_data_br_para_iso(tf_data.value or hoje_br),
-            hora=datetime.now().strftime("%H:%M"),
-            canal=canal,
-            valor_total=valor,
-            id_operador=int(dd_operador.value),
-            id_bairro=id_bairro,
-            taxa_entrega=taxa,
-            repasse_entregador=repasse,
-            obs=obs,
-        )
-
-        for metodo, val_pag in pags_validos:
-            database.pagamento_inserir(
-                id_pedido, metodo, val_pag, cortesia=(metodo == "Voucher")
+        if _editando["id"] is not None:
+            pid = _editando["id"]
+            database.pedido_atualizar(
+                pid,
+                canal=canal,
+                valor_total=valor,
+                id_operador=int(dd_operador.value),
+                id_bairro=id_bairro,
+                taxa_entrega=taxa,
+                repasse_entregador=repasse,
+                obs=obs,
             )
-
-        _limpar()
-        _atualizar_tabela()
-
-        snack = ft.SnackBar(
-            content=ft.Text("Pedido salvo!"),
-            bgcolor=ft.Colors.GREEN_700,
-            open=True,
-        )
-        page.overlay.append(snack)
-        dd_canal.focus()
-        page.update()
+            database.pagamento_deletar_por_pedido(pid)
+            for metodo, val_pag in pags_validos:
+                database.pagamento_inserir(pid, metodo, val_pag, cortesia=(metodo == "Voucher"))
+            _limpar()
+            _atualizar_tabela()
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text(f"Pedido #{pid} atualizado com sucesso."),
+                bgcolor=ft.Colors.GREEN_700,
+                open=True,
+            ))
+            page.update()
+        else:
+            id_pedido = database.pedido_inserir(
+                data=_data_br_para_iso(tf_data.value or hoje_br),
+                hora=datetime.now().strftime("%H:%M"),
+                canal=canal,
+                valor_total=valor,
+                id_operador=int(dd_operador.value),
+                id_bairro=id_bairro,
+                taxa_entrega=taxa,
+                repasse_entregador=repasse,
+                obs=obs,
+            )
+            for metodo, val_pag in pags_validos:
+                database.pagamento_inserir(
+                    id_pedido, metodo, val_pag, cortesia=(metodo == "Voucher")
+                )
+            _limpar()
+            _atualizar_tabela()
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Pedido salvo!"),
+                bgcolor=ft.Colors.GREEN_700,
+                open=True,
+            ))
+            dd_canal.focus()
+            page.update()
 
     # ── Layout ────────────────────────────────────────────────────────────
+
+    def _cancelar_edicao(e):
+        _limpar()
+        page.update()
+
+    btn_cancelar = ft.ElevatedButton(
+        "Cancelar Edição",
+        icon=ft.Icons.CLOSE,
+        visible=False,
+        on_click=_cancelar_edicao,
+        style=ft.ButtonStyle(
+            bgcolor=ft.Colors.GREY_700,
+            color=ft.Colors.WHITE,
+        ),
+    )
 
     btn_salvar = ft.ElevatedButton(
         "Salvar Pedido",
@@ -442,12 +640,12 @@ def view(page: ft.Page) -> ft.Control:
             content=ft.Column(
                 spacing=14,
                 controls=[
-                    ft.Text("Novo Pedido", size=18, weight=ft.FontWeight.BOLD),
+                    txt_titulo,
                     ft.Divider(height=1),
                     ft.Row([tf_data, btn_calendario, dd_canal], spacing=8),
                     tf_valor,
                     ft.Column(spacing=4, controls=[
-                        ft.Text("Pagamentos", size=13, color=ft.Colors.GREY_400),
+                        ft.Text("Pagamentos", size=13, color=ft.Colors.GREY_500),
                         col_pag,
                         btn_add_pag,
                     ]),
@@ -456,7 +654,7 @@ def view(page: ft.Page) -> ft.Control:
                     linha_taxas,
                     tf_obs,
                     txt_erro,
-                    btn_salvar,
+                    ft.Row([btn_salvar, btn_cancelar], spacing=12),
                 ],
             ),
         ),
@@ -472,6 +670,7 @@ def view(page: ft.Page) -> ft.Control:
                 controls=[
                     ft.Text("Pedidos do Dia", size=18, weight=ft.FontWeight.BOLD),
                     ft.Divider(height=1),
+                    ft.Row(controls=[tf_filtro, btn_limpar_filtro], spacing=8),
                     col_tabela,
                 ],
             ),

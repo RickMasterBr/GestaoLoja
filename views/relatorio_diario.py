@@ -6,6 +6,8 @@ import flet as ft
 from datetime import date
 
 import database
+from relatorios.pdf_gerador import gerar_pdf_diario, abrir_pdf
+from relatorios.excel_gerador import excel_relatorio_diario
 
 
 # ── Utilitários ───────────────────────────────────────────────────────────────
@@ -48,7 +50,7 @@ def _tabela(colunas: list, linhas: list) -> ft.Row:
                 rows=linhas,
                 column_spacing=16,
                 horizontal_lines=ft.BorderSide(
-                    1, ft.Colors.with_opacity(0.08, ft.Colors.WHITE)
+                    1, ft.Colors.with_opacity(0.15, ft.Colors.BLACK)
                 ),
             )
         ],
@@ -61,7 +63,7 @@ def _row_total(*celulas_txt: str) -> ft.DataRow:
         cells=[
             ft.DataCell(ft.Text(t, weight=ft.FontWeight.BOLD)) for t in celulas_txt
         ],
-        color=ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
+        color=None,
     )
 
 
@@ -109,10 +111,14 @@ def view(page: ft.Page) -> ft.Control:
         text_align=ft.TextAlign.CENTER, hint_text="DD/MM/AAAA",
     )
     col_relatorio = ft.Column(spacing=16, expand=True)
+    _dados_pdf: dict = {}
 
     # ─────────────────────────────────────────────────────────────────────
     def _gerar(e=None):
         data_iso = _data_br_para_iso(tf_data.value or hoje_br)
+        _dados_pdf.clear()
+        _dados_pdf["nome_loja"] = database.config_obter("nome_loja", "Gestão Loja")
+        _dados_pdf["data_br"]   = f"{data_iso[8:10]}/{data_iso[5:7]}/{data_iso[:4]}"
         conn     = database.conectar()
 
         try:
@@ -137,6 +143,14 @@ def view(page: ft.Page) -> ft.Control:
 
             total_qtd   = sum(r["qtd"] for r in rows_canal)
             total_valor = sum(r["valor_liquido"] for r in rows_canal)
+
+            _dados_pdf["canais"] = [
+                {"canal": r["canal"],
+                 "canal_amigavel": CANAL_NOMES.get(r["canal"], r["canal"]),
+                 "qtd": r["qtd"],
+                 "valor_liquido": r["valor_liquido"]}
+                for r in rows_canal
+            ]
 
             linhas_c = [
                 ft.DataRow(cells=[
@@ -190,6 +204,10 @@ def view(page: ft.Page) -> ft.Control:
             """, (data_iso,)).fetchall()
 
             total_pag = sum(r["total"] for r in rows_pag)
+            _dados_pdf["pagamentos"] = [
+                {"metodo": r["metodo"], "tipo": r["tipo"], "total": r["total"]}
+                for r in rows_pag
+            ]
             linhas_p  = []
             for r in rows_pag:
                 destaque = r["tipo"] == "BENEFICIO"
@@ -216,6 +234,7 @@ def view(page: ft.Page) -> ft.Control:
                 p["nome"]: dict(p)
                 for p in database.plataforma_listar(apenas_ativas=False)
             }
+            _dados_pdf["plataformas"] = {}
 
             def _conteudo_plataforma(nome_plat: str) -> ft.Control:
                 plat         = plat_db.get(nome_plat, {})
@@ -314,6 +333,16 @@ def view(page: ft.Page) -> ft.Control:
                     _item("Líquido Estimado", liquido, bold=True, verde=True),
                 ]
 
+                _dados_pdf["plataformas"][nome_plat] = {
+                    "qtd": qtd, "bruto": bruto,
+                    "bruto_online": bruto_online, "bruto_maq": bruto_maq,
+                    "comissao_online": comissao_online, "tx_trans": tx_trans,
+                    "comissao_maq": comissao_maq, "subsidio": subsidio,
+                    "liquido": liquido,
+                    "comissao_pct": comissao_pct, "tx_trans_pct": tx_trans_pct,
+                    "subsidio_pp": subsidio_pp,
+                }
+
                 return ft.Container(
                     padding=ft.Padding.all(10),
                     content=ft.Column(spacing=6, controls=itens),
@@ -358,10 +387,20 @@ def view(page: ft.Page) -> ft.Control:
             # ══════════════════════════════════════════════════════════════
             entregadores = database.pessoa_listar(tipo="ENTREGADOR", apenas_ativos=False)
             linhas_e = []
+            _dados_pdf["entregadores"] = []
             for ent in entregadores:
                 r = database.calcular_pagamento_entregador(ent["id"], data_iso)
                 if r["total_entregas"] == 0:
                     continue
+                _dados_pdf["entregadores"].append({
+                    "nome": ent["nome"],
+                    "total_entregas": r["total_entregas"],
+                    "soma_taxas":     r["soma_taxas"],
+                    "diaria":         r["diaria"],
+                    "corridas_extras":r["corridas_extras"],
+                    "vales":          r["vales"],
+                    "total_liquido":  r["total_liquido"],
+                })
                 linhas_e.append(ft.DataRow(cells=[
                     ft.DataCell(ft.Text(ent["nome"])),
                     ft.DataCell(ft.Text(str(r["total_entregas"]))),
@@ -426,6 +465,15 @@ def view(page: ft.Page) -> ft.Control:
             saldo_rl  = fc["saldo_gaveta_real"] if fc else 0.0
             dif_ini   = saldo_rl - saldo_teo
 
+            _dados_pdf["caixa"] = {
+                "troco_inicial":          fc["troco_inicial"] if fc else 0.0,
+                "total_especie_entradas": entradas,
+                "total_especie_saidas":   saidas,
+                "saldo_teorico":          saldo_teo,
+                "saldo_gaveta_real":      saldo_rl,
+                "diferenca":              dif_ini,
+            }
+
             def _cor_dif(d: float) -> str:
                 if d == 0:   return ft.Colors.GREEN_400
                 if d > 0:    return ft.Colors.YELLOW_400
@@ -443,6 +491,9 @@ def view(page: ft.Page) -> ft.Control:
                 color=_cor_dif(dif_ini),
             )
 
+            # Banner de divergência — oculto até o primeiro fechamento
+            banner_divergencia = ft.Container(visible=False)
+
             def _salvar_fechamento(ev):
                 troco = _to_float(tf_troco.value)
                 real  = _to_float(tf_saldo_real.value)
@@ -454,12 +505,60 @@ def view(page: ft.Page) -> ft.Control:
                 txt_teo.value      = f"Saldo Teórico:     R$ {res['saldo_teorico']:.2f}"
                 txt_dif.value      = f"Diferença:         R$ {dif:.2f}"
                 txt_dif.color      = _cor_dif(dif)
-                snack = ft.SnackBar(
+
+                # Banner de alerta para divergências significativas
+                limite = _to_float(
+                    database.config_obter("limite_divergencia_caixa", "5.00")
+                )
+                if abs(dif) > limite:
+                    if dif < 0:
+                        bg  = ft.Colors.RED_900
+                        msg = (
+                            f"A gaveta está R$ {abs(dif):.2f} abaixo do esperado. "
+                            "Verifique se houve sangria não registrada ou troco errado."
+                        )
+                    else:
+                        bg  = ft.Colors.ORANGE_900
+                        msg = (
+                            f"A gaveta está R$ {dif:.2f} acima do esperado. "
+                            "Verifique se houve entrada não registrada."
+                        )
+                    banner_divergencia.padding      = ft.Padding.all(12)
+                    banner_divergencia.border_radius = 8
+                    banner_divergencia.bgcolor       = bg
+                    banner_divergencia.content       = ft.Row(
+                        spacing=12,
+                        controls=[
+                            ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED,
+                                    color=ft.Colors.YELLOW_300, size=24),
+                            ft.Column(
+                                expand=True,
+                                spacing=2,
+                                controls=[
+                                    ft.Text(
+                                        "Divergência de caixa detectada",
+                                        weight=ft.FontWeight.BOLD,
+                                        color=ft.Colors.WHITE,
+                                    ),
+                                    ft.Text(
+                                        msg, size=12,
+                                        color=ft.Colors.with_opacity(
+                                            0.85, ft.Colors.WHITE
+                                        ),
+                                    ),
+                                ],
+                            ),
+                        ],
+                    )
+                    banner_divergencia.visible = True
+                else:
+                    banner_divergencia.visible = False
+
+                page.overlay.append(ft.SnackBar(
                     content=ft.Text("Fechamento salvo!"),
                     bgcolor=ft.Colors.GREEN_700,
                     open=True,
-                )
-                page.overlay.append(snack)
+                ))
                 page.update()
 
             bloco5 = _card(
@@ -469,6 +568,7 @@ def view(page: ft.Page) -> ft.Control:
                 txt_saidas,
                 txt_teo,
                 txt_dif,
+                banner_divergencia,
                 ft.ElevatedButton(
                     "Salvar Fechamento",
                     icon=ft.Icons.LOCK_CLOCK,
@@ -484,6 +584,12 @@ def view(page: ft.Page) -> ft.Control:
             #  BLOCO 6 — Extras do Dia
             # ══════════════════════════════════════════════════════════════
             movs      = database.mov_extra_listar_por_data(data_iso)
+            _dados_pdf["extras"] = [
+                {"nome_pessoa": m["nome_pessoa"], "categoria": m["categoria"],
+                 "fluxo": m["fluxo"], "metodo": m["metodo"],
+                 "valor": m["valor"], "obs": m["obs"] or ""}
+                for m in movs
+            ]
             linhas_x  = []
             for m in movs:
                 fluxo = m["fluxo"]
@@ -516,6 +622,67 @@ def view(page: ft.Page) -> ft.Control:
         col_relatorio.controls.clear()
         col_relatorio.controls += [bloco1, bloco2, bloco3, bloco4, bloco5, bloco6]
         page.update()
+
+    # ── Exportar PDF ──────────────────────────────────────────────────────
+
+    def _exportar_pdf(e):
+        if not _dados_pdf:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Gere o relatório antes de exportar."),
+                bgcolor=ft.Colors.ORANGE_700, open=True,
+            ))
+            page.update()
+            return
+        data_iso = _data_br_para_iso(tf_data.value or hoje_br)
+        caminho  = gerar_pdf_diario(data_iso, _dados_pdf)
+        abrir_pdf(caminho)
+        page.overlay.append(ft.SnackBar(
+            content=ft.Text("PDF gerado e aberto para impressão."),
+            bgcolor=ft.Colors.GREEN_700, open=True,
+        ))
+        page.update()
+
+    btn_exportar_pdf = ft.ElevatedButton(
+        "PDF",
+        icon=ft.Icons.PICTURE_AS_PDF,
+        on_click=_exportar_pdf,
+        style=ft.ButtonStyle(
+            bgcolor=ft.Colors.RED_800,
+            color=ft.Colors.WHITE,
+        ),
+    )
+
+    def _exportar_excel(e):
+        if not _dados_pdf:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Gere o relatório antes de exportar."),
+                bgcolor=ft.Colors.ORANGE_700, open=True,
+            ))
+            page.update()
+            return
+        try:
+            caminho = excel_relatorio_diario(_dados_pdf.get("data_br", ""), _dados_pdf)
+            import os; os.startfile(caminho)
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Arquivo aberto para visualização."),
+                bgcolor=ft.Colors.GREEN_700, open=True,
+            ))
+        except Exception as exc:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text(f"Erro ao gerar arquivo: {exc}"),
+                bgcolor=ft.Colors.RED_700, open=True,
+            ))
+        page.update()
+
+    btn_exportar_excel = ft.ElevatedButton(
+        "Excel",
+        icon=ft.Icons.TABLE_VIEW,
+        on_click=_exportar_excel,
+        style=ft.ButtonStyle(
+            bgcolor=ft.Colors.GREEN_800,
+            color=ft.Colors.WHITE,
+        ),
+    )
 
     # ── Topo ──────────────────────────────────────────────────────────────
     btn_gerar = ft.ElevatedButton(
@@ -551,6 +718,8 @@ def view(page: ft.Page) -> ft.Control:
                 tf_data,
                 btn_calendario,
                 btn_gerar,
+                btn_exportar_excel,
+                btn_exportar_pdf,
                 ft.Text(
                     "Selecione a data e clique em Gerar Relatório",
                     color=ft.Colors.GREY_500,

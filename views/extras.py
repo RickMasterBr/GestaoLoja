@@ -44,6 +44,37 @@ _CFG_DEFAULT = (True, "ALL", True, None)   # Outros / categorias não mapeadas
 
 # ── View principal ────────────────────────────────────────────────────────────
 
+def _fechar(e, dlg, page):
+    dlg.open = False
+    page.update()
+
+
+def _confirmar_exclusao(page, descricao: str, on_confirmar) -> None:
+    """Abre um AlertDialog pedindo confirmação antes de excluir."""
+    dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Confirmar exclusão"),
+        content=ft.Text(
+            f"Deseja excluir {descricao}? Esta ação não pode ser desfeita."
+        ),
+        actions=[
+            ft.TextButton("Cancelar",
+                          on_click=lambda e: _fechar(e, dlg, page)),
+            ft.ElevatedButton(
+                "Excluir",
+                on_click=lambda e: (_fechar(e, dlg, page), on_confirmar()),
+                style=ft.ButtonStyle(
+                    bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE,
+                ),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg)
+    dlg.open = True
+    page.update()
+
+
 def view(page: ft.Page) -> ft.Control:
     hoje_br = date.today().strftime("%d/%m/%Y")
 
@@ -146,9 +177,11 @@ def view(page: ft.Page) -> ft.Control:
 
         def _on_excluir(id_mov):
             def handler(e):
-                database.mov_extra_excluir(id_mov)
-                _atualizar_tabela()
-                page.update()
+                def _excluir():
+                    database.mov_extra_excluir(id_mov)
+                    _atualizar_tabela()
+                    page.update()
+                _confirmar_exclusao(page, "esta movimentação", _excluir)
             return handler
 
         total_entrada = 0.0
@@ -211,7 +244,7 @@ def view(page: ft.Page) -> ft.Control:
                         rows=linhas,
                         column_spacing=14,
                         horizontal_lines=ft.BorderSide(
-                            1, ft.Colors.with_opacity(0.08, ft.Colors.WHITE)
+                            1, ft.Colors.with_opacity(0.15, ft.Colors.BLACK)
                         ),
                     )
                 ],
@@ -235,7 +268,7 @@ def view(page: ft.Page) -> ft.Control:
             ft.Text("|", color=ft.Colors.GREY_600),
             ft.Text(
                 f"Neutro (corridas/reentregas): R$ {total_neutro:.2f}",
-                color=ft.Colors.GREY_400,
+                color=ft.Colors.GREY_500,
                 weight=ft.FontWeight.BOLD,
                 size=14,
             ),
