@@ -175,10 +175,19 @@ def view(page: ft.Page) -> ft.Control:
         data_iso = _data_br_para_iso(tf_data.value or hoje_br)
         movs     = database.mov_extra_listar_por_data(data_iso)
 
-        def _on_excluir(id_mov):
+        def _on_excluir(id_mov, cat, val, dt):
             def handler(e):
                 def _excluir():
                     database.mov_extra_excluir(id_mov)
+                    database.log_registrar(
+                        acao="EXCLUIR_MOVIMENTACAO",
+                        tabela="movimentacoes_extras",
+                        id_registro=id_mov,
+                        descricao=f"Movimentação excluída — "
+                                  f"Categoria: {cat} | "
+                                  f"Valor: R$ {val:.2f} | Data: {dt}",
+                        valor_antes=f"categoria={cat}, valor={val}",
+                    )
                     _atualizar_tabela()
                     page.update()
                 _confirmar_exclusao(page, "esta movimentação", _excluir)
@@ -216,7 +225,7 @@ def view(page: ft.Page) -> ft.Control:
                     icon=ft.Icons.DELETE_OUTLINE,
                     icon_color=ft.Colors.RED_400,
                     tooltip="Excluir",
-                    on_click=_on_excluir(m["id"]),
+                    on_click=_on_excluir(m["id"], m["categoria"], m["valor"], tf_data.value),
                 )),
             ]))
 

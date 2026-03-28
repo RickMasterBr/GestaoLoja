@@ -561,24 +561,123 @@ def view(page: ft.Page) -> ft.Control:
                 ))
                 page.update()
 
-            bloco5 = _card(
-                "Caixa e Troco",
-                ft.Row([tf_troco, tf_saldo_real], spacing=12),
-                txt_entradas,
-                txt_saidas,
-                txt_teo,
-                txt_dif,
-                banner_divergencia,
-                ft.ElevatedButton(
-                    "Salvar Fechamento",
+            # ── Modo fechamento cego ─────────────────────────────────────────
+            modo_cego = database.config_obter("fechamento_cego", "0") == "1"
+
+            if not modo_cego:
+                bloco5 = _card(
+                    "Caixa e Troco",
+                    ft.Row([tf_troco, tf_saldo_real], spacing=12),
+                    txt_entradas,
+                    txt_saidas,
+                    txt_teo,
+                    txt_dif,
+                    banner_divergencia,
+                    ft.ElevatedButton(
+                        "Salvar Fechamento",
+                        icon=ft.Icons.LOCK_CLOCK,
+                        on_click=_salvar_fechamento,
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.INDIGO_600,
+                            color=ft.Colors.WHITE,
+                        ),
+                    ),
+                )
+            else:
+                # FASE 1: ocultar valores teóricos
+                txt_entradas.visible = False
+                txt_saidas.visible   = False
+                txt_teo.visible      = False
+                txt_dif.visible      = False
+
+                txt_msg_cego = ft.Text(
+                    "Modo fechamento cego ativo. Informe o valor contado "
+                    "na gaveta sem consultar o sistema.",
+                    italic=True, color=ft.Colors.GREY_500, size=13,
+                )
+                banner_resultado_cego = ft.Container(visible=False)
+                btn_registrado_cego   = ft.ElevatedButton(
+                    "Fechamento Registrado",
+                    icon=ft.Icons.CHECK,
+                    disabled=True,
+                    visible=False,
+                    style=ft.ButtonStyle(
+                        bgcolor=ft.Colors.GREY_700,
+                        color=ft.Colors.GREEN_400,
+                    ),
+                )
+
+                def _confirmar_contagem_cego(ev):
+                    troco = _to_float(tf_troco.value)
+                    real  = _to_float(tf_saldo_real.value)
+                    database.fluxo_caixa_atualizar(data_iso, troco_inicial=troco)
+                    res = database.fluxo_caixa_fechar(data_iso, real)
+                    dif = res["diferenca"]
+
+                    # Atualizar e revelar valores teóricos (FASE 2)
+                    txt_entradas.value   = f"Entradas Espécie:  R$ {res['total_especie_entradas']:.2f}"
+                    txt_saidas.value     = f"Saídas Espécie:    R$ {res['total_especie_saidas']:.2f}"
+                    txt_teo.value        = f"Saldo Teórico:     R$ {res['saldo_teorico']:.2f}"
+                    txt_dif.value        = f"Diferença:         R$ {dif:.2f}"
+                    txt_dif.color        = _cor_dif(dif)
+                    txt_entradas.visible = True
+                    txt_saidas.visible   = True
+                    txt_teo.visible      = True
+                    txt_dif.visible      = True
+
+                    # Banner de resultado
+                    if dif == 0:
+                        bg_res  = ft.Colors.GREEN_700
+                        msg_res = "Caixa fechado sem divergências."
+                    elif dif > 0:
+                        bg_res  = ft.Colors.YELLOW_800
+                        msg_res = f"Sobra de R$ {dif:.2f} na gaveta."
+                    else:
+                        bg_res  = ft.Colors.RED_700
+                        msg_res = f"Falta de R$ {abs(dif):.2f} na gaveta."
+
+                    banner_resultado_cego.bgcolor       = bg_res
+                    banner_resultado_cego.padding       = ft.Padding.all(12)
+                    banner_resultado_cego.border_radius = 8
+                    banner_resultado_cego.content       = ft.Text(
+                        msg_res,
+                        color=ft.Colors.WHITE,
+                        weight=ft.FontWeight.BOLD,
+                    )
+                    banner_resultado_cego.visible = True
+
+                    # Trocar botão
+                    btn_confirmar_cego.visible  = False
+                    btn_registrado_cego.visible = True
+
+                    page.overlay.append(ft.SnackBar(
+                        content=ft.Text("Fechamento salvo!"),
+                        bgcolor=ft.Colors.GREEN_700, open=True,
+                    ))
+                    page.update()
+
+                btn_confirmar_cego = ft.ElevatedButton(
+                    "Confirmar Contagem",
                     icon=ft.Icons.LOCK_CLOCK,
-                    on_click=_salvar_fechamento,
+                    on_click=_confirmar_contagem_cego,
                     style=ft.ButtonStyle(
                         bgcolor=ft.Colors.INDIGO_600,
                         color=ft.Colors.WHITE,
                     ),
-                ),
-            )
+                )
+
+                bloco5 = _card(
+                    "Caixa e Troco",
+                    txt_msg_cego,
+                    ft.Row([tf_troco, tf_saldo_real], spacing=12),
+                    txt_entradas,
+                    txt_saidas,
+                    txt_teo,
+                    txt_dif,
+                    banner_resultado_cego,
+                    btn_confirmar_cego,
+                    btn_registrado_cego,
+                )
 
             # ══════════════════════════════════════════════════════════════
             #  BLOCO 6 — Extras do Dia

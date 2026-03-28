@@ -188,6 +188,12 @@ def view(page: ft.Page) -> ft.Control:
                             metodo="Dinheiro",
                             obs=f"Pagamento entregador {_data_br}",
                         )
+                        database.log_registrar(
+                            acao="PAGAMENTO_ENTREGADOR",
+                            tabela="movimentacoes_extras",
+                            descricao=f"Pagamento registrado — {_nome}: "
+                                      f"R$ {_total:.2f} | Data: {_data_br}",
+                        )
                         page.overlay.append(ft.SnackBar(
                             content=ft.Text(
                                 f"Pagamento de {_nome} registrado: R$ {_total:.2f}"

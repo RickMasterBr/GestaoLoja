@@ -447,6 +447,12 @@ def view(page: ft.Page) -> ft.Control:
                     metodo="Dinheiro",
                     obs=f"Salário {_nome} {_mes_ano}",
                 )
+                database.log_registrar(
+                    acao="PAGAMENTO_FUNCIONARIO",
+                    tabela="movimentacoes_extras",
+                    descricao=f"Salário registrado — {_nome}: "
+                              f"R$ {_total:.2f} | {_mes_ano}",
+                )
                 page.overlay.append(ft.SnackBar(
                     content=ft.Text(
                         f"Pagamento de {_nome} registrado: R$ {_total:.2f}"

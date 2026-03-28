@@ -110,7 +110,7 @@ def view(page: ft.Page) -> ft.Control:
                                     color=ft.Colors.ORANGE_300),
                 )
 
-                def _abrir_quitar(fid, fnome):
+                def _abrir_quitar(fid, fnome, fvalor):
                     def handler(e):
                         tf_pgto = ft.TextField(
                             label="Data de pagamento",
@@ -119,6 +119,20 @@ def view(page: ft.Page) -> ft.Control:
                             text_align=ft.TextAlign.CENTER,
                             hint_text="DD/MM/AAAA",
                         )
+
+                        def _on_confirmar_quitar(ev):
+                            _fechar(ev, dlg, page)
+                            database.fiado_quitar(fid, _iso(tf_pgto.value))
+                            database.log_registrar(
+                                acao="QUITAR_FIADO",
+                                tabela="fiados",
+                                id_registro=fid,
+                                descricao=f"Fiado quitado — Cliente: {fnome} | "
+                                          f"Valor: R$ {fvalor:.2f}",
+                            )
+                            _refresh()
+                            page.update()
+
                         dlg = ft.AlertDialog(
                             modal=True,
                             title=ft.Text(f"Quitar fiado de {fnome}"),
@@ -130,12 +144,7 @@ def view(page: ft.Page) -> ft.Control:
                                 ),
                                 ft.ElevatedButton(
                                     "Confirmar",
-                                    on_click=lambda e, _id=fid, _tf=tf_pgto: (
-                                        _fechar(e, dlg, page),
-                                        database.fiado_quitar(_id, _iso(_tf.value)),
-                                        _refresh(),
-                                        page.update(),
-                                    ),
+                                    on_click=_on_confirmar_quitar,
                                     style=ft.ButtonStyle(
                                         bgcolor=ft.Colors.GREEN_700,
                                         color=ft.Colors.WHITE,
@@ -149,10 +158,17 @@ def view(page: ft.Page) -> ft.Control:
                         page.update()
                     return handler
 
-                def _on_excluir(fid):
+                def _on_excluir(fid, fnome, fvalor):
                     def handler(e):
                         def _excluir():
                             database.fiado_excluir(fid)
+                            database.log_registrar(
+                                acao="EXCLUIR_FIADO",
+                                tabela="fiados",
+                                id_registro=fid,
+                                descricao=f"Fiado excluído — Cliente: {fnome} | "
+                                          f"Valor: R$ {fvalor:.2f}",
+                            )
                             _refresh()
                             page.update()
                         _confirmar_exclusao(page, "este fiado", _excluir)
@@ -162,7 +178,7 @@ def view(page: ft.Page) -> ft.Control:
                     ft.ElevatedButton(
                         "Quitar",
                         icon=ft.Icons.ATTACH_MONEY,
-                        on_click=_abrir_quitar(f["id"], f["nome_cliente"]),
+                        on_click=_abrir_quitar(f["id"], f["nome_cliente"], f["valor"]),
                         style=ft.ButtonStyle(
                             bgcolor=ft.Colors.GREEN_800,
                             color=ft.Colors.WHITE,
@@ -172,7 +188,7 @@ def view(page: ft.Page) -> ft.Control:
                         icon=ft.Icons.DELETE_OUTLINE,
                         icon_color=ft.Colors.RED_400,
                         tooltip="Excluir fiado",
-                        on_click=_on_excluir(f["id"]),
+                        on_click=_on_excluir(f["id"], f["nome_cliente"], f["valor"]),
                     ),
                 ])
 

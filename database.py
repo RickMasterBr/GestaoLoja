@@ -3,6 +3,7 @@ database.py — Módulo de banco de dados para o sistema de fechamento de caixa.
 Gerencia todas as tabelas SQLite, funções CRUD e dados iniciais do aplicativo.
 """
 
+import hashlib
 import os
 import sqlite3
 
@@ -26,6 +27,53 @@ def _encontrar_banco():
 
 
 DB_PATH = _encontrar_banco()
+
+
+# ══════════════════════════════════════════════
+#  SESSÃO (estado em memória — dura enquanto o processo estiver ativo)
+# ══════════════════════════════════════════════
+
+_sessao_atual = {
+    "id_pessoa":     None,
+    "nome":          None,
+    "perfil_acesso": None,
+    "logado":        False,
+}
+
+
+def sessao_iniciar(id_pessoa: int, nome: str, perfil: str) -> None:
+    _sessao_atual["id_pessoa"]     = id_pessoa
+    _sessao_atual["nome"]          = nome
+    _sessao_atual["perfil_acesso"] = perfil
+    _sessao_atual["logado"]        = True
+    log_registrar(
+        acao="LOGIN",
+        descricao=f"Login: {nome} ({perfil})",
+        usuario=nome,
+    )
+
+
+def sessao_encerrar() -> None:
+    _sessao_atual["id_pessoa"]     = None
+    _sessao_atual["nome"]          = None
+    _sessao_atual["perfil_acesso"] = None
+    _sessao_atual["logado"]        = False
+
+
+def sessao_obter() -> dict:
+    return dict(_sessao_atual)
+
+
+def sessao_tem_acesso(perfil_minimo: str) -> bool:
+    """
+    Verifica se o usuário logado tem nível de acesso suficiente.
+    Hierarquia: OPERADOR < GERENTE < ADMIN
+    """
+    hierarquia   = {"OPERADOR": 1, "GERENTE": 2, "ADMIN": 3}
+    perfil_atual = _sessao_atual.get("perfil_acesso") or ""
+    nivel_atual  = hierarquia.get(perfil_atual, 0)
+    nivel_minimo = hierarquia.get(perfil_minimo, 99)
+    return nivel_atual >= nivel_minimo
 
 
 def banco_status() -> dict:
@@ -79,6 +127,9 @@ def inicializar_banco():
         _migrar_carga_horaria(conn)
         _migrar_dados_pessoais(conn)
         _migrar_obs_fechamento(conn)
+        _migrar_fornecedor_estoque(conn)
+        _migrar_fornecedor_extras(conn)
+        _migrar_acesso(conn)
         conn.commit()
         _popular_dados_iniciais(conn)
         conn.commit()
@@ -339,6 +390,31 @@ def _criar_tabelas(conn: sqlite3.Connection):
            SET taxa_entrega = 0, repasse_entregador = 0
          WHERE id = NEW.id;
     END;
+
+    -- Fornecedores cadastrados
+    CREATE TABLE IF NOT EXISTS cad_fornecedores (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome      TEXT    NOT NULL,
+        telefone  TEXT,
+        email     TEXT,
+        cnpj_cpf  TEXT,
+        endereco  TEXT,
+        obs       TEXT,
+        ativo     INTEGER NOT NULL DEFAULT 1
+    );
+
+    -- Log de auditoria de ações críticas
+    CREATE TABLE IF NOT EXISTS logs_auditoria (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        data_hora    TEXT    NOT NULL,
+        acao         TEXT    NOT NULL,
+        tabela       TEXT,
+        id_registro  INTEGER,
+        descricao    TEXT    NOT NULL,
+        valor_antes  TEXT,
+        valor_depois TEXT,
+        usuario      TEXT
+    );
     """)
 
 
@@ -466,6 +542,41 @@ def _migrar_obs_fechamento(conn: sqlite3.Connection):
         conn.execute("ALTER TABLE fluxo_caixa_diario ADD COLUMN obs_fechamento TEXT")
 
 
+def _migrar_fornecedor_estoque(conn: sqlite3.Connection):
+    """Adiciona coluna id_fornecedor em estoque_movimentacoes se não existir."""
+    colunas = {row["name"] for row in conn.execute("PRAGMA table_info(estoque_movimentacoes)")}
+    if "id_fornecedor" not in colunas:
+        conn.execute(
+            "ALTER TABLE estoque_movimentacoes "
+            "ADD COLUMN id_fornecedor INTEGER REFERENCES cad_fornecedores(id) ON DELETE SET NULL"
+        )
+
+
+def _migrar_acesso(conn: sqlite3.Connection):
+    """
+    Adiciona colunas pin e perfil_acesso em cad_pessoas se não existirem.
+    Idempotente.
+    """
+    colunas = {row["name"] for row in conn.execute("PRAGMA table_info(cad_pessoas)")}
+    if "pin" not in colunas:
+        conn.execute("ALTER TABLE cad_pessoas ADD COLUMN pin TEXT")
+    if "perfil_acesso" not in colunas:
+        conn.execute(
+            "ALTER TABLE cad_pessoas ADD COLUMN perfil_acesso TEXT DEFAULT 'OPERADOR' "
+            "CHECK(perfil_acesso IN ('OPERADOR','GERENTE','ADMIN'))"
+        )
+
+
+def _migrar_fornecedor_extras(conn: sqlite3.Connection):
+    """Adiciona coluna id_fornecedor em movimentacoes_extras se não existir."""
+    colunas = {row["name"] for row in conn.execute("PRAGMA table_info(movimentacoes_extras)")}
+    if "id_fornecedor" not in colunas:
+        conn.execute(
+            "ALTER TABLE movimentacoes_extras "
+            "ADD COLUMN id_fornecedor INTEGER REFERENCES cad_fornecedores(id) ON DELETE SET NULL"
+        )
+
+
 # ══════════════════════════════════════════════
 #  DADOS INICIAIS
 # ══════════════════════════════════════════════
@@ -513,6 +624,15 @@ def _popular_dados_iniciais(conn: sqlite3.Connection):
                 ("Outros",        "ENTRADA", 0),  # entradas/saídas genéricas
             ]
         )
+
+    # Categoria Reposição de Estoque — inserida individualmente para ser idempotente
+    conn.execute(
+        """INSERT OR IGNORE INTO cad_categorias_extra (descricao, fluxo, usa_funcionario)
+           SELECT 'Reposição de Estoque', 'SAIDA', 0
+           WHERE NOT EXISTS (
+               SELECT 1 FROM cad_categorias_extra WHERE descricao = 'Reposição de Estoque'
+           )"""
+    )
 
     # Plataformas de delivery com todas as configurações operacionais
     if _vazia("cad_plataformas"):
@@ -563,6 +683,84 @@ def _popular_dados_iniciais(conn: sqlite3.Connection):
                 ("Keeta_Retirada",         0, 1, 0),
             ]
         )
+
+
+# ══════════════════════════════════════════════
+#  CRUD — cad_fornecedores
+# ══════════════════════════════════════════════
+
+def fornecedor_inserir(
+    nome: str,
+    telefone: str = None,
+    email: str = None,
+    cnpj_cpf: str = None,
+    endereco: str = None,
+    obs: str = None,
+) -> int:
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """INSERT INTO cad_fornecedores
+               (nome, telefone, email, cnpj_cpf, endereco, obs)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (nome, telefone, email, cnpj_cpf, endereco, obs),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def fornecedor_buscar(id_fornecedor: int):
+    conn = conectar()
+    try:
+        return conn.execute(
+            "SELECT * FROM cad_fornecedores WHERE id = ?", (id_fornecedor,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def fornecedor_listar(apenas_ativos: bool = True) -> list:
+    conn = conectar()
+    try:
+        if apenas_ativos:
+            return conn.execute(
+                "SELECT * FROM cad_fornecedores WHERE ativo = 1 ORDER BY nome ASC"
+            ).fetchall()
+        return conn.execute(
+            "SELECT * FROM cad_fornecedores ORDER BY nome ASC"
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def fornecedor_atualizar(id_fornecedor: int, **campos) -> bool:
+    _permitidos = {"nome", "telefone", "email", "cnpj_cpf", "endereco", "obs", "ativo"}
+    sets = {k: v for k, v in campos.items() if k in _permitidos}
+    if not sets:
+        return False
+    sql = "UPDATE cad_fornecedores SET " + ", ".join(f"{k} = ?" for k in sets)
+    sql += " WHERE id = ?"
+    conn = conectar()
+    try:
+        cur = conn.execute(sql, (*sets.values(), id_fornecedor))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def fornecedor_inativar(id_fornecedor: int) -> bool:
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            "UPDATE cad_fornecedores SET ativo = 0 WHERE id = ?", (id_fornecedor,)
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
 
 
 # ══════════════════════════════════════════════
@@ -2318,6 +2516,7 @@ def estoque_mov_inserir(
     preco_custo: float,
     motivo: str | None = None,
     obs: str | None = None,
+    id_fornecedor: int | None = None,
 ) -> int:
     from datetime import datetime
     hora        = datetime.now().strftime("%H:%M")
@@ -2327,15 +2526,90 @@ def estoque_mov_inserir(
         cur = conn.execute(
             """INSERT INTO estoque_movimentacoes
                (data, hora, id_produto, tipo, quantidade,
-                preco_custo, valor_total, motivo, obs)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                preco_custo, valor_total, motivo, obs, id_fornecedor)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (data, hora, id_produto, tipo, quantidade,
-             preco_custo, valor_total, motivo, obs),
+             preco_custo, valor_total, motivo, obs, id_fornecedor),
         )
         conn.commit()
         return cur.lastrowid
     finally:
         conn.close()
+
+
+def reposicao_registrar(
+    data: str,
+    id_produto: int,
+    quantidade: float,
+    preco_custo: float,
+    id_fornecedor: int = None,
+    metodo_pagamento: str = None,
+    obs: str = None,
+    pago_agora: bool = True,
+) -> dict:
+    """
+    Registra uma entrada de estoque e, se pago_agora=True, cria automaticamente
+    uma movimentação extra de saída na categoria 'Reposição de Estoque'.
+
+    Retorna dict com:
+      id_mov_estoque : int
+      id_mov_extra   : int | None  (None se pago_agora=False)
+      valor_total    : float
+    """
+    conn = conectar()
+    try:
+        row_cat = conn.execute(
+            "SELECT id FROM cad_categorias_extra WHERE descricao = 'Reposição de Estoque'"
+        ).fetchone()
+        id_cat_reposicao = row_cat["id"] if row_cat else None
+
+        prod = conn.execute(
+            "SELECT nome FROM estoque_produtos WHERE id = ?", (id_produto,)
+        ).fetchone()
+        nome_produto = prod["nome"] if prod else "Produto"
+
+        nome_fornecedor = ""
+        if id_fornecedor:
+            forn = conn.execute(
+                "SELECT nome FROM cad_fornecedores WHERE id = ?", (id_fornecedor,)
+            ).fetchone()
+            nome_fornecedor = f" | {forn['nome']}" if forn else ""
+    finally:
+        conn.close()
+
+    valor_total = quantidade * preco_custo
+    obs_auto = f"Reposição: {nome_produto}{nome_fornecedor}"
+    if obs:
+        obs_auto = f"{obs_auto} | {obs}"
+
+    id_mov_estoque = estoque_mov_inserir(
+        data=data,
+        id_produto=id_produto,
+        tipo="ENTRADA",
+        quantidade=quantidade,
+        preco_custo=preco_custo,
+        motivo="Compra",
+        obs=obs_auto,
+        id_fornecedor=id_fornecedor,
+    )
+
+    id_mov_extra = None
+    if pago_agora and id_cat_reposicao and metodo_pagamento:
+        id_mov_extra = mov_extra_inserir(
+            data=data,
+            id_categoria=id_cat_reposicao,
+            fluxo="SAIDA",
+            valor=valor_total,
+            id_pessoa=None,
+            metodo=metodo_pagamento,
+            obs=obs_auto,
+        )
+
+    return {
+        "id_mov_estoque": id_mov_estoque,
+        "id_mov_extra":   id_mov_extra,
+        "valor_total":    valor_total,
+    }
 
 
 def estoque_mov_listar(
@@ -2481,6 +2755,170 @@ def recriar_banco_zerado():
             print(f"Removido: {caminho}")
     inicializar_banco()
     print(f"Banco recriado do zero em: {DB_PATH}")
+
+
+# ══════════════════════════════════════════════
+#  AUTENTICAÇÃO DE USUÁRIOS
+# ══════════════════════════════════════════════
+
+def _hash_pin(pin: str) -> str:
+    """Gera hash SHA-256 do PIN para armazenamento seguro."""
+    return hashlib.sha256(pin.encode()).hexdigest()
+
+
+def usuario_definir_pin(id_pessoa: int, pin: str) -> bool:
+    """
+    Define ou atualiza o PIN de uma pessoa.
+    PIN deve ter exatamente 4 dígitos numéricos.
+    Retorna False se inválido.
+    """
+    if not pin.isdigit() or len(pin) != 4:
+        return False
+    conn = conectar()
+    try:
+        conn.execute(
+            "UPDATE cad_pessoas SET pin = ? WHERE id = ?",
+            (_hash_pin(pin), id_pessoa),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def usuario_autenticar(id_pessoa: int, pin: str) -> bool:
+    """
+    Verifica se o PIN informado corresponde ao cadastrado.
+    Retorna False se pessoa não encontrada, inativa ou PIN errado.
+    """
+    conn = conectar()
+    try:
+        row = conn.execute(
+            "SELECT pin FROM cad_pessoas WHERE id = ? AND status_ativo = 1",
+            (id_pessoa,),
+        ).fetchone()
+        if not row or not row["pin"]:
+            return False
+        return row["pin"] == _hash_pin(pin)
+    finally:
+        conn.close()
+
+
+def usuario_listar_ativos() -> list:
+    """
+    Lista pessoas ativas que têm PIN cadastrado, para exibir na tela de login.
+    Retorna id, nome, tipo, cargo, perfil_acesso.
+    """
+    conn = conectar()
+    try:
+        return conn.execute(
+            """SELECT id, nome, tipo, cargo, perfil_acesso
+               FROM cad_pessoas
+               WHERE status_ativo = 1 AND pin IS NOT NULL
+               ORDER BY nome"""
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def usuario_definir_perfil(id_pessoa: int, perfil: str) -> bool:
+    """Define o perfil de acesso de uma pessoa."""
+    if perfil not in ("OPERADOR", "GERENTE", "ADMIN"):
+        return False
+    conn = conectar()
+    try:
+        conn.execute(
+            "UPDATE cad_pessoas SET perfil_acesso = ? WHERE id = ?",
+            (perfil, id_pessoa),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════
+#  LOGS DE AUDITORIA
+# ══════════════════════════════════════════════
+
+def log_registrar(
+    acao: str,
+    descricao: str,
+    tabela: str = None,
+    id_registro: int = None,
+    valor_antes: str = None,
+    valor_depois: str = None,
+    usuario: str = None,
+) -> None:
+    """
+    Registra uma ação no log de auditoria.
+    Silencioso — nunca lança exceção para não interromper o fluxo principal do app.
+    """
+    from datetime import datetime
+    try:
+        conn = conectar()
+        try:
+            conn.execute(
+                """INSERT INTO logs_auditoria
+                   (data_hora, acao, tabela, id_registro,
+                    descricao, valor_antes, valor_depois, usuario)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    acao, tabela, id_registro,
+                    descricao, valor_antes, valor_depois,
+                    usuario or "Sistema",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass  # Log nunca deve quebrar o app
+
+
+def log_listar(
+    data_inicio: str = None,
+    data_fim: str = None,
+    acao: str = None,
+    limit: int = 500,
+) -> list:
+    """
+    Lista logs com filtros opcionais.
+    Ordenado por data_hora DESC. Limite padrão de 500 registros.
+    """
+    conn = conectar()
+    try:
+        sql    = "SELECT * FROM logs_auditoria WHERE 1=1"
+        params = []
+        if data_inicio:
+            sql += " AND data_hora >= ?"
+            params.append(data_inicio + " 00:00:00")
+        if data_fim:
+            sql += " AND data_hora <= ?"
+            params.append(data_fim + " 23:59:59")
+        if acao:
+            sql += " AND acao = ?"
+            params.append(acao)
+        sql += f" ORDER BY data_hora DESC LIMIT {limit}"
+        return conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+
+
+def log_limpar_antigos(dias: int = 90) -> int:
+    """Remove logs com mais de X dias. Retorna quantidade removida."""
+    from datetime import datetime, timedelta
+    corte = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            "DELETE FROM logs_auditoria WHERE data_hora < ?", (corte,)
+        )
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
 
 
 # ══════════════════════════════════════════════

@@ -17,12 +17,33 @@ from views import (
     funcionarios,
     escala_geral,
     entregadores,
-    parametros,
     estoque,
+    fornecedores,
+    parametros,
+    login,
 )
 
 
-def main(page: ft.Page):
+# ── Mapeamento de telas com perfil mínimo necessário ──────────────────────────
+
+TELAS = [
+    {"view": dashboard.view,         "label": "Dashboard",      "icon": ft.Icons.DASHBOARD,              "min_perfil": "OPERADOR"},
+    {"view": pdv.view,               "label": "PDV",            "icon": ft.Icons.POINT_OF_SALE,          "min_perfil": "OPERADOR"},
+    {"view": extras.view,            "label": "Movim. e Caixa", "icon": ft.Icons.ADD_CIRCLE,             "min_perfil": "OPERADOR"},
+    {"view": relatorio_diario.view,  "label": "Rel. Diário",    "icon": ft.Icons.TODAY,                  "min_perfil": "OPERADOR"},
+    {"view": relatorio_periodo.view, "label": "Rel. Período",   "icon": ft.Icons.DATE_RANGE,             "min_perfil": "GERENTE"},
+    {"view": fluxo_caixa.view,       "label": "Fluxo Caixa",   "icon": ft.Icons.ACCOUNT_BALANCE_WALLET, "min_perfil": "GERENTE"},
+    {"view": funcionarios.view,      "label": "Funcionários",   "icon": ft.Icons.PEOPLE,                 "min_perfil": "GERENTE"},
+    {"view": escala_geral.view,      "label": "Escala Geral",   "icon": ft.Icons.CALENDAR_MONTH,         "min_perfil": "OPERADOR"},
+    {"view": entregadores.view,      "label": "Entregadores",   "icon": ft.Icons.DELIVERY_DINING,        "min_perfil": "OPERADOR"},
+    {"view": fiados.view,            "label": "Fiados",         "icon": ft.Icons.MONEY_OFF,              "min_perfil": "OPERADOR"},
+    {"view": estoque.view,           "label": "Estoque",        "icon": ft.Icons.INVENTORY_2,            "min_perfil": "GERENTE"},
+    {"view": fornecedores.view,      "label": "Fornecedores",   "icon": ft.Icons.LOCAL_SHIPPING,         "min_perfil": "GERENTE"},
+    {"view": parametros.view,        "label": "Parâmetros",     "icon": ft.Icons.SETTINGS,               "min_perfil": "ADMIN"},
+]
+
+
+def _iniciar_app(page: ft.Page):
     page.title = "Gestão Loja"
     tema_salvo = database.config_obter("tema", "DARK")
     page.theme_mode = (ft.ThemeMode.DARK
@@ -31,29 +52,32 @@ def main(page: ft.Page):
     page.window.min_width  = 900
     page.window.min_height = 600
 
-    # ── Mapeamento índice → módulo de view ────────────────────────────
-    _views = [
-        dashboard.view,        # 0
-        pdv.view,              # 1
-        extras.view,           # 2
-        relatorio_diario.view, # 3
-        relatorio_periodo.view,# 4
-        fluxo_caixa.view,      # 5
-        fiados.view,           # 6
-        funcionarios.view,     # 7
-        escala_geral.view,     # 8
-        entregadores.view,     # 9
-        estoque.view,          # 10
-        parametros.view,       # 11
-    ]
+    def _on_login(perfil: str):
+        page.clean()
+        _carregar_app_principal(page, perfil, _on_login)
 
-    # ── Área de conteúdo (direita) ────────────────────────────────────
+    usuarios = database.usuario_listar_ativos()
+    if usuarios:
+        page.add(login.view(page, _on_login))
+    else:
+        _carregar_app_principal(page, "ADMIN", _on_login)
+
+
+def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
+
+    # ── Filtrar telas pelo perfil ──────────────────────────────────────────
+    _hierarquia  = {"OPERADOR": 1, "GERENTE": 2, "ADMIN": 3}
+    _nivel       = _hierarquia.get(perfil, 0)
+    telas_perm   = [t for t in TELAS if _hierarquia.get(t["min_perfil"], 1) <= _nivel]
+    _views       = [t["view"] for t in telas_perm]
+
+    # ── Área de conteúdo (direita) ────────────────────────────────────────
     area_conteudo = ft.Container(
         expand=True,
         padding=ft.Padding.all(24),
     )
 
-    # ── Barra de status ────────────────────────────────────────────────
+    # ── Barra de status ────────────────────────────────────────────────────
     _st = database.banco_status()
 
     def _mostrar_detalhes_banco(e):
@@ -125,7 +149,8 @@ def main(page: ft.Page):
         ),
     )
 
-    # ── Botão de alternância de tema ──────────────────────────────────
+    # ── Botão de alternância de tema ──────────────────────────────────────
+    tema_salvo = database.config_obter("tema", "DARK")
     btn_tema = ft.IconButton(
         icon=(ft.Icons.LIGHT_MODE if tema_salvo == "DARK" else ft.Icons.DARK_MODE),
         tooltip="Alternar tema",
@@ -143,6 +168,49 @@ def main(page: ft.Page):
             btn_tema.icon = ft.Icons.LIGHT_MODE
         page.update()
 
+    # ── Botão de logout ───────────────────────────────────────────────────
+    sessao       = database.sessao_obter()
+    nome_usuario = sessao["nome"] or "Convidado"
+
+    def _logout(e):
+        def _confirmar(dlg):
+            dlg.open = False
+            database.sessao_encerrar()
+            page.clean()
+            if on_login is not None:
+                page.add(login.view(page, on_login))
+            page.update()
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Sair"),
+            content=ft.Text("Deseja sair e trocar de usuário?"),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: (
+                    setattr(dlg, "open", False), page.update()
+                )),
+                ft.ElevatedButton(
+                    "Sair",
+                    ft.Icons.LOGOUT,
+                    on_click=lambda e: _confirmar(dlg),
+                    style=ft.ButtonStyle(
+                        bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE,
+                    ),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        page.overlay.append(dlg)
+        dlg.open = True
+        page.update()
+
+    btn_logout = ft.IconButton(
+        icon=ft.Icons.LOGOUT,
+        tooltip="Sair / Trocar usuário",
+        on_click=_logout,
+    )
+
+    # ── Top bar ───────────────────────────────────────────────────────────
     top_bar = ft.Container(
         height=48,
         padding=ft.Padding(left=16, right=16, top=0, bottom=0),
@@ -154,7 +222,9 @@ def main(page: ft.Page):
                     weight=ft.FontWeight.BOLD,
                     expand=True,
                 ),
+                ft.Text(f"Olá, {nome_usuario}", size=13, color=ft.Colors.GREY_500),
                 btn_tema,
+                btn_logout,
             ]
         ),
     )
@@ -173,66 +243,23 @@ def main(page: ft.Page):
             ])
         page.update()
 
-    # ── NavigationRail (esquerda, fixo) ───────────────────────────────
+    # ── NavigationRail (esquerda, fixo) ───────────────────────────────────
     rail = ft.NavigationRail(
         selected_index=0,
         label_type=ft.NavigationRailLabelType.ALL,
         min_width=110,
-        group_alignment=-1.0,   # itens alinhados ao topo
+        group_alignment=-1.0,
         destinations=[
             ft.NavigationRailDestination(
-                icon=ft.Icons.DASHBOARD,
-                label="Dashboard",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.Icons.POINT_OF_SALE,
-                label="PDV",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.Icons.ADD_CIRCLE,
-                label="Movim. e Caixa",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.Icons.TODAY,
-                label="Rel. Diário",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.Icons.DATE_RANGE,
-                label="Rel. Período",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.Icons.ACCOUNT_BALANCE_WALLET,
-                label="Fluxo Caixa",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.Icons.MONEY_OFF,
-                label="Fiados",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.Icons.PEOPLE,
-                label="Funcionários",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.Icons.CALENDAR_MONTH,
-                label="Escala Geral",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.Icons.DELIVERY_DINING,
-                label="Entregadores",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.Icons.INVENTORY_2,
-                label="Estoque",
-            ),
-            ft.NavigationRailDestination(
-                icon=ft.Icons.SETTINGS,
-                label="Parâmetros",
-            ),
+                icon=t["icon"],
+                label=t["label"],
+            )
+            for t in telas_perm
         ],
         on_change=lambda e: carregar_view(e.control.selected_index),
     )
 
-    # ── Layout principal: top bar + rail | divisor | conteúdo + barra status ───
+    # ── Layout principal ──────────────────────────────────────────────────
     page.add(
         ft.Column(
             expand=True,
@@ -254,10 +281,10 @@ def main(page: ft.Page):
         )
     )
 
-    # Carrega a primeira view (PDV) ao iniciar
+    # Carrega a primeira view ao iniciar
     carregar_view(0)
 
 
 if __name__ == "__main__":
     database.inicializar_banco()
-    ft.app(target=main)
+    ft.app(target=_iniciar_app)

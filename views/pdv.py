@@ -313,10 +313,19 @@ def view(page: ft.Page) -> ft.Control:
         data_iso = _data_br_para_iso(tf_data.value or hoje_br)
         pedidos  = database.pedido_listar_por_data(data_iso)
 
-        def _on_excluir(id_pedido):
+        def _on_excluir(id_pedido, canal_p, valor_p, data_p):
             def handler(e):
                 def _excluir():
                     database.pedido_excluir(id_pedido)
+                    database.log_registrar(
+                        acao="EXCLUIR_PEDIDO",
+                        tabela="vendas_pedidos",
+                        id_registro=id_pedido,
+                        descricao=f"Pedido #{id_pedido} excluído — "
+                                  f"Canal: {canal_p} | Valor: R$ {valor_p:.2f} | "
+                                  f"Data: {data_p}",
+                        valor_antes=f"canal={canal_p}, valor={valor_p}, data={data_p}",
+                    )
                     _atualizar_tabela()
                     page.update()
                 _confirmar_exclusao(page, "este pedido", _excluir)
@@ -365,7 +374,7 @@ def view(page: ft.Page) -> ft.Control:
                             icon=ft.Icons.DELETE_OUTLINE,
                             icon_color=ft.Colors.RED_400,
                             tooltip="Excluir pedido",
-                            on_click=_on_excluir(p["id"]),
+                            on_click=_on_excluir(p["id"], p["canal"], p["valor_total"], p["data"]),
                         ),
                     ])),
                 ],
@@ -560,6 +569,9 @@ def view(page: ft.Page) -> ft.Control:
 
         if _editando["id"] is not None:
             pid = _editando["id"]
+            p_antes = database.pedido_buscar(pid)
+            canal_antes = p_antes["canal"] if p_antes else ""
+            valor_antes = p_antes["valor_total"] if p_antes else 0.0
             database.pedido_atualizar(
                 pid,
                 canal=canal,
@@ -573,6 +585,14 @@ def view(page: ft.Page) -> ft.Control:
             database.pagamento_deletar_por_pedido(pid)
             for metodo, val_pag in pags_validos:
                 database.pagamento_inserir(pid, metodo, val_pag, cortesia=(metodo == "Voucher"))
+            database.log_registrar(
+                acao="EDITAR_PEDIDO",
+                tabela="vendas_pedidos",
+                id_registro=pid,
+                descricao=f"Pedido #{pid} editado",
+                valor_antes=f"canal={canal_antes}, valor={valor_antes}",
+                valor_depois=f"canal={canal}, valor={valor}",
+            )
             _limpar()
             _atualizar_tabela()
             page.overlay.append(ft.SnackBar(

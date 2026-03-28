@@ -161,10 +161,77 @@ def view(page: ft.Page) -> ft.Control:
             options=[ft.dropdown.Option(m) for m in _MOTIVOS[tipo]],
             value=_MOTIVOS[tipo][0],
         )
-        tf_obs = ft.TextField(label="Observações (opcional)", expand=True)
+        tf_obs  = ft.TextField(label="Observações (opcional)", expand=True)
         txt_err = ft.Text("", color=ft.Colors.RED_400, size=12)
 
         cor_tipo = _COR_TIPO[tipo]
+
+        # ── Campos extras de reposição (apenas ENTRADA) ───────────────────────
+        sw_reposicao        = None
+        col_reposicao_det   = None
+        dd_fornecedor       = None
+        sw_pago_agora       = None
+        dd_metodo_pag       = None
+        row_metodo_pag      = None
+        txt_nao_pago        = None
+
+        if tipo == "ENTRADA":
+            fornecedores = database.fornecedor_listar(apenas_ativos=True)
+            metodos      = database.metodo_pag_listar()
+
+            dd_fornecedor = ft.Dropdown(
+                label="Fornecedor",
+                options=(
+                    [ft.dropdown.Option("", text="— Sem fornecedor —")]
+                    + [ft.dropdown.Option(str(f["id"]), text=f["nome"]) for f in fornecedores]
+                ),
+                value="",
+                expand=True,
+            )
+
+            dd_metodo_pag = ft.Dropdown(
+                label="Método de pagamento",
+                options=[ft.dropdown.Option(m["nome"]) for m in metodos],
+                value=metodos[0]["nome"] if metodos else None,
+                expand=True,
+            )
+
+            txt_nao_pago   = ft.Text(
+                "A compra será registrada no estoque mas não gerará "
+                "lançamento no fluxo de caixa.",
+                italic=True, color=ft.Colors.GREY_500, size=12,
+            )
+            row_metodo_pag = ft.Row([dd_metodo_pag], visible=True)
+            row_nao_pago   = ft.Container(content=txt_nao_pago, visible=False)
+
+            sw_pago_agora  = ft.Switch(label="Pago agora", value=True)
+
+            def _on_pago_agora(e):
+                row_metodo_pag.visible = sw_pago_agora.value
+                row_nao_pago.visible   = not sw_pago_agora.value
+                page.update()
+
+            sw_pago_agora.on_change = _on_pago_agora
+
+            col_reposicao_det = ft.Column(
+                spacing=8, visible=False,
+                controls=[
+                    dd_fornecedor,
+                    sw_pago_agora,
+                    row_metodo_pag,
+                    row_nao_pago,
+                ],
+            )
+
+            sw_reposicao = ft.Switch(
+                label="Reposição de estoque (compra)", value=False,
+            )
+
+            def _on_reposicao(e):
+                col_reposicao_det.visible = sw_reposicao.value
+                page.update()
+
+            sw_reposicao.on_change = _on_reposicao
 
         def _confirmar(e):
             qtd = _to_float(tf_qtd.value)
@@ -172,18 +239,74 @@ def view(page: ft.Page) -> ft.Control:
                 txt_err.value = "Informe uma quantidade maior que zero."
                 page.update()
                 return
-            database.estoque_mov_inserir(
-                data=hoje.isoformat(),
-                id_produto=produto["id"],
-                tipo=tipo,
-                quantidade=qtd,
-                preco_custo=_to_float(tf_preco.value),
-                motivo=dd_motivo.value,
-                obs=tf_obs.value.strip() or None,
-            )
+
+            if tipo == "ENTRADA" and sw_reposicao is not None and sw_reposicao.value:
+                id_forn = int(dd_fornecedor.value) if dd_fornecedor.value else None
+                pago    = sw_pago_agora.value
+                metodo  = dd_metodo_pag.value if pago else None
+                res = database.reposicao_registrar(
+                    data=hoje.isoformat(),
+                    id_produto=produto["id"],
+                    quantidade=qtd,
+                    preco_custo=_to_float(tf_preco.value),
+                    id_fornecedor=id_forn,
+                    metodo_pagamento=metodo,
+                    obs=tf_obs.value.strip() or None,
+                    pago_agora=pago,
+                )
+                database.log_registrar(
+                    acao="ENTRADA_ESTOQUE",
+                    tabela="estoque_movimentacoes",
+                    id_registro=res["id_mov_estoque"],
+                    descricao=f"Entrada de estoque — {produto['nome']}: "
+                              f"+{qtd} {produto['unidade']} | "
+                              f"Custo: R$ {_to_float(tf_preco.value):.2f}",
+                )
+            else:
+                id_mov = database.estoque_mov_inserir(
+                    data=hoje.isoformat(),
+                    id_produto=produto["id"],
+                    tipo=tipo,
+                    quantidade=qtd,
+                    preco_custo=_to_float(tf_preco.value),
+                    motivo=dd_motivo.value,
+                    obs=tf_obs.value.strip() or None,
+                )
+                if tipo == "ENTRADA":
+                    database.log_registrar(
+                        acao="ENTRADA_ESTOQUE",
+                        tabela="estoque_movimentacoes",
+                        id_registro=id_mov,
+                        descricao=f"Entrada de estoque — {produto['nome']}: "
+                                  f"+{qtd} {produto['unidade']} | "
+                                  f"Custo: R$ {_to_float(tf_preco.value):.2f}",
+                    )
+                else:
+                    database.log_registrar(
+                        acao="SAIDA_ESTOQUE",
+                        tabela="estoque_movimentacoes",
+                        id_registro=id_mov,
+                        descricao=f"Saída de estoque — {produto['nome']}: "
+                                  f"-{qtd} {produto['unidade']}",
+                    )
+
             dlg.open = False
             page.update()
             _carregar_estoque()
+
+        # Conteúdo do dialog — campos de reposição aparecem apenas para ENTRADA
+        conteudo_controls = [
+            ft.Text(
+                f"Estoque atual: {_fmt_qtd(produto['quantidade_atual'], produto['unidade'])}",
+                size=12, color=ft.Colors.GREY_500,
+            ),
+            ft.Row([tf_qtd, tf_preco], spacing=12),
+            dd_motivo,
+            tf_obs,
+            txt_err,
+        ]
+        if tipo == "ENTRADA":
+            conteudo_controls += [ft.Divider(height=1), sw_reposicao, col_reposicao_det]
 
         dlg = ft.AlertDialog(
             modal=True,
@@ -196,16 +319,13 @@ def view(page: ft.Page) -> ft.Control:
                 ),
                 ft.Text(produto["nome"], size=14),
             ]),
-            content=ft.Column(spacing=10, width=460, tight=True, controls=[
-                ft.Text(
-                    f"Estoque atual: {_fmt_qtd(produto['quantidade_atual'], produto['unidade'])}",
-                    size=12, color=ft.Colors.GREY_500,
-                ),
-                ft.Row([tf_qtd, tf_preco], spacing=12),
-                dd_motivo,
-                tf_obs,
-                txt_err,
-            ]),
+            content=ft.Column(
+                spacing=10,
+                width=480,
+                tight=True,
+                scroll=ft.ScrollMode.AUTO,
+                controls=conteudo_controls,
+            ),
             actions=[
                 ft.TextButton("Cancelar", on_click=lambda e: (
                     setattr(dlg, "open", False), page.update()
@@ -425,9 +545,16 @@ def view(page: ft.Page) -> ft.Control:
 
             bg = _BG_TIPO.get(m["tipo"])
 
-            def _excluir(mid=m["id"]):
+            def _excluir(mid=m["id"], nome_p=m["nome_produto"], tipo_m=m["tipo"]):
                 def handler(e):
                     database.estoque_mov_excluir(mid)
+                    database.log_registrar(
+                        acao="EXCLUIR_ESTOQUE_MOV",
+                        tabela="estoque_movimentacoes",
+                        id_registro=mid,
+                        descricao=f"Movimentação de estoque excluída — "
+                                  f"{nome_p} | Tipo: {tipo_m}",
+                    )
                     _carregar_movs()
                 return handler
 

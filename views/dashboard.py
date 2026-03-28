@@ -76,6 +76,9 @@ def view(page: ft.Page) -> ft.Control:
     card1_col    = ft.Column(spacing=8)
     card2_col    = ft.Column(spacing=8)
 
+    # Coluna mutável do card Alertas de Estoque
+    alertas_col = ft.Column(spacing=6)
+
     # Coluna mutável do card Presença
     presenca_col = ft.Column(spacing=4)
 
@@ -339,6 +342,65 @@ def view(page: ft.Page) -> ft.Control:
                 ],
             ))
 
+    # ── Card Alertas de Estoque ─────────────────────────────────────────────────
+
+    def _atualizar_alertas_est():
+        produtos = database.estoque_produtos_abaixo_minimo()
+        alertas_col.controls.clear()
+
+        if not produtos:
+            card_alertas_est.visible = False
+            return
+
+        card_alertas_est.visible = True
+        total = len(produtos)
+        exibir = produtos[:5]
+
+        alertas_col.controls.append(
+            ft.Container(
+                bgcolor=ft.Colors.ORANGE_900,
+                border_radius=6,
+                padding=ft.Padding(left=12, right=12, top=8, bottom=8),
+                content=ft.Row(spacing=8, controls=[
+                    ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED,
+                            color=ft.Colors.YELLOW_300, size=20),
+                    ft.Text(
+                        f"Estoque Baixo — {total} produto(s) abaixo do mínimo",
+                        color=ft.Colors.YELLOW_300,
+                        weight=ft.FontWeight.BOLD,
+                        size=14,
+                    ),
+                ]),
+            )
+        )
+
+        for p in exibir:
+            alertas_col.controls.append(ft.Row(spacing=8, controls=[
+                ft.Icon(ft.Icons.CIRCLE, color=ft.Colors.ORANGE_400, size=10),
+                ft.Text(p["nome"], expand=True, size=13),
+                ft.Text(
+                    f"Atual: {p['quantidade_atual']:.1f} {p['unidade']}",
+                    color=ft.Colors.RED_400,
+                    size=13,
+                    weight=ft.FontWeight.BOLD,
+                ),
+                ft.Text(" | ", color=ft.Colors.GREY_500, size=13),
+                ft.Text(
+                    f"Mínimo: {p['quantidade_minima']:.1f} {p['unidade']}",
+                    color=ft.Colors.GREY_500,
+                    size=13,
+                ),
+            ]))
+
+        if total > 5:
+            alertas_col.controls.append(ft.Text(
+                f"... e mais {total - 5} produto(s). "
+                "Veja a tela de Estoque para detalhes.",
+                italic=True,
+                color=ft.Colors.GREY_500,
+                size=12,
+            ))
+
     # ── Atualização geral ───────────────────────────────────────────────────────
 
     def _atualizar(e=None):
@@ -347,6 +409,7 @@ def view(page: ft.Page) -> ft.Control:
             _atualizar_cards_1_2(conn)
         finally:
             conn.close()
+        _atualizar_alertas_est()
         _atualizar_presenca()
         page.update()
 
@@ -393,6 +456,16 @@ def view(page: ft.Page) -> ft.Control:
         ],
     )
 
+    # ── Card Alertas de Estoque (visível só quando há alertas) ──────────────────
+
+    card_alertas_est = ft.Card(
+        visible=False,
+        content=ft.Container(
+            padding=ft.Padding.all(16),
+            content=alertas_col,
+        ),
+    )
+
     # ── Card largo — Presença de Hoje ───────────────────────────────────────────
 
     card_presenca = _card("Presença de Hoje", presenca_col)
@@ -401,7 +474,7 @@ def view(page: ft.Page) -> ft.Control:
     _atualizar()
 
     return ft.Column(
-        controls=[topo, grade, card_presenca],
+        controls=[topo, grade, card_alertas_est, card_presenca],
         scroll=ft.ScrollMode.AUTO,
         expand=True,
         spacing=16,

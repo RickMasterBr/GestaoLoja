@@ -4,6 +4,10 @@ Gerencia Pessoas, Bairros, Plataformas, Métodos de Pagamento,
 Categorias Extras e Configurações Gerais.
 """
 
+import csv
+import os
+from datetime import date, timedelta
+
 import flet as ft
 import database
 
@@ -89,6 +93,25 @@ def view(page: ft.Page) -> ft.Control:
     cb_p_ativo    = ft.Checkbox(label="Ativo", value=True)
     txt_p_erro    = ft.Text("", color=ft.Colors.RED_400, size=12)
     lbl_p_titulo  = ft.Text("Nova Pessoa", size=14, weight=ft.FontWeight.BOLD)
+
+    # Acesso ao Sistema
+    dd_perfil = ft.Dropdown(
+        label="Perfil de Acesso", width=180,
+        options=[
+            ft.dropdown.Option("OPERADOR"),
+            ft.dropdown.Option("GERENTE"),
+            ft.dropdown.Option("ADMIN"),
+        ],
+        value="OPERADOR",
+    )
+    tf_pin             = ft.TextField(label="PIN (4 dígitos)", password=True, max_length=4,
+                                       keyboard_type=ft.KeyboardType.NUMBER, width=160)
+    tf_pin_confirmar   = ft.TextField(label="Confirmar PIN",   password=True, max_length=4,
+                                       keyboard_type=ft.KeyboardType.NUMBER, width=160)
+    txt_pin_nota       = ft.Text(
+        "Deixe o PIN em branco para manter o atual. Defina um PIN para habilitar o login.",
+        size=11, italic=True, color=ft.Colors.GREY_500,
+    )
 
     # Dados pessoais
     tf_dp_cpf     = ft.TextField(label="CPF",              width=160, hint_text="000.000.000-00")
@@ -189,6 +212,9 @@ def view(page: ft.Page) -> ft.Control:
                     tf_dp_end.value  = r["endereco"] or ""
                     tf_dp_obs.value  = r["observacoes_pessoais"] or ""
                     card_dados_pessoais.visible = True
+                    dd_perfil.value          = r["perfil_acesso"] or "OPERADOR"
+                    tf_pin.value             = ""
+                    tf_pin_confirmar.value   = ""
                     page.update()
                 return handler
 
@@ -267,6 +293,9 @@ def view(page: ft.Page) -> ft.Control:
         tf_dp_end.value  = ""
         tf_dp_obs.value  = ""
         card_dados_pessoais.visible = False
+        dd_perfil.value          = "OPERADOR"
+        tf_pin.value             = ""
+        tf_pin_confirmar.value   = ""
 
     def _salvar_pessoa(e):
         txt_p_erro.value = ""
@@ -305,8 +334,9 @@ def view(page: ft.Page) -> ft.Control:
             if kwargs_hol:
                 database.pessoa_atualizar(pid, **kwargs_hol)
         else:
+            pid = _pessoa_id["v"]
             database.pessoa_atualizar(
-                _pessoa_id["v"],
+                pid,
                 nome=nome,
                 tipo=dd_p_tipo.value,
                 cargo=tf_p_cargo.value.strip() or None,
@@ -317,6 +347,27 @@ def view(page: ft.Page) -> ft.Control:
                 **kwargs_hol,
             )
 
+        # PIN / perfil de acesso
+        pin     = tf_pin.value.strip()
+        pin_c   = tf_pin_confirmar.value.strip()
+        if pin or pin_c:
+            if pin != pin_c:
+                txt_p_erro.value = "Os PINs não coincidem."
+                page.update()
+                return
+            if not pin.isdigit() or len(pin) != 4:
+                txt_p_erro.value = "O PIN deve ter exatamente 4 dígitos numéricos."
+                page.update()
+                return
+            database.usuario_definir_pin(pid, pin)
+        database.usuario_definir_perfil(pid, dd_perfil.value or "OPERADOR")
+
+        database.log_registrar(
+            acao="ALTERAR_PESSOA",
+            tabela="cad_pessoas",
+            id_registro=pid,
+            descricao=f"Pessoa salva — {nome} ({dd_p_tipo.value})",
+        )
         _limpar_pessoa()
         _refresh_pessoas()
         page.update()
@@ -482,6 +533,10 @@ def view(page: ft.Page) -> ft.Control:
                     linha_p_diaria,
                     linha_p_holerite,
                     cb_p_ativo,
+                    ft.Text("Acesso ao Sistema", size=13, weight=ft.FontWeight.BOLD),
+                    ft.Divider(height=1),
+                    ft.Row([dd_perfil, tf_pin, tf_pin_confirmar], spacing=12),
+                    txt_pin_nota,
                     txt_p_erro,
                     ft.Row([
                         ft.ElevatedButton("Salvar",   icon=ft.Icons.SAVE,  on_click=_salvar_pessoa),
@@ -597,14 +652,23 @@ def view(page: ft.Page) -> ft.Control:
         taxa    = _to_float(tf_b_taxa.value)
         repasse = _to_float(tf_b_repasse.value)
         if _bairro_id["v"] is None:
-            database.bairro_inserir(nome, taxa, repasse)
+            id_bairro = database.bairro_inserir(nome, taxa, repasse)
         else:
+            id_bairro = _bairro_id["v"]
             database.bairro_atualizar(
-                _bairro_id["v"],
+                id_bairro,
                 nome_bairro=nome,
                 taxa_cobrada=taxa,
                 repasse_entregador=repasse,
             )
+        database.log_registrar(
+            acao="ALTERAR_BAIRRO",
+            tabela="cad_bairros",
+            id_registro=id_bairro,
+            descricao=f"Bairro salvo — {nome}: "
+                      f"Taxa R$ {taxa:.2f} | "
+                      f"Repasse R$ {repasse:.2f}",
+        )
         _limpar_bairro()
         _refresh_bairros()
         page.update()
@@ -685,6 +749,12 @@ def view(page: ft.Page) -> ft.Control:
                 subsidio=          _to_float(tf_pl_subsidio.value),
                 dia_repasse=       dd_pl_dia.value,
                 ativo=             int(sw_pl_ativo.value),
+            )
+            database.log_registrar(
+                acao="ALTERAR_PLATAFORMA",
+                tabela="cad_plataformas",
+                id_registro=pid,
+                descricao=f"Plataforma atualizada — {nome}",
             )
             txt_pl_ok.value = "Salvo!"
             page.update()
@@ -948,6 +1018,10 @@ def view(page: ft.Page) -> ft.Control:
         width=280,
         hint_text="Diferença acima deste valor gera alerta",
     )
+    sw_fechamento_cego = ft.Switch(
+        label="Fechamento cego",
+        value=database.config_obter("fechamento_cego", "0") == "1",
+    )
     txt_cfg_ok = ft.Text("", color=ft.Colors.GREEN_400, size=13)
 
     def _salvar_cfg(e):
@@ -958,6 +1032,12 @@ def view(page: ft.Page) -> ft.Control:
             database.config_salvar("nome_loja", nome_loja)
         database.config_salvar("diaria_padrao_entregador", diaria)
         database.config_salvar("limite_divergencia_caixa", limite)
+        database.config_salvar("fechamento_cego", "1" if sw_fechamento_cego.value else "0")
+        database.log_registrar(
+            acao="ALTERAR_CONFIGURACAO",
+            tabela="cad_configuracoes",
+            descricao="Configurações gerais atualizadas",
+        )
         txt_cfg_ok.value = "Configurações salvas!"
         page.update()
 
@@ -981,6 +1061,12 @@ def view(page: ft.Page) -> ft.Control:
                         "Divergências de caixa acima deste valor exibem um alerta no fechamento.",
                         size=12, color=ft.Colors.GREY_500, italic=True,
                     ),
+                    sw_fechamento_cego,
+                    ft.Text(
+                        "Quando ativo, o operador não vê o saldo teórico na hora de fechar o caixa. "
+                        "Ele informa o valor contado e o sistema revela a diferença só após confirmar.",
+                        size=12, italic=True, color=ft.Colors.GREY_500,
+                    ),
                     txt_cfg_ok,
                     ft.ElevatedButton(
                         "Salvar Configurações",
@@ -990,6 +1076,257 @@ def view(page: ft.Page) -> ft.Control:
                             bgcolor=ft.Colors.TEAL_600, color=ft.Colors.WHITE,
                         ),
                     ),
+                ]),
+            )),
+        ],
+    )
+
+    # ══════════════════════════════════════════
+    #  ABA 7 — AUDITORIA
+    # ══════════════════════════════════════════
+
+    _aud_hoje  = date.today()
+    _aud_ini_v = (_aud_hoje - timedelta(days=7)).strftime("%d/%m/%Y")
+    _aud_fim_v = _aud_hoje.strftime("%d/%m/%Y")
+
+    tf_aud_ini = ft.TextField(
+        label="Data início", value=_aud_ini_v, width=140,
+        hint_text="DD/MM/AAAA", text_align=ft.TextAlign.CENTER,
+    )
+    tf_aud_fim = ft.TextField(
+        label="Data fim", value=_aud_fim_v, width=140,
+        hint_text="DD/MM/AAAA", text_align=ft.TextAlign.CENTER,
+    )
+
+    _ACOES_AUDIT = [
+        "EXCLUIR_PEDIDO", "EDITAR_PEDIDO",
+        "EXCLUIR_MOVIMENTACAO",
+        "ENTRADA_ESTOQUE", "SAIDA_ESTOQUE", "EXCLUIR_ESTOQUE_MOV",
+        "QUITAR_FIADO", "EXCLUIR_FIADO",
+        "PAGAMENTO_ENTREGADOR", "PAGAMENTO_FUNCIONARIO",
+        "ALTERAR_BAIRRO", "ALTERAR_PLATAFORMA",
+        "ALTERAR_PESSOA", "ALTERAR_CONFIGURACAO",
+        "LOGIN",
+    ]
+
+    dd_aud_acao = ft.Dropdown(
+        label="Ação",
+        width=260,
+        options=[ft.dropdown.Option(key="", text="Todas")] + [
+            ft.dropdown.Option(a) for a in _ACOES_AUDIT
+        ],
+        value="",
+    )
+
+    tabela_aud = ft.Column(spacing=0, controls=[
+        ft.Text(
+            "Use os filtros acima e clique em Filtrar.",
+            italic=True, color=ft.Colors.GREY_500,
+        ),
+    ])
+    _logs_cache: list = []
+
+    def _iso_aud(data_br: str) -> str:
+        try:
+            d, m, a = data_br.strip().split("/")
+            return f"{a}-{m.zfill(2)}-{d.zfill(2)}"
+        except Exception:
+            return date.today().isoformat()
+
+    def _chip_acao(acao: str) -> ft.Container:
+        if acao.startswith("EXCLUIR_"):
+            cor = ft.Colors.RED_700
+        elif acao == "EDITAR_PEDIDO":
+            cor = ft.Colors.ORANGE_700
+        elif acao in ("PAGAMENTO_ENTREGADOR", "PAGAMENTO_FUNCIONARIO", "QUITAR_FIADO"):
+            cor = ft.Colors.GREEN_700
+        elif acao == "ENTRADA_ESTOQUE":
+            cor = ft.Colors.BLUE_700
+        elif acao == "SAIDA_ESTOQUE":
+            cor = ft.Colors.ORANGE_700
+        elif acao.startswith("ALTERAR_"):
+            cor = ft.Colors.GREY_700
+        elif acao == "LOGIN":
+            cor = ft.Colors.PURPLE_700
+        else:
+            cor = ft.Colors.GREY_700
+        return ft.Container(
+            content=ft.Text(acao, size=10, color=ft.Colors.WHITE,
+                            weight=ft.FontWeight.BOLD),
+            bgcolor=cor,
+            border_radius=4,
+            padding=ft.Padding(left=6, right=6, top=3, bottom=3),
+        )
+
+    def _filtrar_aud(e=None):
+        ini  = _iso_aud(tf_aud_ini.value)
+        fim  = _iso_aud(tf_aud_fim.value)
+        acao = dd_aud_acao.value or None
+
+        logs = database.log_listar(data_inicio=ini, data_fim=fim, acao=acao)
+        _logs_cache.clear()
+        _logs_cache.extend([dict(lg) for lg in logs])
+
+        tabela_aud.controls.clear()
+
+        if not logs:
+            tabela_aud.controls.append(ft.Text(
+                "Nenhum log encontrado para os filtros selecionados.",
+                italic=True, color=ft.Colors.GREY_500,
+            ))
+            page.update()
+            return
+
+        tabela_aud.controls.append(ft.Row(
+            spacing=0,
+            controls=[
+                ft.Container(width=145, content=ft.Text(
+                    "Data/Hora", size=11, weight=ft.FontWeight.BOLD)),
+                ft.Container(width=200, content=ft.Text(
+                    "Ação", size=11, weight=ft.FontWeight.BOLD)),
+                ft.Container(expand=True, content=ft.Text(
+                    "Descrição", size=11, weight=ft.FontWeight.BOLD)),
+                ft.Container(width=100, content=ft.Text(
+                    "Usuário", size=11, weight=ft.FontWeight.BOLD)),
+            ],
+        ))
+        tabela_aud.controls.append(ft.Divider(height=1))
+
+        for lg in logs:
+            tabela_aud.controls.append(ft.Row(
+                spacing=0,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Container(width=145, content=ft.Text(
+                        (lg["data_hora"] or "")[:16], size=12,
+                        color=ft.Colors.GREY_500)),
+                    ft.Container(width=200,
+                                 padding=ft.Padding(left=0, right=4, top=2, bottom=2),
+                                 content=_chip_acao(lg["acao"])),
+                    ft.Container(expand=True, content=ft.Text(
+                        lg["descricao"], size=12)),
+                    ft.Container(width=100, content=ft.Text(
+                        lg["usuario"] or "—", size=12, color=ft.Colors.GREY_500)),
+                ],
+            ))
+            tabela_aud.controls.append(ft.Divider(
+                height=1, color=ft.Colors.with_opacity(0.15, ft.Colors.BLACK),
+            ))
+
+        page.update()
+
+    def _exportar_csv(e):
+        if not _logs_cache:
+            _snack(page, "Nenhum log para exportar. Clique em Filtrar primeiro.",
+                   ft.Colors.ORANGE_700)
+            return
+        exports_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "exports"
+        )
+        os.makedirs(exports_dir, exist_ok=True)
+        ini_str = tf_aud_ini.value.replace("/", "")
+        fim_str = tf_aud_fim.value.replace("/", "")
+        caminho = os.path.join(exports_dir, f"auditoria_{ini_str}_{fim_str}.csv")
+        with open(caminho, "w", newline="", encoding="utf-8-sig") as fcsv:
+            writer = csv.writer(fcsv)
+            writer.writerow([
+                "Data/Hora", "Ação", "Tabela", "ID Registro",
+                "Descrição", "Valor Antes", "Valor Depois", "Usuário",
+            ])
+            for lg in _logs_cache:
+                writer.writerow([
+                    lg["data_hora"],
+                    lg["acao"],
+                    lg["tabela"] or "",
+                    lg["id_registro"] or "",
+                    lg["descricao"],
+                    lg["valor_antes"] or "",
+                    lg["valor_depois"] or "",
+                    lg["usuario"] or "",
+                ])
+        _snack(page, f"CSV exportado: {os.path.basename(caminho)}")
+
+    def _limpar_logs_antigos(e):
+        tf_dias = ft.TextField(
+            label="Dias a manter", value="90", width=180,
+            keyboard_type=ft.KeyboardType.NUMBER,
+        )
+
+        def _executar(ev):
+            dlg.open = False
+            try:
+                dias = int(tf_dias.value or "90")
+            except ValueError:
+                dias = 90
+            removidos = database.log_limpar_antigos(dias)
+            page.update()
+            _snack(page, f"{removidos} log(s) removido(s) com mais de {dias} dias.")
+            _filtrar_aud()
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Remover logs antigos"),
+            content=ft.Column(tight=True, spacing=8, controls=[
+                ft.Text("Remover logs com mais de quantos dias?", size=13),
+                tf_dias,
+            ]),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: _fechar(e, dlg, page)),
+                ft.ElevatedButton(
+                    "Confirmar",
+                    ft.Icons.DELETE_SWEEP,
+                    on_click=_executar,
+                    style=ft.ButtonStyle(bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        page.overlay.append(dlg)
+        dlg.open = True
+        page.update()
+
+    tab_auditoria = ft.Column(
+        scroll=ft.ScrollMode.AUTO,
+        spacing=12,
+        controls=[
+            ft.Card(content=ft.Container(
+                padding=ft.Padding.all(16),
+                content=ft.Column(spacing=12, controls=[
+                    ft.Text("Filtros", size=14, weight=ft.FontWeight.BOLD),
+                    ft.Row([tf_aud_ini, tf_aud_fim, dd_aud_acao], spacing=12, wrap=True),
+                    ft.Row([
+                        ft.ElevatedButton(
+                            "Filtrar",
+                            ft.Icons.SEARCH,
+                            on_click=_filtrar_aud,
+                            style=ft.ButtonStyle(
+                                bgcolor=ft.Colors.TEAL_600, color=ft.Colors.WHITE,
+                            ),
+                        ),
+                        ft.ElevatedButton(
+                            "Exportar CSV",
+                            ft.Icons.DOWNLOAD,
+                            on_click=_exportar_csv,
+                            style=ft.ButtonStyle(
+                                bgcolor=ft.Colors.INDIGO_600, color=ft.Colors.WHITE,
+                            ),
+                        ),
+                        ft.TextButton(
+                            "Limpar logs antigos",
+                            icon=ft.Icons.DELETE_SWEEP,
+                            on_click=_limpar_logs_antigos,
+                            style=ft.ButtonStyle(color=ft.Colors.RED_400),
+                        ),
+                    ], spacing=8),
+                ]),
+            )),
+            ft.Card(content=ft.Container(
+                padding=ft.Padding.all(16),
+                content=ft.Column(spacing=8, controls=[
+                    ft.Text("Registros de Auditoria", size=14,
+                            weight=ft.FontWeight.BOLD),
+                    ft.Divider(height=1),
+                    tabela_aud,
                 ]),
             )),
         ],
@@ -1011,6 +1348,7 @@ def view(page: ft.Page) -> ft.Control:
             ft.Tab(label="Pagamentos",     icon=ft.Icons.PAYMENT),
             ft.Tab(label="Categorias",     icon=ft.Icons.CATEGORY),
             ft.Tab(label="Configurações",  icon=ft.Icons.SETTINGS),
+            ft.Tab(label="Auditoria",      icon=ft.Icons.SECURITY),
         ],
     )
 
@@ -1022,13 +1360,14 @@ def view(page: ft.Page) -> ft.Control:
             _wrap(tab_metodos),
             _wrap(tab_categorias),
             _wrap(tab_config),
+            _wrap(tab_auditoria),
         ],
         expand=True,
     )
 
     return ft.Tabs(
         content=ft.Column([tab_bar, tab_view], expand=True),
-        length=6,
+        length=7,
         selected_index=0,
         expand=True,
     )
