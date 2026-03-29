@@ -172,6 +172,7 @@ def inicializar_banco():
         _migrar_fornecedor_extras(conn)
         _migrar_acesso(conn)
         _migrar_fluxo_neutro(conn)
+        _migrar_fornecedor_vendedor(conn)
         conn.commit()
         _popular_dados_iniciais(conn)
         conn.commit()
@@ -619,6 +620,18 @@ def _migrar_fornecedor_extras(conn: sqlite3.Connection):
         )
 
 
+def _migrar_fornecedor_vendedor(conn: sqlite3.Connection):
+    """Adiciona a coluna 'vendedor' em cad_fornecedores, se ainda não existir."""
+    cols = [r[1] for r in conn.execute(
+        "PRAGMA table_info(cad_fornecedores)"
+    ).fetchall()]
+    if "vendedor" not in cols:
+        conn.execute(
+            "ALTER TABLE cad_fornecedores ADD COLUMN vendedor TEXT DEFAULT ''"
+        )
+        conn.commit()
+
+
 def _migrar_fluxo_neutro(conn: sqlite3.Connection):
     """
     Atualiza o CHECK constraint de fluxo nas tabelas cad_categorias_extra e
@@ -794,14 +807,15 @@ def fornecedor_inserir(
     cnpj_cpf: str = None,
     endereco: str = None,
     obs: str = None,
+    vendedor: str = None,
 ) -> int:
     conn = conectar()
     try:
         cur = conn.execute(
             """INSERT INTO cad_fornecedores
-               (nome, telefone, email, cnpj_cpf, endereco, obs)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (nome, telefone, email, cnpj_cpf, endereco, obs),
+               (nome, telefone, email, cnpj_cpf, endereco, obs, vendedor)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (nome, telefone, email, cnpj_cpf, endereco, obs, vendedor or ""),
         )
         conn.commit()
         return cur.lastrowid
@@ -834,7 +848,7 @@ def fornecedor_listar(apenas_ativos: bool = True) -> list:
 
 
 def fornecedor_atualizar(id_fornecedor: int, **campos) -> bool:
-    _permitidos = {"nome", "telefone", "email", "cnpj_cpf", "endereco", "obs", "ativo"}
+    _permitidos = {"nome", "telefone", "email", "cnpj_cpf", "endereco", "obs", "ativo", "vendedor"}
     sets = {k: v for k, v in campos.items() if k in _permitidos}
     if not sets:
         return False

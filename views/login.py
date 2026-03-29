@@ -150,7 +150,7 @@ def view(page: ft.Page, on_login_success) -> ft.Control:
 
     # ── Montar fase de seleção ────────────────────────────────────────────
     fase_selecao.controls += [
-        ft.Text("Quem está acessando?", size=14, color=ft.Colors.GREY_500,
+        ft.Text("Quem está acessando?", size=14, color=ft.Colors.GREY_300,
                 text_align=ft.TextAlign.CENTER),
         ft.Column(
             spacing=8,
@@ -158,11 +158,14 @@ def view(page: ft.Page, on_login_success) -> ft.Control:
             controls=[
                 ft.ElevatedButton(
                     u["nome"],
-                    icon=ft.Icons.PERSON,
+                    icon=ft.Icons.PERSON_OUTLINE,
                     on_click=_selecionar(u),
-                    width=320,
+                    width=300,
+                    height=44,
                     style=ft.ButtonStyle(
-                        bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.WHITE),
+                        bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.WHITE),
+                        color=ft.Colors.WHITE,
+                        shape=ft.RoundedRectangleBorder(radius=8),
                     ),
                 )
                 for u in usuarios
@@ -180,19 +183,14 @@ def view(page: ft.Page, on_login_success) -> ft.Control:
         ft.TextButton("← Voltar", on_click=_voltar),
     ]
 
-    # ── Conteúdo do card ──────────────────────────────────────────────────
+    # ── Card e layout ─────────────────────────────────────────────────────
     nome_loja = database.config_obter("nome_loja", "Gestão Loja")
 
     if usuarios:
         conteudo = ft.Column(
-            spacing=20,
+            spacing=12,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[
-                ft.Text(nome_loja, size=22, weight=ft.FontWeight.BOLD,
-                        text_align=ft.TextAlign.CENTER),
-                fase_selecao,
-                fase_pin,
-            ],
+            controls=[fase_selecao, fase_pin],
         )
     else:
         def _entrar_sem_auth(e):
@@ -200,11 +198,9 @@ def view(page: ft.Page, on_login_success) -> ft.Control:
             on_login_success("ADMIN")
 
         conteudo = ft.Column(
-            spacing=20,
+            spacing=12,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
-                ft.Text(nome_loja, size=22, weight=ft.FontWeight.BOLD,
-                        text_align=ft.TextAlign.CENTER),
                 ft.Icon(ft.Icons.LOCK_OPEN, size=48, color=ft.Colors.GREY_500),
                 ft.Text(
                     "Nenhum usuário configurado.\n"
@@ -223,17 +219,48 @@ def view(page: ft.Page, on_login_success) -> ft.Control:
             ],
         )
 
-    card = ft.Card(
-        width=380,
-        content=ft.Container(
-            padding=ft.Padding.all(32),
-            content=conteudo,
+    card_login = ft.Container(
+        width=340,
+        padding=ft.Padding.all(32),
+        border_radius=16,
+        bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
+        border=ft.border.all(1, ft.Colors.with_opacity(0.10, ft.Colors.WHITE)),
+        content=ft.Column(
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=12,
+            controls=[
+                ft.Icon(ft.Icons.STOREFRONT, size=48, color=ft.Colors.BLUE_400),
+                ft.Text(nome_loja, size=28, weight=ft.FontWeight.BOLD,
+                        text_align=ft.TextAlign.CENTER),
+                ft.Text("Gestão Loja", size=13, color=ft.Colors.GREY_400,
+                        text_align=ft.TextAlign.CENTER),
+                ft.Divider(height=8),
+                conteudo,
+            ],
         ),
     )
 
-    return ft.Column(
-        alignment=ft.MainAxisAlignment.CENTER,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    txt_rodape = ft.Text(
+        "v1.0  ·  uso interno",
+        size=11,
+        color=ft.Colors.with_opacity(0.3, ft.Colors.WHITE),
+        text_align=ft.TextAlign.CENTER,
+    )
+
+    return ft.Container(
         expand=True,
-        controls=[card],
+        gradient=ft.LinearGradient(
+            begin=ft.Alignment(-1, -1),
+            end=ft.Alignment(1, 1),
+            colors=[
+                ft.Colors.with_opacity(1.0, "#0d1117"),
+                ft.Colors.with_opacity(1.0, "#0f1923"),
+            ],
+        ),
+        alignment=ft.Alignment(0, 0),
+        content=ft.Column(
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=16,
+            controls=[card_login, txt_rodape],
+        ),
     )

@@ -18,6 +18,7 @@ def view(page: ft.Page) -> ft.Control:
     tf_email    = ft.TextField(label="E-mail", expand=True)
     tf_cnpj     = ft.TextField(label="CNPJ / CPF", width=200)
     tf_endereco = ft.TextField(label="Endereço", expand=True)
+    tf_vendedor = ft.TextField(label="Vendedor / Contato", expand=True)
     tf_obs      = ft.TextField(
         label="Observações",
         multiline=True, min_lines=2, expand=True,
@@ -42,6 +43,7 @@ def view(page: ft.Page) -> ft.Control:
         tf_email.value    = ""
         tf_cnpj.value     = ""
         tf_endereco.value = ""
+        tf_vendedor.value = ""
         tf_obs.value      = ""
         cb_ativo.value    = True
         txt_erro.value    = ""
@@ -66,6 +68,8 @@ def view(page: ft.Page) -> ft.Control:
                     "E-mail", size=11, weight=ft.FontWeight.BOLD)),
                 ft.Container(width=160, content=ft.Text(
                     "CNPJ / CPF", size=11, weight=ft.FontWeight.BOLD)),
+                ft.Container(expand=2, content=ft.Text(
+                    "Vendedor", size=11, weight=ft.FontWeight.BOLD)),
                 ft.Container(width=80, content=ft.Text(
                     "Status", size=11, weight=ft.FontWeight.BOLD)),
                 ft.Container(width=130, content=ft.Text(
@@ -101,6 +105,7 @@ def view(page: ft.Page) -> ft.Control:
                     ft.Container(width=140, content=ft.Text(f["telefone"] or "—", size=12, color=ft.Colors.GREY_500)),
                     ft.Container(expand=2, content=ft.Text(f["email"] or "—", size=12, color=ft.Colors.GREY_500)),
                     ft.Container(width=160, content=ft.Text(f["cnpj_cpf"] or "—", size=12, color=ft.Colors.GREY_500)),
+                    ft.Container(expand=2, content=ft.Text(f["vendedor"] or "—", size=12, color=ft.Colors.GREY_500)),
                     ft.Container(width=80, content=ft.Text(
                         txt_status, size=12, color=cor_status, weight=ft.FontWeight.BOLD,
                     )),
@@ -130,6 +135,7 @@ def view(page: ft.Page) -> ft.Control:
         tf_email.value    = forn["email"] or ""
         tf_cnpj.value     = forn["cnpj_cpf"] or ""
         tf_endereco.value = forn["endereco"] or ""
+        tf_vendedor.value = forn["vendedor"] or ""
         tf_obs.value      = forn["obs"] or ""
         cb_ativo.value    = bool(forn["ativo"])
         txt_erro.value    = ""
@@ -151,6 +157,7 @@ def view(page: ft.Page) -> ft.Control:
                 email=tf_email.value.strip() or None,
                 cnpj_cpf=tf_cnpj.value.strip() or None,
                 endereco=tf_endereco.value.strip() or None,
+                vendedor=tf_vendedor.value.strip() or None,
                 obs=tf_obs.value.strip() or None,
             )
         else:
@@ -161,6 +168,7 @@ def view(page: ft.Page) -> ft.Control:
                 email=tf_email.value.strip() or None,
                 cnpj_cpf=tf_cnpj.value.strip() or None,
                 endereco=tf_endereco.value.strip() or None,
+                vendedor=tf_vendedor.value.strip() or None,
                 obs=tf_obs.value.strip() or None,
                 ativo=1 if cb_ativo.value else 0,
             )
@@ -223,6 +231,7 @@ def view(page: ft.Page) -> ft.Control:
             tf_nome,
             ft.Row([tf_telefone, tf_email], spacing=12),
             ft.Row([tf_cnpj, tf_endereco], spacing=12),
+            tf_vendedor,
             tf_obs,
             cb_ativo,
             txt_erro,

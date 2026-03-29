@@ -88,13 +88,18 @@ def view(page: ft.Page) -> ft.Control:
     cat_map = {r["id"]: dict(r) for r in categorias_db}
 
     def _opts_pessoa(tipo):
-        if tipo == "INTERNO":
-            src = funcionarios_db
-        elif tipo == "ENTREGADOR":
+        if tipo == "ENTREGADOR":
             src = entregadores_db
-        else:
-            src = pessoas_db
-        return [ft.dropdown.Option(key=str(r["id"]), text=r["nome"]) for r in src]
+            return [ft.dropdown.Option(key=str(r["id"]), text=r["nome"]) for r in src]
+        # "INTERNO" e "ALL": lista todos, com sufixo para entregadores
+        src = sorted(pessoas_db, key=lambda r: r["nome"])
+        return [
+            ft.dropdown.Option(
+                key=str(r["id"]),
+                text=r["nome"] if r["tipo"] == "INTERNO" else f"{r['nome']} (entregador)",
+            )
+            for r in src
+        ]
 
     # ── Campo Data + calendário ───────────────────────────────────────────
     tf_data = ft.TextField(
@@ -163,9 +168,11 @@ def view(page: ft.Page) -> ft.Control:
     )
 
     txt_erro = ft.Text("", color=ft.Colors.RED_400, size=13)
+    lbl_titulo_form = ft.Text("Nova Movimentação", size=18, weight=ft.FontWeight.BOLD)
 
     # Estado interno da categoria selecionada
-    _estado = {"fluxo": "", "pessoa_obrig": False, "cat_nome": ""}
+    _estado     = {"fluxo": "", "pessoa_obrig": False, "cat_nome": ""}
+    _editando_id = {"v": None}
 
     # ── Tabela ────────────────────────────────────────────────────────────
     col_tabela = ft.Column(spacing=0, expand=True)
@@ -174,6 +181,40 @@ def view(page: ft.Page) -> ft.Control:
     def _atualizar_tabela():
         data_iso = _data_br_para_iso(tf_data.value or hoje_br)
         movs     = database.mov_extra_listar_por_data(data_iso)
+
+        def _on_editar(m):
+            def handler(e):
+                _editando_id["v"] = m["id"]
+                # Data ISO → BR
+                try:
+                    a, mo, d = m["data"].split("-")
+                    tf_data.value = f"{d}/{mo}/{a}"
+                except Exception:
+                    pass
+                # Reconstrói estado de categoria
+                cat  = cat_map.get(m["id_categoria"], {})
+                nome = cat.get("descricao", "")
+                cfg  = _CAT_CONFIG.get(nome, _CFG_DEFAULT)
+                mostra_pessoa, tipo_pessoa, mostra_metodo, fluxo_override = cfg
+                fluxo = fluxo_override if fluxo_override else cat.get("fluxo", "SAIDA")
+                _estado["fluxo"]        = fluxo
+                _estado["pessoa_obrig"] = mostra_pessoa
+                _estado["cat_nome"]     = nome
+                dd_categoria.value = str(m["id_categoria"])
+                if mostra_pessoa:
+                    dd_pessoa.label   = "Entregador *" if tipo_pessoa == "ENTREGADOR" else "Funcionário *"
+                    dd_pessoa.options = _opts_pessoa(tipo_pessoa)
+                    dd_pessoa.value   = str(m["id_pessoa"]) if m["id_pessoa"] else None
+                linha_pessoa.visible = mostra_pessoa
+                dd_metodo.value      = m["metodo"] or None
+                linha_metodo.visible = mostra_metodo
+                tf_valor.value       = f"{m['valor']:.2f}"
+                tf_obs.value         = m["obs"] or ""
+                txt_erro.value       = ""
+                btn_salvar.text      = "Salvar Alteração"
+                lbl_titulo_form.value = "Editando Movimentação"
+                page.update()
+            return handler
 
         def _on_excluir(id_mov, cat, val, dt):
             def handler(e):
@@ -221,12 +262,20 @@ def view(page: ft.Page) -> ft.Control:
                 ft.DataCell(ft.Text(m["metodo"] or "—")),
                 ft.DataCell(ft.Text(f"R$ {m['valor']:.2f}")),
                 ft.DataCell(ft.Text(m["obs"] or "")),
-                ft.DataCell(ft.IconButton(
-                    icon=ft.Icons.DELETE_OUTLINE,
-                    icon_color=ft.Colors.RED_400,
-                    tooltip="Excluir",
-                    on_click=_on_excluir(m["id"], m["categoria"], m["valor"], tf_data.value),
-                )),
+                ft.DataCell(ft.Row(spacing=0, controls=[
+                    ft.IconButton(
+                        icon=ft.Icons.EDIT_OUTLINED,
+                        icon_color=ft.Colors.BLUE_400,
+                        tooltip="Editar",
+                        on_click=_on_editar(m),
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.DELETE_OUTLINE,
+                        icon_color=ft.Colors.RED_400,
+                        tooltip="Excluir",
+                        on_click=_on_excluir(m["id"], m["categoria"], m["valor"], tf_data.value),
+                    ),
+                ])),
             ]))
 
         col_tabela.controls.clear()
@@ -334,6 +383,7 @@ def view(page: ft.Page) -> ft.Control:
         data_atual           = tf_data.value
         dd_categoria.value   = None
         dd_pessoa.value      = None
+        page.update()  # força limpeza visual do dropdown antes de ocultar a linha
         dd_metodo.value      = None
         tf_valor.value       = ""
         tf_obs.value         = ""
@@ -343,6 +393,9 @@ def view(page: ft.Page) -> ft.Control:
         _estado["fluxo"]        = ""
         _estado["pessoa_obrig"] = False
         _estado["cat_nome"]     = ""
+        _editando_id["v"]        = None
+        btn_salvar.text          = "Salvar"
+        lbl_titulo_form.value    = "Nova Movimentação"
         tf_data.value = data_atual
 
     # ── Salvar ────────────────────────────────────────────────────────────
@@ -379,21 +432,35 @@ def view(page: ft.Page) -> ft.Control:
             sufixo = "(desconto 20% aplicado no holerite)"
             obs    = f"{obs} {sufixo}" if obs else sufixo
 
-        database.mov_extra_inserir(
-            data=_data_br_para_iso(tf_data.value),
-            id_categoria=id_cat,
-            fluxo=fluxo,
-            valor=valor,
-            id_pessoa=id_pessoa,
-            metodo=metodo,
-            obs=obs,
-        )
+        if _editando_id["v"] is not None:
+            database.mov_extra_atualizar(
+                _editando_id["v"],
+                data=_data_br_para_iso(tf_data.value),
+                id_categoria=id_cat,
+                fluxo=fluxo,
+                valor=valor,
+                id_pessoa=id_pessoa,
+                metodo=metodo,
+                obs=obs,
+            )
+            msg = "Movimentação atualizada!"
+        else:
+            database.mov_extra_inserir(
+                data=_data_br_para_iso(tf_data.value),
+                id_categoria=id_cat,
+                fluxo=fluxo,
+                valor=valor,
+                id_pessoa=id_pessoa,
+                metodo=metodo,
+                obs=obs,
+            )
+            msg = "Movimentação salva!"
 
         _limpar()
         _atualizar_tabela()
 
         page.overlay.append(ft.SnackBar(
-            content=ft.Text("Movimentação salva!"),
+            content=ft.Text(msg),
             bgcolor=ft.Colors.GREEN_700,
             open=True,
         ))
@@ -417,7 +484,7 @@ def view(page: ft.Page) -> ft.Control:
             content=ft.Column(
                 spacing=14,
                 controls=[
-                    ft.Text("Nova Movimentação", size=18, weight=ft.FontWeight.BOLD),
+                    lbl_titulo_form,
                     ft.Divider(height=1),
                     ft.Row([tf_data, btn_calendario], spacing=8),
                     dd_categoria,

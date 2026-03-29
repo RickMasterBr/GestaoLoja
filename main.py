@@ -236,10 +236,31 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
         except Exception as exc:
             import traceback
             traceback.print_exc()
+
+            def _tentar_novamente(e, _idx=indice):
+                carregar_view(_idx)
+
+            def _ir_pdv(e):
+                rail.selected_index = 0
+                carregar_view(0)
+                page.update()
+
             area_conteudo.content = ft.Column(controls=[
-                ft.Text("Erro ao carregar tela:", size=16, weight=ft.FontWeight.BOLD,
-                        color=ft.Colors.RED_400),
+                ft.Text("Erro ao carregar tela:", size=16,
+                        weight=ft.FontWeight.BOLD, color=ft.Colors.RED_400),
                 ft.Text(str(exc), color=ft.Colors.RED_300, selectable=True),
+                ft.Row(spacing=12, controls=[
+                    ft.ElevatedButton(
+                        "Tentar novamente",
+                        icon=ft.Icons.REFRESH,
+                        on_click=_tentar_novamente,
+                    ),
+                    ft.OutlinedButton(
+                        "Ir para PDV",
+                        icon=ft.Icons.POINT_OF_SALE,
+                        on_click=_ir_pdv,
+                    ),
+                ]),
             ])
         page.update()
 
@@ -259,6 +280,12 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
         on_change=lambda e: carregar_view(e.control.selected_index),
     )
 
+    rail_wrapper = ft.Container(
+        content=rail,
+        width=110,
+        # sem expand — largura fixa; altura delimitada pelo STRETCH do Row pai
+    )
+
     # ── Layout principal ──────────────────────────────────────────────────
     page.add(
         ft.Column(
@@ -269,11 +296,12 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
                 ft.Divider(height=1),
                 ft.Row(
                     controls=[
-                        rail,
+                        rail_wrapper,
                         ft.VerticalDivider(width=1),
                         area_conteudo,
                     ],
                     expand=True,
+                    spacing=0,
                     vertical_alignment=ft.CrossAxisAlignment.STRETCH,
                 ),
                 barra_status,

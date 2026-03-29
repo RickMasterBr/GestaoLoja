@@ -85,6 +85,16 @@ def view(page: ft.Page) -> ft.Control:
     # ── Dados de referência ───────────────────────────────────────────────
     canais_db  = database.canal_listar()
     metodos_db = database.metodo_pag_listar()
+    _nomes_fisicos = {
+        r["nome"] for r in metodos_db
+        if r["tipo"] in ("FISICO", "BENEFICIO", "CORTESIA")
+    }
+    _opts_metodos_fisicos = [
+        ft.dropdown.Option(r["nome"])
+        for r in metodos_db
+        if r["tipo"] in ("FISICO", "BENEFICIO", "CORTESIA")
+    ]
+    _opts_metodos_todos = [ft.dropdown.Option(r["nome"]) for r in metodos_db]
     pessoas_db = database.pessoa_listar(apenas_ativos=True)
     bairros_db = database.bairro_listar()
 
@@ -143,9 +153,10 @@ def view(page: ft.Page) -> ft.Control:
     col_pag    = ft.Column(spacing=6)
 
     def _nova_linha_pag():
+        eh_plataforma = bool(canal_info.get(dd_canal.value or "", {}).get("tem_comissao", 0))
         dd_m = ft.Dropdown(
             label="Método",
-            options=[ft.dropdown.Option(r["nome"]) for r in metodos_db],
+            options=_opts_metodos_todos if eh_plataforma else _opts_metodos_fisicos,
             expand=2,
         )
         tf_v = ft.TextField(
@@ -175,7 +186,7 @@ def view(page: ft.Page) -> ft.Control:
     _nova_linha_pag()   # começa com uma linha aberta
 
     btn_add_pag = ft.TextButton(
-        "+ Pagamento",
+        "Pagamento",
         icon=ft.Icons.ADD,
         on_click=lambda e: (_nova_linha_pag(), page.update()),
     )
@@ -386,11 +397,19 @@ def view(page: ft.Page) -> ft.Control:
 
     # ── Lógica dinâmica ───────────────────────────────────────────────────
 
+    def _atualizar_opts_metodos(eh_plataforma: bool):
+        opts = _opts_metodos_todos if eh_plataforma else _opts_metodos_fisicos
+        for dd_m, _, _ in _pag_itens:
+            dd_m.options = opts
+            if not eh_plataforma and dd_m.value and dd_m.value not in _nomes_fisicos:
+                dd_m.value = None
+
     def _on_canal_change(e):
         nome  = dd_canal.value or ""
         info  = canal_info.get(nome, {})
         requer_bairro = bool(info.get("requer_bairro", 0))
         eh_deles      = bool(info.get("entregador_plataforma", 0))
+        eh_plataforma = bool(info.get("tem_comissao", 0))
 
         linha_bairro.visible = requer_bairro
         # _Deles: entregador é da plataforma — taxa e repasse sempre zero, campos ocultos
@@ -402,6 +421,7 @@ def view(page: ft.Page) -> ft.Control:
         if not requer_bairro:
             dd_bairro.value  = None
 
+        _atualizar_opts_metodos(eh_plataforma)
         txt_erro.value = ""
         page.update()
 
@@ -430,6 +450,7 @@ def view(page: ft.Page) -> ft.Control:
         tf_valor.value       = ""
         dd_operador.value    = None
         dd_bairro.value      = None
+        page.update()  # força limpeza visual do dropdown antes de ocultar a linha
         tf_taxa.value        = "0.00"
         tf_repasse.value     = "0.00"
         tf_obs.value         = ""

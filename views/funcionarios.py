@@ -17,6 +17,13 @@ from relatorios.excel_gerador import excel_holerite
 # ── Constantes ────────────────────────────────────────────────────────────────
 
 TIPOS_ESCALA = ["TRABALHOU", "FALTA", "FOLGA", "FERIADO", "EXTRA"]
+_ABREV = {
+    "TRABALHOU": "Trab.",
+    "FALTA":     "Falta",
+    "FOLGA":     "Folga",
+    "FERIADO":   "Feriado",
+    "EXTRA":     "Extra",
+}
 DIA_SEMANA   = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 MESES = [
     (1, "Janeiro"),   (2, "Fevereiro"), (3, "Março"),    (4, "Abril"),
@@ -205,7 +212,7 @@ def view(page: ft.Page) -> ft.Control:
                 eh_fds = i_col >= 5
 
                 if dia == 0:
-                    celulas.append(ft.Container(width=136, height=78))
+                    celulas.append(ft.Container(width=136, height=90))
                     continue
 
                 data_iso   = f"{ano:04d}-{mes:02d}-{dia:02d}"
@@ -222,14 +229,16 @@ def view(page: ft.Page) -> ft.Control:
                     value=tipo_atual,
                     options=[
                         ft.dropdown.Option(key="", text="—"),
-                        *[ft.dropdown.Option(key=t, text=t) for t in TIPOS_ESCALA],
+                        *[ft.dropdown.Option(key=t, text=_ABREV.get(t, t))
+                          for t in TIPOS_ESCALA],
                     ],
                     on_select=_on_sel,
                     width=132,
+                    text_size=11,
                 )
 
                 celulas.append(ft.Container(
-                    width=136, height=78,
+                    width=136, height=90,
                     padding=ft.Padding.all(4),
                     bgcolor=_COR_FDS if eh_fds else None,
                     border_radius=4,

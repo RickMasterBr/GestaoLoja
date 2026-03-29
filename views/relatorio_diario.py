@@ -323,14 +323,23 @@ def view(page: ft.Page) -> ft.Control:
 
                 itens.append(_item(f"(+) Subsídio R$ {subsidio_pp:.2f}/ped", subsidio))
 
+                lucro_liquido = bruto_online - comissao_online - tx_trans + subsidio
+
                 if nome_plat == "99Food":
                     custo_log = plat.get("custo_logistico_maximo", 0.0)
                     itens.append(_item("(-) Custo Logístico (máx)", custo_log, vermelho=True))
-                    liquido -= custo_log
+                    lucro_liquido -= custo_log
+                    liquido       -= custo_log
 
+                cor_lucro   = ft.Colors.GREEN_400 if lucro_liquido >= 0 else ft.Colors.RED_400
+                label_lucro = "Lucro Líquido Estimado" if lucro_liquido >= 0 else "Prejuízo Estimado"
                 itens += [
                     ft.Divider(height=1),
-                    _item("Líquido Estimado", liquido, bold=True, verde=True),
+                    ft.Row(controls=[
+                        ft.Text(label_lucro, expand=True, weight=ft.FontWeight.BOLD, size=13),
+                        ft.Text(f"R$ {lucro_liquido:.2f}", weight=ft.FontWeight.BOLD,
+                                color=cor_lucro, size=13),
+                    ]),
                 ]
 
                 _dados_pdf["plataformas"][nome_plat] = {
@@ -718,8 +727,16 @@ def view(page: ft.Page) -> ft.Control:
         finally:
             conn.close()
 
+        linha_resumo = ft.Row(
+            spacing=16,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+            controls=[
+                ft.Container(expand=True, content=bloco1),
+                ft.Container(expand=True, content=bloco2),
+            ],
+        )
         col_relatorio.controls.clear()
-        col_relatorio.controls += [bloco1, bloco2, bloco3, bloco4, bloco5, bloco6]
+        col_relatorio.controls += [linha_resumo, bloco3, bloco4, bloco5, bloco6]
         page.update()
 
     # ── Exportar PDF ──────────────────────────────────────────────────────
@@ -810,6 +827,8 @@ def view(page: ft.Page) -> ft.Control:
 
     tf_data.on_submit = _gerar
 
+    _gerar()
+
     topo = ft.Card(content=ft.Container(
         padding=ft.Padding.all(16),
         content=ft.Row(
@@ -819,12 +838,6 @@ def view(page: ft.Page) -> ft.Control:
                 btn_gerar,
                 btn_exportar_excel,
                 btn_exportar_pdf,
-                ft.Text(
-                    "Selecione a data e clique em Gerar Relatório",
-                    color=ft.Colors.GREY_500,
-                    italic=True,
-                    size=13,
-                ),
             ],
             spacing=16,
         ),

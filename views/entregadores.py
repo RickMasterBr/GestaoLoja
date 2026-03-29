@@ -460,6 +460,8 @@ def view(page: ft.Page) -> ft.Control:
 
     tf_data.on_submit = _carregar
 
+    _carregar()
+
     return ft.Column(
         scroll=ft.ScrollMode.AUTO,
         expand=True,
@@ -480,10 +482,6 @@ def view(page: ft.Page) -> ft.Control:
                     style=ft.ButtonStyle(bgcolor=ft.Colors.RED_800, color=ft.Colors.WHITE),
                 ),
             ], spacing=8),
-            ft.Text(
-                "Selecione a data e clique em Carregar.",
-                color=ft.Colors.GREY_500, italic=True, size=12,
-            ),
             ft.Divider(height=1),
             col_conteudo,
         ],

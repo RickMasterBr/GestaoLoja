@@ -112,6 +112,16 @@ def view(page: ft.Page) -> ft.Control:
         "Deixe o PIN em branco para manter o atual. Defina um PIN para habilitar o login.",
         size=11, italic=True, color=ft.Colors.GREY_500,
     )
+    secao_acesso = ft.Column(
+        spacing=8,
+        visible=True,
+        controls=[
+            ft.Text("Acesso ao Sistema", size=13, weight=ft.FontWeight.BOLD),
+            ft.Divider(height=1),
+            ft.Row([dd_perfil, tf_pin, tf_pin_confirmar], spacing=12),
+            txt_pin_nota,
+        ],
+    )
 
     # Dados pessoais
     tf_dp_cpf     = ft.TextField(label="CPF",              width=160, hint_text="000.000.000-00")
@@ -139,7 +149,8 @@ def view(page: ft.Page) -> ft.Control:
         page.update()
 
     def _on_tipo_change(e):
-        if dd_p_tipo.value == "ENTREGADOR":
+        eh_entregador = dd_p_tipo.value == "ENTREGADOR"
+        if eh_entregador:
             dd_p_tiposal.value = "ENTREGADOR"
             linha_p_salario.visible  = False
             linha_p_diaria.visible   = True
@@ -150,6 +161,7 @@ def view(page: ft.Page) -> ft.Control:
                 linha_p_salario.visible  = True
                 linha_p_diaria.visible   = False
                 linha_p_holerite.visible = True
+        secao_acesso.visible = not eh_entregador
         page.update()
 
     dd_p_tipo.on_select    = _on_tipo_change
@@ -196,6 +208,7 @@ def view(page: ft.Page) -> ft.Control:
                     linha_p_salario.visible  = (ts == "FIXO")
                     linha_p_diaria.visible   = (ts in ("DIARIO", "ENTREGADOR"))
                     linha_p_holerite.visible = (ts != "ENTREGADOR")
+                    secao_acesso.visible     = (r["tipo"] != "ENTREGADOR")
                     txt_p_erro.value = ""
                     _carregar_dias_fixos(pid)
                     card_dias_fixos.visible = True
@@ -533,10 +546,7 @@ def view(page: ft.Page) -> ft.Control:
                     linha_p_diaria,
                     linha_p_holerite,
                     cb_p_ativo,
-                    ft.Text("Acesso ao Sistema", size=13, weight=ft.FontWeight.BOLD),
-                    ft.Divider(height=1),
-                    ft.Row([dd_perfil, tf_pin, tf_pin_confirmar], spacing=12),
-                    txt_pin_nota,
+                    secao_acesso,
                     txt_p_erro,
                     ft.Row([
                         ft.ElevatedButton("Salvar",   icon=ft.Icons.SAVE,  on_click=_salvar_pessoa),

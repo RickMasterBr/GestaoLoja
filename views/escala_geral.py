@@ -22,15 +22,15 @@ _DIAS_ABR = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 # Opções compactas para a grade; "_" = limpar (excluir escala)
 _OPCOES_GRADE = [
     ft.dropdown.Option("_",          text="—"),
-    ft.dropdown.Option("TRABALHOU",  text="T"),
-    ft.dropdown.Option("FALTA",      text="F"),
-    ft.dropdown.Option("FOLGA",      text="Fo"),
-    ft.dropdown.Option("FERIADO",    text="Fe"),
-    ft.dropdown.Option("EXTRA",      text="Ex"),
+    ft.dropdown.Option("TRABALHOU",  text="Trab."),
+    ft.dropdown.Option("FALTA",      text="Falta"),
+    ft.dropdown.Option("FOLGA",      text="Folga"),
+    ft.dropdown.Option("FERIADO",    text="Feriado"),
+    ft.dropdown.Option("EXTRA",      text="Extra"),
 ]
 
 _NOME_COL = 165   # px — coluna de nome na grade
-_DIA_COL  =  76   # px — coluna de cada dia
+_DIA_COL  =  90   # px — coluna de cada dia
 _CNT_COL  =  44   # px — colunas de contagem
 
 
@@ -633,6 +633,17 @@ def view(page: ft.Page) -> ft.Control:
                               _ent=tf_ent, _ini=tf_ini,
                               _fim=tf_fim, _sai=tf_sai,
                               _ico=icone):
+                if (_ent is None or _ent.value is None or
+                        _ini is None or _ini.value is None or
+                        _fim is None or _fim.value is None or
+                        _sai is None or _sai.value is None):
+                    page.overlay.append(ft.SnackBar(
+                        content=ft.Text("Preencha os horários antes de salvar."),
+                        bgcolor=ft.Colors.ORANGE_700,
+                        open=True,
+                    ))
+                    page.update()
+                    return
                 d_iso = _iso(tf_data_ponto.value)
                 ent   = _ent.value.strip()
                 ini   = _ini.value.strip()

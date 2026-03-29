@@ -149,6 +149,7 @@ def view(page: ft.Page) -> ft.Control:
         card1_col.controls.extend(c1)
 
         # Card 2 — Status do Caixa
+        modo_cego = database.config_obter("fechamento_cego", "0") == "1"
         database.fluxo_caixa_abrir(hoje)
         fc   = database.fluxo_caixa_buscar(hoje)
         calc = database.fluxo_caixa_recalcular(hoje)
@@ -160,16 +161,20 @@ def view(page: ft.Page) -> ft.Control:
         real     = fc["saldo_gaveta_real"] if fc else 0.0
         dif      = real - saldo
 
-        card2_col.controls.clear()
-        card2_col.controls.extend([
+        linhas_caixa = [
             _linha("Troco inicial:",    f"R$ {troco:.2f}"),
             _linha("Entradas espécie:", f"R$ {entradas:.2f}"),
             _linha("Saídas espécie:",   f"R$ {saidas:.2f}"),
             ft.Divider(height=1),
             _linha("Saldo teórico:",    f"R$ {saldo:.2f}", bold=True),
-            _linha("Diferença:",        f"R$ {dif:.2f}",
-                   bold=True, color=_cor_dif(dif)),
-        ])
+        ]
+        if not modo_cego:
+            linhas_caixa.append(
+                _linha("Diferença:", f"R$ {dif:.2f}", bold=True, color=_cor_dif(dif))
+            )
+
+        card2_col.controls.clear()
+        card2_col.controls.extend(linhas_caixa)
 
     # ── Card Presença de Hoje ───────────────────────────────────────────────────
 
@@ -191,7 +196,7 @@ def view(page: ft.Page) -> ft.Control:
             for e in database.escala_listar_por_data(hoje)
         }
 
-        # 4. Pontos de entrada já registrados hoje: id_pessoa -> hora_entrada
+        # 4. Pontos já registrados hoje: id_pessoa -> (hora_entrada, hora_saida)
         todos = sorted(
             database.pessoa_listar(apenas_ativos=True),
             key=lambda p: (0 if p["tipo"] == "INTERNO" else 1, p["nome"]),
@@ -199,8 +204,10 @@ def view(page: ft.Page) -> ft.Control:
         pontos_hoje: dict = {}
         for pessoa in todos:
             pt = database.ponto_buscar(hoje, pessoa["id"])
-            if pt and pt["hora_entrada"]:
-                pontos_hoje[pessoa["id"]] = pt["hora_entrada"]
+            pontos_hoje[pessoa["id"]] = (
+                (pt["hora_entrada"] or "") if pt else "",
+                (pt["hora_saida"]   or "") if pt else "",
+            )
 
         presenca_col.controls.clear()
 
@@ -223,8 +230,8 @@ def view(page: ft.Page) -> ft.Control:
                 "Status", size=12, weight=ft.FontWeight.BOLD,
                 color=None,
             )),
-            ft.Container(expand=2, content=ft.Text(
-                "Entrada", size=12, weight=ft.FontWeight.BOLD,
+            ft.Container(expand=3, content=ft.Text(
+                "Entrada / Saída", size=12, weight=ft.FontWeight.BOLD,
                 color=None,
             )),
             ft.Container(expand=1),
@@ -243,17 +250,36 @@ def view(page: ft.Page) -> ft.Control:
                 options=[ft.dropdown.Option(t) for t in _TIPOS_ESCALA],
             )
 
+            ent_ini, ent_sai = pontos_hoje.get(pid, ("", ""))
             tf = ft.TextField(
-                value=pontos_hoje.get(pid) or horario_fixo.get(pid, ""),
-                width=100,
-                hint_text="HH:MM",
+                value=ent_ini or horario_fixo.get(pid, ""),
+                width=80,
+                hint_text="Entrada",
+                text_align=ft.TextAlign.CENTER,
+            )
+            tf_saida = ft.TextField(
+                value=ent_sai,
+                width=80,
+                hint_text="Saída",
+                text_align=ft.TextAlign.CENTER,
             )
 
             # Container do botão — conteúdo trocado in-place após salvar
             btn_container = ft.Container(expand=1)
 
+            def _validar_hora(hora: str) -> bool:
+                if not hora:
+                    return True
+                partes = hora.split(":")
+                return (
+                    len(partes) == 2
+                    and all(p.isdigit() for p in partes)
+                    and 0 <= int(partes[0]) <= 23
+                    and 0 <= int(partes[1]) <= 59
+                )
+
             def _registrar(e, _pid=pid, _nome=nome, _dd=dd, _tf=tf,
-                           _btn=btn_container):
+                           _tf_sai=tf_saida, _btn=btn_container):
                 tipo = _dd.value
                 # Validação 1: status obrigatório
                 if not tipo:
@@ -263,20 +289,14 @@ def view(page: ft.Page) -> ft.Control:
                     ))
                     page.update()
                     return
-                hora = _tf.value.strip()
-                # Validação 2: formato HH:MM quando TRABALHOU + hora preenchida
-                if tipo == "TRABALHOU" and hora:
-                    partes = hora.split(":")
-                    hhmm_ok = (
-                        len(partes) == 2
-                        and all(p.isdigit() for p in partes)
-                        and 0 <= int(partes[0]) <= 23
-                        and 0 <= int(partes[1]) <= 59
-                    )
-                    if not hhmm_ok:
+                hora_ent = _tf.value.strip()
+                hora_sai = _tf_sai.value.strip()
+                # Validação 2: formato HH:MM
+                for hora, label in ((hora_ent, "entrada"), (hora_sai, "saída")):
+                    if hora and not _validar_hora(hora):
                         page.overlay.append(ft.SnackBar(
                             content=ft.Text(
-                                f"Horário inválido para {_nome}. "
+                                f"Horário de {label} inválido para {_nome}. "
                                 "Use o formato HH:MM."
                             ),
                             bgcolor=ft.Colors.ORANGE_700, open=True,
@@ -285,9 +305,12 @@ def view(page: ft.Page) -> ft.Control:
                         return
                 # Salvar escala
                 database.escala_registrar(hoje, _pid, tipo)
-                # Salvar ponto de entrada apenas se TRABALHOU + hora válida
-                if tipo == "TRABALHOU" and hora:
-                    database.ponto_registrar_entrada(hoje, _pid, hora)
+                # Salvar pontos se TRABALHOU
+                if tipo == "TRABALHOU":
+                    if hora_ent:
+                        database.ponto_registrar_entrada(hoje, _pid, hora_ent)
+                    if hora_sai:
+                        database.ponto_registrar_saida(hoje, _pid, hora_sai)
                 # Feedback visual: troca o botão pelo ícone de check
                 _btn.content = ft.Icon(
                     ft.Icons.CHECK_CIRCLE,
@@ -337,7 +360,10 @@ def view(page: ft.Page) -> ft.Control:
                         ],
                     )),
                     ft.Container(expand=3, content=dd),
-                    ft.Container(expand=2, content=tf),
+                    ft.Container(expand=3, content=ft.Row(
+                        spacing=6,
+                        controls=[tf, tf_saida],
+                    )),
                     btn_container,
                 ],
             ))
