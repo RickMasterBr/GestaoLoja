@@ -5,6 +5,7 @@ Gerencia todas as tabelas SQLite, funções CRUD e dados iniciais do aplicativo.
 
 import hashlib
 import os
+import shutil
 import sqlite3
 
 # ─────────────────────────────────────────────
@@ -20,13 +21,50 @@ LOCAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "loja_caix
 
 
 def _encontrar_banco():
+    # Passo 1: arquivo .db já existe em algum caminho do Drive → usa direto
     for caminho in CAMINHOS_POSSIVEIS:
-        if os.path.exists(os.path.dirname(caminho)):
+        if os.path.exists(caminho):
             return caminho
+
+    # Passo 2: nenhum .db no Drive, mas a pasta do primeiro caminho existe
+    # e o banco local tem dados → copia local → Drive antes de retornar
+    primeiro_drive = CAMINHOS_POSSIVEIS[0]
+    pasta_drive = os.path.dirname(primeiro_drive)
+    if os.path.exists(pasta_drive) and os.path.exists(LOCAL_PATH):
+        shutil.copy2(LOCAL_PATH, primeiro_drive)
+        print(f"[database] Banco local copiado para o Drive: {primeiro_drive}")
+        for sufixo in ("-wal", "-shm"):
+            origem = LOCAL_PATH + sufixo
+            if os.path.exists(origem):
+                shutil.copy2(origem, primeiro_drive + sufixo)
+                print(f"[database] Arquivo auxiliar copiado: {primeiro_drive + sufixo}")
+        return primeiro_drive
+
+    # Passo 3: fallback seguro — usa banco local
     return LOCAL_PATH
 
 
 DB_PATH = _encontrar_banco()
+
+
+def get_db_path() -> str:
+    """
+    Retorna o caminho ativo do banco de dados com detecção lazy.
+
+    Na primeira chamada usa DB_PATH resolvido no import. Em chamadas subsequentes,
+    se o caminho atual ainda for LOCAL_PATH e um dos caminhos do Drive tiver o
+    arquivo .db disponível, atualiza DB_PATH e retorna o novo caminho.
+    Isso permite que o Drive montado após a inicialização seja detectado
+    automaticamente na próxima conexão aberta.
+    """
+    global DB_PATH
+    if DB_PATH == LOCAL_PATH:
+        for caminho in CAMINHOS_POSSIVEIS:
+            if os.path.exists(caminho):
+                DB_PATH = caminho
+                print(f"[database] Drive detectado após inicialização. Usando: {DB_PATH}")
+                break
+    return DB_PATH
 
 
 # ══════════════════════════════════════════════
@@ -109,9 +147,12 @@ def banco_status() -> dict:
 
 def conectar() -> sqlite3.Connection:
     """Retorna uma conexão com WAL mode ativado e foreign keys habilitadas."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db_path(), timeout=10)
     conn.row_factory = sqlite3.Row          # acesso por nome de coluna
-    conn.execute("PRAGMA journal_mode=WAL") # WAL mode: melhor concorrência
+    resultado = conn.execute("PRAGMA journal_mode=WAL").fetchone()  # WAL mode: melhor concorrência
+    if resultado[0].upper() != "WAL":
+        print(f"[AVISO] WAL mode não ativado em {DB_PATH}. Modo atual: {resultado[0]}")
+    conn.execute("PRAGMA busy_timeout=8000")  # 8 s de espera no nível do engine SQLite
     conn.execute("PRAGMA foreign_keys=ON")  # integridade referencial
     return conn
 
@@ -130,6 +171,7 @@ def inicializar_banco():
         _migrar_fornecedor_estoque(conn)
         _migrar_fornecedor_extras(conn)
         _migrar_acesso(conn)
+        _migrar_fluxo_neutro(conn)
         conn.commit()
         _popular_dados_iniciais(conn)
         conn.commit()
@@ -206,7 +248,7 @@ def _criar_tabelas(conn: sqlite3.Connection):
     CREATE TABLE IF NOT EXISTS cad_categorias_extra (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         descricao       TEXT    NOT NULL UNIQUE,
-        fluxo           TEXT    NOT NULL CHECK(fluxo IN ('ENTRADA','SAIDA')),
+        fluxo           TEXT    NOT NULL CHECK(fluxo IN ('ENTRADA','SAIDA','NEUTRO')),
         usa_funcionario INTEGER NOT NULL DEFAULT 0  -- 1 se precisa vincular pessoa
     );
 
@@ -246,7 +288,7 @@ def _criar_tabelas(conn: sqlite3.Connection):
         data         TEXT    NOT NULL,
         id_pessoa    INTEGER REFERENCES cad_pessoas(id) ON DELETE SET NULL,
         id_categoria INTEGER NOT NULL REFERENCES cad_categorias_extra(id),
-        fluxo        TEXT    NOT NULL CHECK(fluxo IN ('ENTRADA','SAIDA')),
+        fluxo        TEXT    NOT NULL CHECK(fluxo IN ('ENTRADA','SAIDA','NEUTRO')),
         metodo       TEXT,           -- nome do método de pagamento utilizado
         valor        REAL    NOT NULL DEFAULT 0,
         obs          TEXT
@@ -575,6 +617,62 @@ def _migrar_fornecedor_extras(conn: sqlite3.Connection):
             "ALTER TABLE movimentacoes_extras "
             "ADD COLUMN id_fornecedor INTEGER REFERENCES cad_fornecedores(id) ON DELETE SET NULL"
         )
+
+
+def _migrar_fluxo_neutro(conn: sqlite3.Connection):
+    """
+    Atualiza o CHECK constraint de fluxo nas tabelas cad_categorias_extra e
+    movimentacoes_extras para aceitar 'NEUTRO', e corrige os dados das categorias
+    "Corrida Extra" e "Reentrega". Idempotente: verifica o schema atual antes de agir.
+    SQLite não suporta ALTER COLUMN, por isso ambas as tabelas são recriadas.
+    Deve ser chamada APÓS _migrar_fornecedor_extras (depende de id_fornecedor existir).
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='cad_categorias_extra'"
+    ).fetchone()
+    if row and "'NEUTRO'" in (row["sql"] or ""):
+        return  # ambas as tabelas já foram migradas
+
+    # executescript emite COMMIT implícito antes de rodar — seguro neste ponto.
+    conn.executescript("""
+    PRAGMA foreign_keys = OFF;
+
+    -- Recriar cad_categorias_extra com 'NEUTRO' no CHECK
+    CREATE TABLE cad_categorias_extra_new (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        descricao       TEXT    NOT NULL UNIQUE,
+        fluxo           TEXT    NOT NULL CHECK(fluxo IN ('ENTRADA','SAIDA','NEUTRO')),
+        usa_funcionario INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO cad_categorias_extra_new SELECT * FROM cad_categorias_extra;
+    DROP TABLE cad_categorias_extra;
+    ALTER TABLE cad_categorias_extra_new RENAME TO cad_categorias_extra;
+
+    -- Corrige os registros que devem ser NEUTRO
+    UPDATE cad_categorias_extra SET fluxo = 'NEUTRO'
+    WHERE descricao IN ('Corrida Extra', 'Reentrega') AND fluxo != 'NEUTRO';
+
+    -- Recriar movimentacoes_extras com 'NEUTRO' no CHECK
+    -- (esta é a tabela onde o INSERT com fluxo='NEUTRO' realmente falha)
+    CREATE TABLE movimentacoes_extras_new (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        data         TEXT    NOT NULL,
+        id_pessoa    INTEGER REFERENCES cad_pessoas(id) ON DELETE SET NULL,
+        id_categoria INTEGER NOT NULL REFERENCES cad_categorias_extra(id),
+        fluxo        TEXT    NOT NULL CHECK(fluxo IN ('ENTRADA','SAIDA','NEUTRO')),
+        metodo       TEXT,
+        valor        REAL    NOT NULL DEFAULT 0,
+        obs          TEXT,
+        id_fornecedor INTEGER REFERENCES cad_fornecedores(id) ON DELETE SET NULL
+    );
+    INSERT INTO movimentacoes_extras_new
+        SELECT id, data, id_pessoa, id_categoria, fluxo, metodo, valor, obs, id_fornecedor
+        FROM movimentacoes_extras;
+    DROP TABLE movimentacoes_extras;
+    ALTER TABLE movimentacoes_extras_new RENAME TO movimentacoes_extras;
+
+    PRAGMA foreign_keys = ON;
+    """)
 
 
 # ══════════════════════════════════════════════
