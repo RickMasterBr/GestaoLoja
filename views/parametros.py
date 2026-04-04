@@ -101,6 +101,7 @@ def view(page: ft.Page) -> ft.Control:
             ft.dropdown.Option("OPERADOR"),
             ft.dropdown.Option("GERENTE"),
             ft.dropdown.Option("ADMIN"),
+            ft.dropdown.Option(key="SEM_ACESSO", text="Sem Acesso ao Sistema"),
         ],
         value="OPERADOR",
     )

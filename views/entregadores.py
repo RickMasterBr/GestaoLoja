@@ -124,12 +124,14 @@ def view(page: ft.Page) -> ft.Control:
         conn = database.conectar()
         try:
             id_cat_pagamento = _id_categoria(conn, "Pagamento")
+            sessao   = database.sessao_obter()
+            eh_admin = sessao.get("perfil_acesso") == "ADMIN"
 
             # ══════════════════════════════════════════════════════════════
             #  BLOCO 1 — Painel do Dia
             # ══════════════════════════════════════════════════════════════
             colunas_b1 = [
-                "Nome", "Entregas", "Soma Taxas", "Diária",
+                "Nome", "Entregas", "Soma Repasses", "Diária",
                 "Corridas Extra", "Vales", "Total a Pagar", "Ação",
             ]
             linhas_b1 = []
@@ -149,12 +151,109 @@ def view(page: ft.Page) -> ft.Control:
                     ja_pago = row_chk[0] > 0
 
                 if ja_pago:
-                    btn_pagar = ft.TextButton(
+                    _btn_pago = ft.TextButton(
                         "Pago",
                         icon=ft.Icons.CHECK,
                         disabled=True,
                         style=ft.ButtonStyle(color=ft.Colors.GREY_500),
                     )
+                    if eh_admin:
+                        def _estornar_pagamento(ev,
+                                                _id=ent["id"],
+                                                _nome=ent["nome"],
+                                                _total=r["total_liquido"],
+                                                _data=data_iso,
+                                                _data_br=data_br,
+                                                _id_cat=id_cat_pagamento):
+                            def _executar_estorno():
+                                conn2 = database.conectar()
+                                try:
+                                    row_pag = conn2.execute(
+                                        """SELECT id, valor FROM movimentacoes_extras
+                                           WHERE data = ? AND id_pessoa = ? AND id_categoria = ?
+                                           ORDER BY id DESC LIMIT 1""",
+                                        (_data, _id, _id_cat)
+                                    ).fetchone()
+                                finally:
+                                    conn2.close()
+
+                                if not row_pag:
+                                    page.overlay.append(ft.SnackBar(
+                                        content=ft.Text("Registro de pagamento não encontrado."),
+                                        bgcolor=ft.Colors.RED_700, open=True,
+                                    ))
+                                    page.update()
+                                    return
+
+                                database.mov_extra_excluir(row_pag["id"])
+                                database.log_registrar(
+                                    acao="ESTORNO_PAGAMENTO_ENTREGADOR",
+                                    tabela="movimentacoes_extras",
+                                    id_registro=row_pag["id"],
+                                    descricao=f"Estorno de pagamento — {_nome}: "
+                                              f"R$ {row_pag['valor']:.2f} | Data: {_data_br}",
+                                    valor_antes=f"valor={row_pag['valor']}, data={_data}",
+                                    usuario=sessao.get("nome"),
+                                )
+                                page.overlay.append(ft.SnackBar(
+                                    content=ft.Text(
+                                        f"Pagamento de {_nome} estornado. "
+                                        f"Status voltou para 'Registrar'."
+                                    ),
+                                    bgcolor=ft.Colors.ORANGE_700, open=True,
+                                ))
+                                _carregar()
+
+                            dlg = ft.AlertDialog(
+                                modal=True,
+                                title=ft.Text("Confirmar Estorno"),
+                                content=ft.Text(
+                                    f"Deseja estornar o pagamento de {_nome} "
+                                    f"(R$ {_total:.2f}) em {_data_br}?\n\n"
+                                    f"O registro será removido e o status voltará "
+                                    f"para não pago."
+                                ),
+                                actions=[
+                                    ft.TextButton("Cancelar", on_click=lambda e: (
+                                        setattr(dlg, "open", False), page.update()
+                                    )),
+                                    ft.ElevatedButton(
+                                        "Confirmar Estorno",
+                                        on_click=lambda e: (
+                                            setattr(dlg, "open", False),
+                                            page.update(),
+                                            _executar_estorno()
+                                        ),
+                                        style=ft.ButtonStyle(
+                                            bgcolor=ft.Colors.ORANGE_700,
+                                            color=ft.Colors.WHITE,
+                                        ),
+                                    ),
+                                ],
+                                actions_alignment=ft.MainAxisAlignment.END,
+                            )
+                            page.overlay.append(dlg)
+                            dlg.open = True
+                            page.update()
+
+                        btn_pagar = ft.Row(
+                            [
+                                _btn_pago,
+                                ft.TextButton(
+                                    "Estornar",
+                                    icon=ft.Icons.UNDO,
+                                    on_click=_estornar_pagamento,
+                                    style=ft.ButtonStyle(
+                                        bgcolor=ft.Colors.ORANGE_900,
+                                        color=ft.Colors.WHITE,
+                                    ),
+                                ),
+                            ],
+                            tight=True,
+                            spacing=4,
+                        )
+                    else:
+                        btn_pagar = _btn_pago
                 else:
                     def _registrar_pagamento(ev,
                                              _id=ent["id"],
@@ -243,14 +342,35 @@ def view(page: ft.Page) -> ft.Control:
             """, (data_iso,)).fetchone()
             total_taxas_dia = row_taxas_dia["total"] if row_taxas_dia else 0.0
 
+            row_repasse_dia = conn.execute("""
+                SELECT COALESCE(SUM(p.repasse_entregador), 0) AS total
+                FROM vendas_pedidos p
+                LEFT JOIN cad_canais c ON c.nome = p.canal
+                WHERE p.data = ?
+                  AND COALESCE(c.entregador_plataforma, 0) = 0
+            """, (data_iso,)).fetchone()
+            total_repasse_dia = row_repasse_dia["total"] if row_repasse_dia else 0.0
+
             bloco1 = _card(
                 f"Painel do Dia — {data_br}",
                 _tabela(colunas_b1, _semvazio(linhas_b1, len(colunas_b1))),
                 ft.Divider(height=1),
-                ft.Text(
-                    f"Total de taxas de entrega recebidas no dia: R$ {total_taxas_dia:.2f}",
-                    size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.TEAL_300,
-                ),
+                ft.Column(spacing=4, controls=[
+                    ft.Text(
+                        f"Taxas recebidas por clientes no dia: R$ {total_taxas_dia:.2f}",
+                        size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.TEAL_300,
+                    ),
+                    ft.Text(
+                        f"Total pago aos entregadores no dia: R$ {total_repasse_dia:.2f}",
+                        size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_300,
+                    ),
+                    ft.Text(
+                        f"Saldo de taxas: R$ {total_taxas_dia - total_repasse_dia:.2f}",
+                        size=13, weight=ft.FontWeight.BOLD,
+                        color=ft.Colors.GREEN_400 if total_taxas_dia >= total_repasse_dia
+                              else ft.Colors.RED_400,
+                    ),
+                ]),
             )
 
             # ══════════════════════════════════════════════════════════════
@@ -344,18 +464,39 @@ def view(page: ft.Page) -> ft.Control:
             """, (ini_iso, data_iso)).fetchone()
             total_taxas_sem = row_taxas_sem["total"] if row_taxas_sem else 0.0
 
+            row_repasse_sem = conn.execute("""
+                SELECT COALESCE(SUM(p.repasse_entregador), 0) AS total
+                FROM vendas_pedidos p
+                LEFT JOIN cad_canais c ON c.nome = p.canal
+                WHERE p.data BETWEEN ? AND ?
+                  AND COALESCE(c.entregador_plataforma, 0) = 0
+            """, (ini_iso, data_iso)).fetchone()
+            total_repasse_sem = row_repasse_sem["total"] if row_repasse_sem else 0.0
+
             colunas_b2 = [
-                "Nome", "Entregas", "Soma Taxas", "Diárias",
+                "Nome", "Entregas", "Soma Repasses", "Diárias",
                 "Corridas Extra", "Vales", "Total",
             ]
             bloco2 = _card(
                 f"Semana: {ini_br} a {fim_br}",
                 _tabela(colunas_b2, _semvazio(linhas_b2, len(colunas_b2))),
                 ft.Divider(height=1),
-                ft.Text(
-                    f"Total de taxas de entrega recebidas na semana: R$ {total_taxas_sem:.2f}",
-                    size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.TEAL_300,
-                ),
+                ft.Column(spacing=4, controls=[
+                    ft.Text(
+                        f"Taxas recebidas por clientes na semana: R$ {total_taxas_sem:.2f}",
+                        size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.TEAL_300,
+                    ),
+                    ft.Text(
+                        f"Total pago aos entregadores na semana: R$ {total_repasse_sem:.2f}",
+                        size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_300,
+                    ),
+                    ft.Text(
+                        f"Saldo de taxas: R$ {total_taxas_sem - total_repasse_sem:.2f}",
+                        size=13, weight=ft.FontWeight.BOLD,
+                        color=ft.Colors.GREEN_400 if total_taxas_sem >= total_repasse_sem
+                              else ft.Colors.RED_400,
+                    ),
+                ]),
             )
 
             # ══════════════════════════════════════════════════════════════
@@ -374,6 +515,52 @@ def view(page: ft.Page) -> ft.Control:
                    ORDER BY me.id""",
                 (data_iso,)
             ).fetchall()
+
+            # ══════════════════════════════════════════════════════════════
+            #  BLOCO 4 — Detalhamento Diário por Entregador (semana)
+            # ══════════════════════════════════════════════════════════════
+            _detalhe_semanal = []
+            for ent in entregadores:
+                try:
+                    dv = ent["diaria_valor"] or 0.0
+                    ts = ent["tipo_salario"]
+                    if ts == "ENTREGADOR" and dv == 0.0:
+                        dv = 40.0
+                except (IndexError, KeyError):
+                    dv = 40.0
+
+                rows_por_dia = conn.execute("""
+                    SELECT
+                        p.data,
+                        COUNT(*) AS entregas,
+                        COALESCE(SUM(p.repasse_entregador), 0) AS soma_repasses,
+                        COALESCE(SUM(p.taxa_entrega), 0) AS soma_taxas_clientes
+                    FROM vendas_pedidos p
+                    LEFT JOIN cad_canais c ON c.nome = p.canal
+                    WHERE p.data BETWEEN ? AND ?
+                      AND p.id_operador = ?
+                      AND p.repasse_entregador > 0
+                      AND COALESCE(c.entregador_plataforma, 0) = 0
+                    GROUP BY p.data
+                    ORDER BY p.data
+                """, (ini_iso, data_iso, ent["id"])).fetchall()
+
+                if not rows_por_dia:
+                    continue
+
+                _detalhe_semanal.append({
+                    "nome": ent["nome"],
+                    "dias": [
+                        {
+                            "data":           r["data"],
+                            "entregas":       r["entregas"],
+                            "repasses":       r["soma_repasses"],
+                            "taxas_clientes": r["soma_taxas_clientes"],
+                            "diaria":         dv if r["entregas"] > 0 else 0.0,
+                        }
+                        for r in rows_por_dia
+                    ],
+                })
 
         finally:
             conn.close()
@@ -395,6 +582,81 @@ def view(page: ft.Page) -> ft.Control:
             ),
         )
 
+        def _dia_br(iso):
+            try:
+                return f"{iso[8:10]}/{iso[5:7]}"
+            except Exception:
+                return iso
+
+        secoes_b4 = []
+        if not _detalhe_semanal:
+            secoes_b4.append(
+                ft.Text("Sem dados para o período selecionado.",
+                        italic=True, color=ft.Colors.GREY_500)
+            )
+        else:
+            for ent_det in _detalhe_semanal:
+                dias = ent_det["dias"]
+                tot_entregas = sum(d["entregas"]       for d in dias)
+                tot_repasses = sum(d["repasses"]       for d in dias)
+                tot_taxas    = sum(d["taxas_clientes"] for d in dias)
+                tot_diaria   = sum(d["diaria"]         for d in dias)
+
+                tot_total_pag = sum(d["repasses"] + d["diaria"] for d in dias)
+
+                linhas_det = []
+                for d in dias:
+                    total_dia = d["repasses"] + d["diaria"]
+                    linhas_det.append(ft.DataRow(cells=[
+                        ft.DataCell(ft.Text(_dia_br(d["data"]))),
+                        ft.DataCell(ft.Text(str(d["entregas"]))),
+                        ft.DataCell(ft.Text(f"R$ {d['repasses']:.2f}")),
+                        ft.DataCell(ft.Text(f"R$ {d['diaria']:.2f}")),
+                        ft.DataCell(ft.Text(
+                            f"R$ {total_dia:.2f}",
+                            weight=ft.FontWeight.BOLD,
+                            color=ft.Colors.GREEN_300,
+                        )),
+                        ft.DataCell(ft.Text(
+                            f"R$ {d['taxas_clientes']:.2f}",
+                            color=ft.Colors.GREY_500,
+                        )),
+                    ]))
+                linhas_det.append(ft.DataRow(
+                    color=ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
+                    cells=[
+                        ft.DataCell(ft.Text("TOTAL", weight=ft.FontWeight.BOLD)),
+                        ft.DataCell(ft.Text(str(tot_entregas), weight=ft.FontWeight.BOLD)),
+                        ft.DataCell(ft.Text(f"R$ {tot_repasses:.2f}", weight=ft.FontWeight.BOLD)),
+                        ft.DataCell(ft.Text(f"R$ {tot_diaria:.2f}", weight=ft.FontWeight.BOLD)),
+                        ft.DataCell(ft.Text(f"R$ {tot_total_pag:.2f}",
+                                            weight=ft.FontWeight.BOLD,
+                                            color=ft.Colors.GREEN_300)),
+                        ft.DataCell(ft.Text(f"R$ {tot_taxas:.2f}",
+                                            weight=ft.FontWeight.BOLD,
+                                            color=ft.Colors.GREY_500)),
+                    ],
+                ))
+
+                secoes_b4.append(ft.Column(
+                    spacing=6,
+                    controls=[
+                        ft.Text(ent_det["nome"],
+                                weight=ft.FontWeight.BOLD, size=14),
+                        _tabela(
+                            ["Data", "Entregas", "Repasse/Entregador",
+                             "Diária", "Total Pagamento", "Taxa/Cliente (info)"],
+                            linhas_det,
+                        ),
+                        ft.Divider(height=1),
+                    ],
+                ))
+
+        bloco4 = _card(
+            f"Detalhamento Diário — {ini_br} a {fim_br}",
+            *secoes_b4,
+        )
+
         _dados_export.update({
             "data_br": data_br,
             "dia": _dia_lista,
@@ -402,7 +664,7 @@ def view(page: ft.Page) -> ft.Control:
         })
 
         col_conteudo.controls.clear()
-        col_conteudo.controls += [bloco1, bloco2, bloco3]
+        col_conteudo.controls += [bloco1, bloco2, bloco3, bloco4]
         page.update()
 
     # ── Layout ────────────────────────────────────────────────────────────

@@ -325,7 +325,7 @@ def view(page: ft.Page) -> ft.Control:
             ),
             ft.Text("|", color=ft.Colors.GREY_600),
             ft.Text(
-                f"Neutro (corridas/reentregas): R$ {total_neutro:.2f}",
+                f"Neutro (corridas/reentregas/consumos): R$ {total_neutro:.2f}",
                 color=ft.Colors.GREY_500,
                 weight=ft.FontWeight.BOLD,
                 size=14,
@@ -486,7 +486,11 @@ def view(page: ft.Page) -> ft.Control:
                 controls=[
                     lbl_titulo_form,
                     ft.Divider(height=1),
-                    ft.Row([tf_data, btn_calendario], spacing=8),
+                    ft.Row([tf_data, btn_calendario, ft.IconButton(
+                        icon=ft.Icons.REFRESH,
+                        tooltip="Atualizar lista",
+                        on_click=lambda e: (_atualizar_tabela(), page.update()),
+                    )], spacing=8),
                     dd_categoria,
                     linha_pessoa,
                     linha_metodo,

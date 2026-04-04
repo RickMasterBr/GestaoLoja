@@ -4,6 +4,7 @@ Configura a janela, o NavigationRail lateral e carrega as views sob demanda.
 """
 
 import flet as ft
+from datetime import date
 
 import database
 from views import (
@@ -125,6 +126,45 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
         ("…" + _st["caminho"][-40:]) if len(_st["caminho"]) > 40 else _st["caminho"]
     )
 
+    def _sincronizar(e):
+        btn_sync.disabled = True
+        btn_sync.icon = ft.Icons.HOURGLASS_EMPTY
+        page.update()
+
+        resultado = database.sincronizar_banco()
+
+        if resultado["sucesso"]:
+            btn_sync.tooltip = (
+                f"Última sincronização: {resultado['timestamp']} "
+                f"({resultado['pedidos']} pedidos no banco)"
+            )
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text(
+                    f"Banco sincronizado às {resultado['timestamp']}. "
+                    f"Atualize a tela atual para ver os novos dados."
+                ),
+                bgcolor=ft.Colors.GREEN_700,
+                open=True,
+            ))
+        else:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text(
+                    f"Erro ao sincronizar: {resultado.get('erro', 'desconhecido')}"
+                ),
+                bgcolor=ft.Colors.RED_700,
+                open=True,
+            ))
+
+        btn_sync.disabled = False
+        btn_sync.icon = ft.Icons.SYNC
+        page.update()
+
+    btn_sync = ft.IconButton(
+        icon=ft.Icons.SYNC,
+        tooltip="Sincronizar banco com Google Drive",
+        on_click=_sincronizar,
+    )
+
     barra_status = ft.Container(
         height=28,
         bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.WHITE),
@@ -139,6 +179,7 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
                 ft.Text(f"{_st['tamanho_kb']} KB", size=11, color=ft.Colors.GREY_500),
                 ft.Text("|", size=11, color=ft.Colors.GREY_600),
                 ft.Text(f"Atualizado: {_st['modificado']}", size=11, color=ft.Colors.GREY_500),
+                btn_sync,
                 ft.Container(expand=True),
                 ft.TextButton(
                     _caminho_resumido,
@@ -169,9 +210,216 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
             btn_tema.icon = ft.Icons.LIGHT_MODE
         page.update()
 
-    # ── Botão de logout ───────────────────────────────────────────────────
+    # ── Sessão e perfil ───────────────────────────────────────────────────
     sessao       = database.sessao_obter()
     nome_usuario = sessao["nome"] or "Convidado"
+    eh_operador  = sessao.get("perfil_acesso") == "OPERADOR"
+
+    # ── Encerramento de Turno (apenas OPERADOR) ────────────────────────��──
+
+    def _abrir_encerramento_turno(e):
+        _estado = {"etapa": 1, "data_iso": None}
+
+        tf_data_turno = ft.TextField(
+            label="Data do turno",
+            value=date.today().strftime("%d/%m/%Y"),
+            width=160,
+            text_align=ft.TextAlign.CENTER,
+            hint_text="DD/MM/AAAA",
+        )
+        cb1 = ft.Checkbox(
+            label="Lancei todos os pedidos do dia na data correta, "
+                  "sem deixar nenhum de fora ou na data errada.",
+            value=False,
+        )
+        cb2 = ft.Checkbox(
+            label="Registrei todas as movimentações do dia: vales, "
+                  "consumos, sangrias e outras entradas ou saídas.",
+            value=False,
+        )
+        cb3 = ft.Checkbox(
+            label="Gerei o relatório PDF do dia e enviei ao gerente "
+                  "ou responsável.",
+            value=False,
+        )
+        txt_etapa1_erro = ft.Text("", color=ft.Colors.RED_400, size=12)
+
+        content_col = ft.Column(
+            tight=True, spacing=12, width=480,
+            scroll=ft.ScrollMode.AUTO,
+        )
+
+        def _br_para_iso(s: str) -> str:
+            try:
+                d, m, a = s.strip().split("/")
+                return f"{a}-{m.zfill(2)}-{d.zfill(2)}"
+            except Exception:
+                return ""
+
+        def _montar_etapa1():
+            content_col.controls.clear()
+            content_col.controls.extend([
+                ft.Text(
+                    "Antes de encerrar, confirme que você completou "
+                    "todas as tarefas do turno:",
+                    size=13,
+                ),
+                ft.Row([ft.Text("Data do turno:", size=13), tf_data_turno],
+                       spacing=12),
+                cb1, cb2, cb3,
+                txt_etapa1_erro,
+                ft.ElevatedButton(
+                    "Verificar e Continuar",
+                    icon=ft.Icons.ARROW_FORWARD,
+                    on_click=_verificar,
+                    style=ft.ButtonStyle(
+                        bgcolor=ft.Colors.INDIGO_600,
+                        color=ft.Colors.WHITE,
+                    ),
+                ),
+            ])
+            page.update()
+
+        def _verificar(e):
+            if not (cb1.value and cb2.value and cb3.value):
+                txt_etapa1_erro.value = (
+                    "Por favor, confirme todos os itens acima antes de continuar."
+                )
+                page.update()
+                return
+            txt_etapa1_erro.value = ""
+            data_iso = _br_para_iso(tf_data_turno.value)
+            if not data_iso:
+                txt_etapa1_erro.value = "Informe uma data válida (DD/MM/AAAA)."
+                page.update()
+                return
+            _estado["data_iso"] = data_iso
+            resultado = database.verificar_encerramento_turno(data_iso)
+            _montar_etapa2(resultado)
+
+        def _montar_etapa2(r):
+            def _linha_check(ok: bool, txt_ok: str, txt_err: str,
+                             bloqueia: bool = True):
+                if ok:
+                    return ft.Row(spacing=8, controls=[
+                        ft.Icon(ft.Icons.CHECK_CIRCLE,
+                                color=ft.Colors.GREEN_400, size=20),
+                        ft.Text(txt_ok, expand=True, size=13),
+                    ])
+                cor  = ft.Colors.RED_400 if bloqueia else ft.Colors.ORANGE_400
+                icone = (ft.Icons.ERROR if bloqueia
+                         else ft.Icons.WARNING_AMBER_ROUNDED)
+                return ft.Row(spacing=8, controls=[
+                    ft.Icon(icone, color=cor, size=20),
+                    ft.Text(txt_err, expand=True, size=13, color=cor),
+                ])
+
+            linha_pedidos = _linha_check(
+                r["tem_pedidos"],
+                f"Pedidos lançados no dia: {r['n_pedidos']} pedido(s) registrado(s). Tudo certo!",
+                "Nenhum pedido encontrado para esta data. Certifique-se de que é isso mesmo.",
+                bloqueia=False,
+            )
+            linha_caixa = _linha_check(
+                r["caixa_fechado"],
+                "Caixa fechado! O fechamento do caixa foi salvo com sucesso.",
+                "O caixa ainda não foi fechado! Volte ao Relatório Diário, "
+                "preencha o troco e o valor na gaveta e clique em Salvar "
+                "Fechamento antes de encerrar.",
+            )
+            linha_escala = _linha_check(
+                r["escala_completa"],
+                f"Presenças registradas! Todos os {r['total_pessoas']} "
+                "funcionário(s) têm presença registrada hoje.",
+                f"Faltam presenças! {r['pessoas_sem_escala']} funcionário(s) "
+                "ainda não tiveram a presença registrada hoje. Acesse o "
+                "Dashboard ou a Escala Geral para corrigir.",
+            )
+
+            content_col.controls.clear()
+            content_col.controls.extend([
+                ft.Text("Resultado das verificações:", size=13,
+                        weight=ft.FontWeight.BOLD),
+                linha_pedidos,
+                linha_caixa,
+                linha_escala,
+            ])
+
+            if r["pode_encerrar"]:
+                def _confirmar_enc(e):
+                    database.registrar_encerramento_turno(
+                        _estado["data_iso"], nome_usuario
+                    )
+                    dlg.open = False
+                    page.overlay.append(ft.SnackBar(
+                        content=ft.Text("Turno encerrado com sucesso! Bom descanso."),
+                        bgcolor=ft.Colors.GREEN_700, open=True,
+                    ))
+                    page.update()
+
+                content_col.controls.extend([
+                    ft.Text(
+                        "Tudo certo! O turno está pronto para ser encerrado.",
+                        size=13, color=ft.Colors.GREEN_400,
+                        weight=ft.FontWeight.BOLD,
+                    ),
+                    ft.ElevatedButton(
+                        "Confirmar Encerramento",
+                        icon=ft.Icons.NIGHT_SHELTER,
+                        on_click=_confirmar_enc,
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.DEEP_ORANGE_700,
+                            color=ft.Colors.WHITE,
+                        ),
+                    ),
+                ])
+            else:
+                content_col.controls.extend([
+                    ft.Text(
+                        "Corrija os itens em vermelho antes de encerrar o turno.",
+                        size=13, color=ft.Colors.RED_400,
+                        weight=ft.FontWeight.BOLD,
+                    ),
+                    ft.ElevatedButton(
+                        "Voltar e Corrigir",
+                        icon=ft.Icons.ARROW_BACK,
+                        on_click=lambda e: (
+                            setattr(dlg, "open", False), page.update()
+                        ),
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.GREY_700,
+                            color=ft.Colors.WHITE,
+                        ),
+                    ),
+                ])
+
+            page.update()
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Encerrar Turno"),
+            content=content_col,
+            actions=[ft.TextButton("Cancelar", on_click=lambda e: (
+                setattr(dlg, "open", False), page.update()
+            ))],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        page.overlay.append(dlg)
+        _montar_etapa1()
+        dlg.open = True
+        page.update()
+
+    btn_encerrar_turno = ft.ElevatedButton(
+        "Encerrar Turno",
+        icon=ft.Icons.NIGHT_SHELTER,
+        on_click=_abrir_encerramento_turno,
+        style=ft.ButtonStyle(
+            bgcolor=ft.Colors.DEEP_ORANGE_700,
+            color=ft.Colors.WHITE,
+        ),
+    )
+
+    # ── Botão de logout ───────────────────────────────────────────────────
 
     def _logout(e):
         def _confirmar(dlg):
@@ -224,6 +472,7 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
                     expand=True,
                 ),
                 ft.Text(f"Olá, {nome_usuario}", size=13, color=ft.Colors.GREY_500),
+                btn_encerrar_turno if eh_operador else ft.Container(),
                 btn_tema,
                 btn_logout,
             ]

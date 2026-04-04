@@ -271,11 +271,27 @@ def view(page: ft.Page) -> ft.Control:
             #  BLOCO 2 — Resumo por Canal
             # ══════════════════════════════════════════════════════════════
             rows_canal = conn.execute("""
-                SELECT canal, COUNT(*) AS qtd,
-                       COALESCE(SUM(p.valor_total), 0) AS valor_total
+                SELECT canal,
+                       SUM(CASE WHEN NOT EXISTS(
+                           SELECT 1 FROM vendas_pagamentos vp2
+                           WHERE vp2.id_pedido = p.id
+                             AND (vp2.cortesia = 1 OR vp2.metodo = 'Fiado')
+                       ) THEN 1 ELSE 0 END) AS qtd,
+                       COALESCE(SUM(
+                           CASE WHEN EXISTS(
+                               SELECT 1 FROM vendas_pagamentos vp
+                               WHERE vp.id_pedido = p.id
+                                 AND (vp.cortesia = 1 OR vp.metodo = 'Fiado')
+                           ) THEN 0.0 ELSE p.valor_total END
+                       ), 0) AS valor_total
                 FROM vendas_pedidos p
                 WHERE p.data BETWEEN ? AND ?
                 GROUP BY canal
+                HAVING SUM(CASE WHEN NOT EXISTS(
+                    SELECT 1 FROM vendas_pagamentos vp2
+                    WHERE vp2.id_pedido = p.id
+                      AND (vp2.cortesia = 1 OR vp2.metodo = 'Fiado')
+                ) THEN 1 ELSE 0 END) > 0
                 ORDER BY canal
             """, (data_ini_iso, data_fim_iso)).fetchall()
 
@@ -306,16 +322,28 @@ def view(page: ft.Page) -> ft.Control:
             # CTE pag_count corrige vp.valor=0 em pedidos com pagamento único.
             sql_pag = """
                 WITH pag_count AS (
-                    SELECT id_pedido, COUNT(*) AS qtd
+                    SELECT id_pedido, COUNT(*) AS qtd,
+                           SUM(valor) AS soma_pag
                     FROM vendas_pagamentos
                     GROUP BY id_pedido
                 )
                 SELECT vp.metodo,
                        COALESCE(m.tipo, 'OUTROS') AS tipo,
+                       COUNT(DISTINCT CASE WHEN NOT EXISTS(
+                           SELECT 1 FROM vendas_pagamentos vp3
+                           WHERE vp3.id_pedido = p.id
+                             AND (vp3.cortesia = 1 OR vp3.metodo = 'Fiado')
+                       ) THEN p.id ELSE NULL END) AS qtd_pedidos,
                        COALESCE(SUM(
-                           CASE WHEN pc.qtd = 1
-                                THEN p.valor_total
-                                ELSE vp.valor
+                           CASE
+                             WHEN pc.qtd = 1
+                             THEN p.valor_total
+                             WHEN vp.id = (
+                                 SELECT MIN(id) FROM vendas_pagamentos
+                                 WHERE id_pedido = vp.id_pedido
+                             )
+                             THEN vp.valor + (p.valor_total - pc.soma_pag)
+                             ELSE vp.valor
                            END
                        ), 0) AS total
                 FROM vendas_pagamentos vp
@@ -324,33 +352,57 @@ def view(page: ft.Page) -> ft.Control:
                 LEFT JOIN cad_metodos_pag m  ON m.nome       = vp.metodo
                 WHERE p.data BETWEEN ? AND ?
                   AND COALESCE(m.tipo, 'OUTROS') != 'CORTESIA'
+                  AND vp.metodo != 'Fiado'
                   AND NOT EXISTS (
                       SELECT 1 FROM vendas_pagamentos vp2
-                      WHERE vp2.id_pedido = p.id AND vp2.cortesia = 1
+                      WHERE vp2.id_pedido = p.id
+                        AND (vp2.cortesia = 1 OR vp2.metodo = 'Fiado')
                   )
                 GROUP BY vp.metodo, m.tipo
                 ORDER BY m.tipo, vp.metodo
             """
             rows_pag = conn.execute(sql_pag, (data_ini_iso, data_fim_iso)).fetchall()
 
-            total_pag = sum(r["total"] for r in rows_pag)
+            total_pag = sum(r["total"]       for r in rows_pag)
+            total_qtd = sum(r["qtd_pedidos"] for r in rows_pag)
             linhas_p  = []
             for r in rows_pag:
                 cor = ft.Colors.BLUE_200 if r["tipo"] == "BENEFICIO" else None
                 linhas_p.append(ft.DataRow(cells=[
                     ft.DataCell(ft.Text(r["metodo"], color=cor)),
+                    ft.DataCell(ft.Text(str(r["qtd_pedidos"]), color=cor)),
                     ft.DataCell(ft.Text(f"R$ {r['total']:.2f}", color=cor)),
                 ]))
-            linhas_p.append(_row_total("TOTAL", f"R$ {total_pag:.2f}"))
+            linhas_p.append(_row_total("TOTAL", str(total_qtd), f"R$ {total_pag:.2f}"))
             _dados_csv["pagamentos"] = [dict(r) for r in rows_pag]
+
+            n_split = conn.execute("""
+                SELECT COUNT(*) FROM (
+                    SELECT id_pedido
+                    FROM vendas_pagamentos vp
+                    JOIN vendas_pedidos p ON p.id = vp.id_pedido
+                    WHERE p.data BETWEEN ? AND ?
+                      AND vp.cortesia = 0
+                      AND vp.metodo != 'Fiado'
+                    GROUP BY id_pedido
+                    HAVING COUNT(*) > 1
+                      AND COUNT(DISTINCT vp.metodo) > 1
+                )
+            """, (data_ini_iso, data_fim_iso)).fetchone()[0]
 
             bloco3 = _card(
                 "Resumo por Pagamento",
                 ft.Text(
-                    "VA/VR destacados em azul  ·  Voucher/Cortesia excluídos",
+                    "VA/VR destacados em azul  ·  Voucher/Cortesia e Fiado excluídos",
                     size=12, color=ft.Colors.GREY_500, italic=True,
                 ),
-                _tabela(["Método", "Valor Total"], _semvazio(linhas_p, 2)),
+                _tabela(["Método", "Qtd Pedidos", "Valor Total"], _semvazio(linhas_p, 3)),
+                ft.Text(
+                    f"A quantidade de transações pode ser maior que a de pedidos "
+                    f"quando o cliente paga com mais de um método. "
+                    f"No período foram {n_split} pedido(s) com pagamento dividido.",
+                    size=12, color=ft.Colors.GREY_500, italic=True,
+                ),
             )
 
             # ══════════════════════════════════════════════════════════════
@@ -763,8 +815,84 @@ def view(page: ft.Page) -> ft.Control:
                 ]),
             )
 
+            row_fiados_p = conn.execute("""
+                SELECT COUNT(DISTINCT p.id) AS qtd,
+                       COALESCE(SUM(p.valor_total), 0) AS total
+                FROM vendas_pedidos p
+                JOIN vendas_pagamentos vp ON vp.id_pedido = p.id
+                WHERE p.data BETWEEN ? AND ?
+                  AND vp.metodo = 'Fiado'
+            """, (data_ini_iso, data_fim_iso)).fetchone()
+
+            row_cortesias_p = conn.execute("""
+                SELECT COUNT(DISTINCT p.id) AS qtd,
+                       COALESCE(SUM(p.valor_total), 0) AS total
+                FROM vendas_pedidos p
+                JOIN vendas_pagamentos vp ON vp.id_pedido = p.id
+                WHERE p.data BETWEEN ? AND ?
+                  AND (vp.cortesia = 1 OR vp.metodo = 'Voucher')
+            """, (data_ini_iso, data_fim_iso)).fetchone()
+
+            qtd_fiados_p      = row_fiados_p["qtd"]    if row_fiados_p    else 0
+            total_fiados_p    = row_fiados_p["total"]  if row_fiados_p    else 0.0
+            qtd_cortesias_p   = row_cortesias_p["qtd"] if row_cortesias_p else 0
+            total_cortesias_p = row_cortesias_p["total"] if row_cortesias_p else 0.0
+
         finally:
             conn.close()
+
+        def _mini_card_info(titulo, qtd, total, cor_titulo, obs=None):
+            controls = [
+                ft.Text(titulo, size=15, weight=ft.FontWeight.BOLD, color=cor_titulo),
+                ft.Divider(height=1),
+                ft.Row(controls=[
+                    ft.Text("Pedidos:", expand=1, size=13),
+                    ft.Text(str(qtd), size=13, weight=ft.FontWeight.BOLD),
+                ]),
+                ft.Row(controls=[
+                    ft.Text("Valor total:", expand=1, size=13),
+                    ft.Text(f"R$ {total:.2f}", size=13,
+                            weight=ft.FontWeight.BOLD, color=cor_titulo),
+                ]),
+                ft.Text(
+                    "Valores não somados ao faturamento do período.",
+                    size=11, italic=True, color=ft.Colors.GREY_500,
+                ),
+            ]
+            if obs:
+                controls.append(ft.Text(obs, size=11, italic=True,
+                                        color=ft.Colors.GREY_500))
+            return ft.Card(content=ft.Container(
+                padding=ft.Padding.all(16),
+                content=ft.Column(spacing=8, controls=controls),
+            ))
+
+        bloco8 = ft.Row(
+            spacing=16,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+            controls=[
+                ft.Container(
+                    expand=True,
+                    content=_mini_card_info(
+                        "Fiados do Período",
+                        qtd_fiados_p,
+                        total_fiados_p,
+                        ft.Colors.ORANGE_300,
+                        obs="Consulte a tela de Fiados para detalhes e quitações."
+                        if qtd_fiados_p > 0 else None,
+                    ),
+                ),
+                ft.Container(
+                    expand=True,
+                    content=_mini_card_info(
+                        "Cortesias e Vouchers do Período",
+                        qtd_cortesias_p,
+                        total_cortesias_p,
+                        ft.Colors.PURPLE_300,
+                    ),
+                ),
+            ],
+        )
 
         # Populando _dados_pdf a partir dos dados já calculados
         _dados_pdf.clear()
@@ -788,7 +916,7 @@ def view(page: ft.Page) -> ft.Control:
             ],
         )
         col_relatorio.controls.clear()
-        col_relatorio.controls += [bloco1, linha_canais_pag, bloco4, bloco5, bloco6, bloco7]
+        col_relatorio.controls += [bloco1, linha_canais_pag, bloco4, bloco5, bloco6, bloco7, bloco8]
         page.update()
 
     # ── Exportar CSV ──────────────────────────────────────────────────────

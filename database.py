@@ -107,7 +107,7 @@ def sessao_tem_acesso(perfil_minimo: str) -> bool:
     Verifica se o usuário logado tem nível de acesso suficiente.
     Hierarquia: OPERADOR < GERENTE < ADMIN
     """
-    hierarquia   = {"OPERADOR": 1, "GERENTE": 2, "ADMIN": 3}
+    hierarquia   = {"SEM_ACESSO": 0, "OPERADOR": 1, "GERENTE": 2, "ADMIN": 3}
     perfil_atual = _sessao_atual.get("perfil_acesso") or ""
     nivel_atual  = hierarquia.get(perfil_atual, 0)
     nivel_minimo = hierarquia.get(perfil_minimo, 99)
@@ -141,6 +141,46 @@ def banco_status() -> dict:
     }
 
 
+def sincronizar_banco() -> dict:
+    """
+    Força o SQLite a liberar o cache interno e reler o arquivo do disco.
+    Útil quando outro PC atualizou o banco via Google Drive após a abertura
+    do app. Retorna dict com status e timestamp da sincronização.
+    """
+    from datetime import datetime
+    try:
+        conn = conectar()
+        try:
+            conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            conn.close()
+
+            conn2 = conectar()
+            try:
+                n = conn2.execute(
+                    "SELECT COUNT(*) FROM vendas_pedidos"
+                ).fetchone()[0]
+            finally:
+                conn2.close()
+
+            return {
+                "sucesso":    True,
+                "timestamp":  datetime.now().strftime("%H:%M:%S"),
+                "pedidos":    n,
+            }
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            raise
+    except Exception as ex:
+        return {
+            "sucesso":    False,
+            "timestamp":  datetime.now().strftime("%H:%M:%S"),
+            "erro":       str(ex),
+        }
+
+
 # ══════════════════════════════════════════════
 #  CONEXÃO E INICIALIZAÇÃO
 # ══════════════════════════════════════════════
@@ -172,7 +212,10 @@ def inicializar_banco():
         _migrar_fornecedor_extras(conn)
         _migrar_acesso(conn)
         _migrar_fluxo_neutro(conn)
+        _migrar_consumo_neutro(conn)
         _migrar_fornecedor_vendedor(conn)
+        _migrar_nome_cliente_pedido(conn)
+        _migrar_id_pedido_fiado(conn)
         conn.commit()
         _popular_dados_iniciais(conn)
         conn.commit()
@@ -446,6 +489,33 @@ def _criar_tabelas(conn: sqlite3.Connection):
         ativo     INTEGER NOT NULL DEFAULT 1
     );
 
+    CREATE TABLE IF NOT EXISTS cad_boletos (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_fornecedor  INTEGER NOT NULL
+                       REFERENCES cad_fornecedores(id) ON DELETE CASCADE,
+        descricao      TEXT    NOT NULL,
+        valor_total    REAL    NOT NULL DEFAULT 0,
+        num_parcelas   INTEGER NOT NULL DEFAULT 1,
+        data_emissao   TEXT    NOT NULL,
+        tipo_pagamento TEXT    NOT NULL
+                       CHECK(tipo_pagamento IN ('AVISTA','BOLETO','PARCELADO')),
+        metodo_avista  TEXT,
+        status         TEXT    NOT NULL DEFAULT 'ABERTO'
+                       CHECK(status IN ('ABERTO','PAGO','VENCIDO')),
+        obs            TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS cad_boletos_parcelas (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_boleto   INTEGER NOT NULL
+                    REFERENCES cad_boletos(id) ON DELETE CASCADE,
+        num_parcela INTEGER NOT NULL,
+        valor       REAL    NOT NULL DEFAULT 0,
+        vencimento  TEXT    NOT NULL,
+        pago        INTEGER NOT NULL DEFAULT 0,
+        data_pago   TEXT
+    );
+
     -- Log de auditoria de ações críticas
     CREATE TABLE IF NOT EXISTS logs_auditoria (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -597,7 +667,8 @@ def _migrar_fornecedor_estoque(conn: sqlite3.Connection):
 
 def _migrar_acesso(conn: sqlite3.Connection):
     """
-    Adiciona colunas pin e perfil_acesso em cad_pessoas se não existirem.
+    Adiciona colunas pin e perfil_acesso em cad_pessoas se não existirem,
+    e amplia o CHECK de perfil_acesso para aceitar 'SEM_ACESSO'.
     Idempotente.
     """
     colunas = {row["name"] for row in conn.execute("PRAGMA table_info(cad_pessoas)")}
@@ -608,6 +679,51 @@ def _migrar_acesso(conn: sqlite3.Connection):
             "ALTER TABLE cad_pessoas ADD COLUMN perfil_acesso TEXT DEFAULT 'OPERADOR' "
             "CHECK(perfil_acesso IN ('OPERADOR','GERENTE','ADMIN'))"
         )
+
+    # Amplia o CHECK para incluir 'SEM_ACESSO' — recriar tabela (SQLite não suporta ALTER COLUMN)
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='cad_pessoas'"
+    ).fetchone()
+    if row and "'SEM_ACESSO'" in (row["sql"] or ""):
+        return  # já migrado
+
+    conn.executescript("""
+    PRAGMA foreign_keys = OFF;
+
+    CREATE TABLE cad_pessoas_new (
+        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome                  TEXT    NOT NULL,
+        tipo                  TEXT    NOT NULL CHECK(tipo IN ('ENTREGADOR','INTERNO')),
+        cargo                 TEXT,
+        salario_base          REAL    DEFAULT 0,
+        tipo_salario          TEXT    CHECK(tipo_salario IN ('FIXO','DIARIO','ENTREGADOR')),
+        diaria_valor          REAL    DEFAULT 0,
+        status_ativo          INTEGER NOT NULL DEFAULT 1,
+        valor_extra           REAL    NOT NULL DEFAULT 50.0,
+        valor_feriado         REAL    NOT NULL DEFAULT 60.0,
+        valor_falta           REAL    NOT NULL DEFAULT 60.0,
+        carga_horaria_diaria  REAL    NOT NULL DEFAULT 8.0,
+        cpf                   TEXT,
+        rg                    TEXT,
+        data_nascimento       TEXT,
+        telefone              TEXT,
+        endereco              TEXT,
+        pin                   TEXT,
+        perfil_acesso         TEXT    DEFAULT 'OPERADOR'
+                              CHECK(perfil_acesso IN ('OPERADOR','GERENTE','ADMIN','SEM_ACESSO'))
+    );
+
+    INSERT INTO cad_pessoas_new SELECT
+        id, nome, tipo, cargo, salario_base, tipo_salario, diaria_valor, status_ativo,
+        valor_extra, valor_feriado, valor_falta, carga_horaria_diaria,
+        cpf, rg, data_nascimento, telefone, endereco, pin, perfil_acesso
+    FROM cad_pessoas;
+
+    DROP TABLE cad_pessoas;
+    ALTER TABLE cad_pessoas_new RENAME TO cad_pessoas;
+
+    PRAGMA foreign_keys = ON;
+    """)
 
 
 def _migrar_fornecedor_extras(conn: sqlite3.Connection):
@@ -688,6 +804,34 @@ def _migrar_fluxo_neutro(conn: sqlite3.Connection):
     """)
 
 
+def _migrar_consumo_neutro(conn: sqlite3.Connection):
+    """
+    Corrige o fluxo da categoria "Consumo" de 'SAIDA' para 'NEUTRO'.
+    Idempotente: só atualiza se o registro ainda estiver com fluxo = 'SAIDA'.
+    """
+    conn.execute(
+        "UPDATE cad_categorias_extra SET fluxo = 'NEUTRO' "
+        "WHERE descricao = 'Consumo' AND fluxo = 'SAIDA'"
+    )
+
+
+def _migrar_id_pedido_fiado(conn: sqlite3.Connection):
+    """Adiciona coluna id_pedido em fiados se não existir. Idempotente."""
+    colunas = {row["name"] for row in conn.execute("PRAGMA table_info(fiados)")}
+    if "id_pedido" not in colunas:
+        conn.execute(
+            "ALTER TABLE fiados ADD COLUMN id_pedido INTEGER "
+            "REFERENCES vendas_pedidos(id) ON DELETE SET NULL"
+        )
+
+
+def _migrar_nome_cliente_pedido(conn: sqlite3.Connection):
+    """Adiciona coluna nome_cliente em vendas_pedidos se não existir. Idempotente."""
+    colunas = {row["name"] for row in conn.execute("PRAGMA table_info(vendas_pedidos)")}
+    if "nome_cliente" not in colunas:
+        conn.execute("ALTER TABLE vendas_pedidos ADD COLUMN nome_cliente TEXT")
+
+
 # ══════════════════════════════════════════════
 #  DADOS INICIAIS
 # ══════════════════════════════════════════════
@@ -727,7 +871,7 @@ def _popular_dados_iniciais(conn: sqlite3.Connection):
             [
                 ("Vale",          "SAIDA",   1),  # vale retirado por funcionário
                 ("Sangria",       "SAIDA",   0),  # retirada de dinheiro do caixa
-                ("Consumo",       "SAIDA",   1),  # consumo de funcionário
+                ("Consumo",       "NEUTRO",  1),  # consumo de funcionário
                 ("Corrida Extra", "NEUTRO",  1),  # corrida avulsa paga ao entregador
                 ("Reentrega",     "NEUTRO",  1),  # custo de reentrega
                 ("Fiado",         "ENTRADA", 0),  # recebimento de fiado
@@ -871,6 +1015,195 @@ def fornecedor_inativar(id_fornecedor: int) -> bool:
         )
         conn.commit()
         return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════
+#  CRUD — cad_boletos
+# ══════════════════════════════════════════════
+
+def boleto_inserir(id_fornecedor: int, descricao: str, valor_total: float,
+                   num_parcelas: int, data_emissao: str, tipo_pagamento: str,
+                   metodo_avista: str = None, obs: str = None) -> int:
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """INSERT INTO cad_boletos
+               (id_fornecedor, descricao, valor_total, num_parcelas,
+                data_emissao, tipo_pagamento, metodo_avista, obs)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (id_fornecedor, descricao, valor_total, num_parcelas,
+             data_emissao, tipo_pagamento, metodo_avista, obs),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def boleto_inserir_parcelas(id_boleto: int, parcelas: list) -> None:
+    conn = conectar()
+    try:
+        conn.executemany(
+            """INSERT INTO cad_boletos_parcelas
+               (id_boleto, num_parcela, valor, vencimento)
+               VALUES (?, ?, ?, ?)""",
+            [(id_boleto, p["num_parcela"], p["valor"], p["vencimento"])
+             for p in parcelas],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def boleto_listar(id_fornecedor: int = None, status: str = None) -> list:
+    conn = conectar()
+    try:
+        sql = """
+            SELECT b.*, f.nome AS nome_fornecedor
+            FROM cad_boletos b
+            JOIN cad_fornecedores f ON f.id = b.id_fornecedor
+            WHERE 1=1
+        """
+        params = []
+        if id_fornecedor is not None:
+            sql += " AND b.id_fornecedor = ?"
+            params.append(id_fornecedor)
+        if status is not None:
+            sql += " AND b.status = ?"
+            params.append(status)
+        sql += " ORDER BY b.data_emissao DESC"
+        return conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+
+
+def boleto_buscar(id_boleto: int) -> sqlite3.Row | None:
+    conn = conectar()
+    try:
+        return conn.execute(
+            """SELECT b.*, f.nome AS nome_fornecedor
+               FROM cad_boletos b
+               JOIN cad_fornecedores f ON f.id = b.id_fornecedor
+               WHERE b.id = ?""",
+            (id_boleto,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def boleto_parcelas_listar(id_boleto: int) -> list:
+    conn = conectar()
+    try:
+        return conn.execute(
+            """SELECT * FROM cad_boletos_parcelas
+               WHERE id_boleto = ?
+               ORDER BY num_parcela""",
+            (id_boleto,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def boleto_quitar(id_boleto: int, data_pago: str = None) -> bool:
+    from datetime import date as _date
+    dp = data_pago or _date.today().isoformat()
+    conn = conectar()
+    try:
+        conn.execute(
+            "UPDATE cad_boletos SET status = 'PAGO' WHERE id = ?",
+            (id_boleto,),
+        )
+        conn.execute(
+            """UPDATE cad_boletos_parcelas
+               SET pago = 1, data_pago = ?
+               WHERE id_boleto = ? AND pago = 0""",
+            (dp, id_boleto),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def boleto_quitar_parcela(id_parcela: int, data_pago: str) -> bool:
+    conn = conectar()
+    try:
+        conn.execute(
+            "UPDATE cad_boletos_parcelas SET pago = 1, data_pago = ? WHERE id = ?",
+            (data_pago, id_parcela),
+        )
+        # Verifica se todas as parcelas do boleto estão pagas
+        row = conn.execute(
+            """SELECT id_boleto FROM cad_boletos_parcelas WHERE id = ?""",
+            (id_parcela,),
+        ).fetchone()
+        if row:
+            id_boleto = row["id_boleto"]
+            em_aberto = conn.execute(
+                "SELECT COUNT(*) FROM cad_boletos_parcelas WHERE id_boleto = ? AND pago = 0",
+                (id_boleto,),
+            ).fetchone()[0]
+            if em_aberto == 0:
+                conn.execute(
+                    "UPDATE cad_boletos SET status = 'PAGO' WHERE id = ?",
+                    (id_boleto,),
+                )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def boleto_excluir(id_boleto: int) -> bool:
+    conn = conectar()
+    try:
+        cur = conn.execute("DELETE FROM cad_boletos WHERE id = ?", (id_boleto,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def boletos_vencidos_hoje() -> list:
+    from datetime import date as _date
+    hoje = _date.today().isoformat()
+    conn = conectar()
+    try:
+        return conn.execute(
+            """SELECT bp.id, bp.id_boleto, b.id_fornecedor,
+                      f.nome AS nome_fornecedor,
+                      b.descricao, bp.valor, bp.vencimento,
+                      bp.num_parcela
+               FROM cad_boletos_parcelas bp
+               JOIN cad_boletos b ON b.id = bp.id_boleto
+               JOIN cad_fornecedores f ON f.id = b.id_fornecedor
+               WHERE bp.vencimento <= ?
+                 AND bp.pago = 0
+               ORDER BY bp.vencimento, f.nome""",
+            (hoje,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def boleto_atualizar_status_vencidos() -> int:
+    from datetime import date as _date
+    hoje = _date.today().isoformat()
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """UPDATE cad_boletos SET status = 'VENCIDO'
+               WHERE status = 'ABERTO'
+                 AND id IN (
+                     SELECT id_boleto FROM cad_boletos_parcelas
+                     WHERE pago = 0 AND vencimento < ?
+                 )""",
+            (hoje,),
+        )
+        conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
 
@@ -1340,7 +1673,7 @@ def pedido_inserir(data: str, canal: str, valor_total: float,
                    hora: str = None,
                    id_operador: int = None, id_bairro: int = None,
                    taxa_entrega: float = 0.0, repasse_entregador: float = 0.0,
-                   obs: str = None) -> int:
+                   obs: str = None, nome_cliente: str = None) -> int:
     """
     Registra um pedido/venda. Retorna o id gerado.
     Os pagamentos devem ser inseridos separadamente via pagamento_inserir().
@@ -1354,10 +1687,12 @@ def pedido_inserir(data: str, canal: str, valor_total: float,
         cur = conn.execute(
             """INSERT INTO vendas_pedidos
                (data, hora, canal, valor_total,
-                id_operador, id_bairro, taxa_entrega, repasse_entregador, obs)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                id_operador, id_bairro, taxa_entrega, repasse_entregador, obs,
+                nome_cliente)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (data, hora, canal, valor_total,
-             id_operador, id_bairro, taxa_entrega, repasse_entregador, obs)
+             id_operador, id_bairro, taxa_entrega, repasse_entregador, obs,
+             nome_cliente)
         )
         conn.commit()
         return cur.lastrowid
@@ -2303,17 +2638,62 @@ def calcular_pagamento_entregador(id_pessoa: int, data: str) -> dict:
 # ══════════════════════════════════════════════
 
 def fiado_inserir(data: str, nome_cliente: str, valor: float,
-                  descricao: str = None, obs: str = None) -> int:
+                  descricao: str = None, obs: str = None,
+                  id_pedido: int = None) -> int:
     """Registra um novo fiado. Retorna o id gerado."""
     conn = conectar()
     try:
         cur = conn.execute(
-            """INSERT INTO fiados (data_lancamento, nome_cliente, valor, descricao, obs)
-               VALUES (?, ?, ?, ?, ?)""",
-            (data, nome_cliente, valor, descricao, obs),
+            """INSERT INTO fiados
+                   (data_lancamento, nome_cliente, valor, descricao, obs, id_pedido)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (data, nome_cliente, valor, descricao, obs, id_pedido),
         )
         conn.commit()
         return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def fiado_buscar_por_pedido(id_pedido: int):
+    """Retorna o fiado vinculado ao pedido, ou None."""
+    conn = conectar()
+    try:
+        return conn.execute(
+            "SELECT * FROM fiados WHERE id_pedido = ?",
+            (id_pedido,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def fiado_atualizar_por_pedido(id_pedido: int, **campos) -> bool:
+    """Atualiza campos permitidos do fiado vinculado ao pedido (pago=0)."""
+    _permitidos = {"nome_cliente", "valor", "descricao", "obs", "data_lancamento"}
+    sets = {k: v for k, v in campos.items() if k in _permitidos}
+    if not sets:
+        return False
+    sql = "UPDATE fiados SET " + ", ".join(f"{k} = ?" for k in sets)
+    sql += " WHERE id_pedido = ? AND pago = 0"
+    conn = conectar()
+    try:
+        cur = conn.execute(sql, (*sets.values(), id_pedido))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def fiado_excluir_por_pedido(id_pedido: int) -> bool:
+    """Remove o fiado vinculado ao pedido se ainda não estiver pago."""
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            "DELETE FROM fiados WHERE id_pedido = ? AND pago = 0",
+            (id_pedido,)
+        )
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()
 
@@ -2943,7 +3323,9 @@ def usuario_listar_ativos() -> list:
         return conn.execute(
             """SELECT id, nome, tipo, cargo, perfil_acesso
                FROM cad_pessoas
-               WHERE status_ativo = 1 AND pin IS NOT NULL
+               WHERE status_ativo = 1
+                 AND pin IS NOT NULL
+                 AND (perfil_acesso IS NULL OR perfil_acesso != 'SEM_ACESSO')
                ORDER BY nome"""
         ).fetchall()
     finally:
@@ -2952,7 +3334,7 @@ def usuario_listar_ativos() -> list:
 
 def usuario_definir_perfil(id_pessoa: int, perfil: str) -> bool:
     """Define o perfil de acesso de uma pessoa."""
-    if perfil not in ("OPERADOR", "GERENTE", "ADMIN"):
+    if perfil not in ("OPERADOR", "GERENTE", "ADMIN", "SEM_ACESSO"):
         return False
     conn = conectar()
     try:
@@ -3048,6 +3430,64 @@ def log_limpar_antigos(dias: int = 90) -> int:
         return cur.rowcount
     finally:
         conn.close()
+
+
+# ══════════════════════════════════════════════
+#  ENCERRAMENTO DE TURNO
+# ══════════════════════════════════════════════
+
+def verificar_encerramento_turno(data_iso: str) -> dict:
+    """
+    Verifica as condições de encerramento de turno para uma data.
+    Retorna dict com status de cada verificação.
+    """
+    conn = conectar()
+    try:
+        fc = conn.execute(
+            "SELECT saldo_gaveta_real FROM fluxo_caixa_diario WHERE data = ?",
+            (data_iso,)
+        ).fetchone()
+        caixa_fechado = bool(fc and fc["saldo_gaveta_real"] != 0)
+
+        n_pedidos = conn.execute(
+            "SELECT COUNT(*) FROM vendas_pedidos WHERE data = ?",
+            (data_iso,)
+        ).fetchone()[0]
+        tem_pedidos = n_pedidos > 0
+
+        total_pessoas = conn.execute(
+            "SELECT COUNT(*) FROM cad_pessoas WHERE status_ativo = 1"
+        ).fetchone()[0]
+        pessoas_com_escala = conn.execute(
+            "SELECT COUNT(*) FROM escalas_trabalho WHERE data = ?",
+            (data_iso,)
+        ).fetchone()[0]
+        escala_completa = (total_pessoas > 0 and
+                           pessoas_com_escala >= total_pessoas)
+        pessoas_sem_escala = max(0, total_pessoas - pessoas_com_escala)
+
+        return {
+            "caixa_fechado":      caixa_fechado,
+            "tem_pedidos":        tem_pedidos,
+            "n_pedidos":          n_pedidos,
+            "escala_completa":    escala_completa,
+            "total_pessoas":      total_pessoas,
+            "pessoas_com_escala": pessoas_com_escala,
+            "pessoas_sem_escala": pessoas_sem_escala,
+            "pode_encerrar":      caixa_fechado and escala_completa,
+        }
+    finally:
+        conn.close()
+
+
+def registrar_encerramento_turno(data_iso: str, usuario: str) -> None:
+    log_registrar(
+        acao="ENCERRAMENTO_TURNO",
+        tabela="fluxo_caixa_diario",
+        descricao=f"Turno encerrado pelo operador {usuario} "
+                  f"para a data {data_iso}",
+        usuario=usuario,
+    )
 
 
 # ══════════════════════════════════════════════

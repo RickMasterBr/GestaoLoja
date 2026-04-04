@@ -69,8 +69,7 @@ def _cor_dif(d: float) -> str:
 # ── View principal ─────────────────────────────────────────────────────────────
 
 def view(page: ft.Page) -> ft.Control:
-    hoje    = date.today().isoformat()
-    hoje_wd = date.today().weekday()   # 0=Seg … 6=Dom
+    _data_atual = {"iso": date.today().isoformat()}
 
     # Colunas mutáveis dos cards 1 e 2
     card1_col    = ft.Column(spacing=8)
@@ -81,6 +80,9 @@ def view(page: ft.Page) -> ft.Control:
 
     # Coluna mutável do card Presença
     presenca_col = ft.Column(spacing=4)
+
+    # Coluna mutável do card Alertas de Boletos
+    alertas_boletos_col = ft.Column(spacing=6)
 
     # ── Cards 1 e 2 ────────────────────────────────────────────────────────────
 
@@ -93,23 +95,17 @@ def view(page: ft.Page) -> ft.Control:
                 canal,
                 COUNT(*) AS qtd,
                 COALESCE(SUM(
-                    CASE
-                        WHEN EXISTS(
-                            SELECT 1 FROM vendas_pagamentos vp
-                            WHERE vp.id_pedido = p.id AND vp.cortesia = 1
-                        ) THEN 0.0
-                        WHEN EXISTS(
-                            SELECT 1 FROM vendas_pagamentos vp2
-                            WHERE vp2.id_pedido = p.id AND vp2.metodo = 'Voucher'
-                        ) THEN 0.0
-                        ELSE p.valor_total
-                    END
+                    CASE WHEN EXISTS(
+                        SELECT 1 FROM vendas_pagamentos vp
+                        WHERE vp.id_pedido = p.id
+                          AND (vp.cortesia = 1 OR vp.metodo = 'Fiado')
+                    ) THEN 0.0 ELSE p.valor_total END
                 ), 0) AS valor_real
             FROM vendas_pedidos p
             WHERE p.data = ?
             GROUP BY canal
             ORDER BY canal
-        """, (hoje,)).fetchall()
+        """, (_data_atual["iso"],)).fetchall()
 
         total_qtd   = sum(r["qtd"]       for r in rows_canal)
         total_valor = sum(r["valor_real"] for r in rows_canal)
@@ -150,9 +146,9 @@ def view(page: ft.Page) -> ft.Control:
 
         # Card 2 — Status do Caixa
         modo_cego = database.config_obter("fechamento_cego", "0") == "1"
-        database.fluxo_caixa_abrir(hoje)
-        fc   = database.fluxo_caixa_buscar(hoje)
-        calc = database.fluxo_caixa_recalcular(hoje)
+        database.fluxo_caixa_abrir(_data_atual["iso"])
+        fc   = database.fluxo_caixa_buscar(_data_atual["iso"])
+        calc = database.fluxo_caixa_recalcular(_data_atual["iso"])
 
         troco    = fc["troco_inicial"]     if fc else 0.0
         entradas = calc.get("total_especie_entradas", 0.0)
@@ -181,19 +177,22 @@ def view(page: ft.Page) -> ft.Control:
     def _atualizar_presenca():
         """Reconstrói a lista de linhas do card Presença de Hoje."""
 
+        _hoje = _data_atual["iso"]
+        _hoje_wd = date.fromisoformat(_hoje).weekday()
+
         # 1. Pré-popula escalas a partir dos dias fixos cadastrados
-        database.escala_pre_popular_do_dia(hoje)
+        database.escala_pre_popular_do_dia(_hoje)
 
         # 2. Horário padrão do dia fixo: id_pessoa -> horario_entrada
         horario_fixo: dict = {}
         for row in database.dias_fixos_listar_todos():
-            if row["dia_semana"] == hoje_wd:
+            if row["dia_semana"] == _hoje_wd:
                 horario_fixo[row["id_pessoa"]] = row["horario_entrada"] or ""
 
         # 3. Escalas já registradas hoje: id_pessoa -> tipo
         escalas_hoje: dict = {
             e["id_pessoa"]: e["tipo"]
-            for e in database.escala_listar_por_data(hoje)
+            for e in database.escala_listar_por_data(_hoje)
         }
 
         # 4. Pontos já registrados hoje: id_pessoa -> (hora_entrada, hora_saida)
@@ -203,7 +202,7 @@ def view(page: ft.Page) -> ft.Control:
         )
         pontos_hoje: dict = {}
         for pessoa in todos:
-            pt = database.ponto_buscar(hoje, pessoa["id"])
+            pt = database.ponto_buscar(_hoje, pessoa["id"])
             pontos_hoje[pessoa["id"]] = (
                 (pt["hora_entrada"] or "") if pt else "",
                 (pt["hora_saida"]   or "") if pt else "",
@@ -304,13 +303,13 @@ def view(page: ft.Page) -> ft.Control:
                         page.update()
                         return
                 # Salvar escala
-                database.escala_registrar(hoje, _pid, tipo)
+                database.escala_registrar(_data_atual["iso"], _pid, tipo)
                 # Salvar pontos se TRABALHOU
                 if tipo == "TRABALHOU":
                     if hora_ent:
-                        database.ponto_registrar_entrada(hoje, _pid, hora_ent)
+                        database.ponto_registrar_entrada(_data_atual["iso"], _pid, hora_ent)
                     if hora_sai:
-                        database.ponto_registrar_saida(hoje, _pid, hora_sai)
+                        database.ponto_registrar_saida(_data_atual["iso"], _pid, hora_sai)
                 # Feedback visual: troca o botão pelo ícone de check
                 _btn.content = ft.Icon(
                     ft.Icons.CHECK_CIRCLE,
@@ -427,15 +426,69 @@ def view(page: ft.Page) -> ft.Control:
                 size=12,
             ))
 
+    # ── Card Alertas de Boletos ────────────────────────────────────────────────
+
+    def _atualizar_alertas_boletos():
+        database.boleto_atualizar_status_vencidos()
+        vencidos = database.boletos_vencidos_hoje()
+        alertas_boletos_col.controls.clear()
+
+        if not vencidos:
+            card_alertas_boletos.visible = False
+            return
+
+        card_alertas_boletos.visible = True
+        alertas_boletos_col.controls.append(ft.Container(
+            bgcolor=ft.Colors.RED_900,
+            border_radius=6,
+            padding=ft.Padding(left=12, right=12, top=8, bottom=8),
+            content=ft.Row(spacing=8, controls=[
+                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED,
+                        color=ft.Colors.YELLOW_300, size=20),
+                ft.Text(
+                    f"Boletos Vencidos/Vencendo Hoje — {len(vencidos)} item(s)",
+                    color=ft.Colors.YELLOW_300,
+                    weight=ft.FontWeight.BOLD,
+                    size=14,
+                ),
+            ]),
+        ))
+
+        for v in vencidos[:5]:
+            alertas_boletos_col.controls.append(ft.Row(spacing=8, controls=[
+                ft.Icon(ft.Icons.CIRCLE, color=ft.Colors.RED_400, size=10),
+                ft.Text(
+                    f"{v['nome_fornecedor']} — {v['descricao']}",
+                    expand=True, size=13,
+                ),
+                ft.Text(
+                    f"R$ {v['valor']:.2f} | Venc: {v['vencimento'][8:10]}/"
+                    f"{v['vencimento'][5:7]}/{v['vencimento'][:4]}",
+                    color=ft.Colors.RED_400,
+                    size=13,
+                    weight=ft.FontWeight.BOLD,
+                ),
+            ]))
+
+        if len(vencidos) > 5:
+            alertas_boletos_col.controls.append(ft.Text(
+                f"... e mais {len(vencidos) - 5} item(s). "
+                "Veja Fornecedores para detalhes.",
+                italic=True, color=ft.Colors.GREY_500, size=12,
+            ))
+
     # ── Atualização geral ───────────────────────────────────────────────────────
 
     def _atualizar(e=None):
+        d = date.fromisoformat(_data_atual["iso"])
+        txt_data_topo.value = f"Dashboard  —  {d.strftime('%d/%m/%Y')}"
         conn = database.conectar()
         try:
             _atualizar_cards_1_2(conn)
         finally:
             conn.close()
         _atualizar_alertas_est()
+        _atualizar_alertas_boletos()
         _atualizar_presenca()
         page.update()
 
@@ -451,15 +504,45 @@ def view(page: ft.Page) -> ft.Control:
         ),
     )
 
+    txt_data_topo = ft.Text(
+        f"Dashboard  —  {date.today().strftime('%d/%m/%Y')}",
+        size=18,
+        weight=ft.FontWeight.BOLD,
+        expand=True,
+    )
+
+    tf_data_dash = ft.TextField(
+        value=date.today().strftime("%d/%m/%Y"),
+        width=140,
+        text_align=ft.TextAlign.CENTER,
+        hint_text="DD/MM/AAAA",
+    )
+
+    def _on_date_picked_dash(e):
+        if e.control.value:
+            _data_atual["iso"] = e.control.value.strftime("%Y-%m-%d")
+            tf_data_dash.value = e.control.value.strftime("%d/%m/%Y")
+            _atualizar()
+
+    date_picker_dash = ft.DatePicker(on_change=_on_date_picked_dash)
+    page.overlay.append(date_picker_dash)
+
+    btn_calendario_dash = ft.IconButton(
+        icon=ft.Icons.CALENDAR_MONTH,
+        tooltip="Selecionar data",
+        on_click=lambda e: (
+            setattr(date_picker_dash, "open", True),
+            page.update(),
+        ),
+    )
+
     topo = ft.Card(content=ft.Container(
         padding=ft.Padding.all(12),
         content=ft.Row(
             controls=[
-                ft.Text(
-                    f"Dashboard  —  {date.today().strftime('%d/%m/%Y')}",
-                    size=18,
-                    weight=ft.FontWeight.BOLD,
-                ),
+                txt_data_topo,
+                tf_data_dash,
+                btn_calendario_dash,
                 btn_atualizar,
             ],
             spacing=16,
@@ -492,6 +575,16 @@ def view(page: ft.Page) -> ft.Control:
         ),
     )
 
+    # ── Card Alertas de Boletos (visível só quando há vencidos) ──────────────────
+
+    card_alertas_boletos = ft.Card(
+        visible=False,
+        content=ft.Container(
+            padding=ft.Padding.all(16),
+            content=alertas_boletos_col,
+        ),
+    )
+
     # ── Card largo — Presença de Hoje ───────────────────────────────────────────
 
     card_presenca = _card("Presença de Hoje", presenca_col)
@@ -500,7 +593,7 @@ def view(page: ft.Page) -> ft.Control:
     _atualizar()
 
     return ft.Column(
-        controls=[topo, grade, card_alertas_est, card_presenca],
+        controls=[topo, grade, card_alertas_est, card_alertas_boletos, card_presenca],
         scroll=ft.ScrollMode.AUTO,
         expand=True,
         spacing=16,

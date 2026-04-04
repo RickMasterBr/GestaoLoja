@@ -81,6 +81,7 @@ def _confirmar_exclusao(page, descricao: str, on_confirmar) -> None:
 
 def view(page: ft.Page) -> ft.Control:
     hoje_br = date.today().strftime("%d/%m/%Y")
+    _data_travada = {"ativo": False}
 
     # ── Dados de referência ───────────────────────────────────────────────
     canais_db  = database.canal_listar()
@@ -96,6 +97,10 @@ def view(page: ft.Page) -> ft.Control:
     ]
     _opts_metodos_todos = [ft.dropdown.Option(r["nome"]) for r in metodos_db]
     pessoas_db = database.pessoa_listar(apenas_ativos=True)
+    pessoas_db = [
+        p for p in pessoas_db
+        if (p["perfil_acesso"] or "OPERADOR") != "SEM_ACESSO"
+    ]
     bairros_db = database.bairro_listar()
 
     canal_info      = {r["nome"]: dict(r) for r in canais_db}
@@ -130,6 +135,17 @@ def view(page: ft.Page) -> ft.Control:
         tooltip="Selecionar data",
         on_click=_abrir_calendario,
     )
+
+    sw_travar_data = ft.Switch(
+        label="Travar data",
+        value=False,
+        tooltip="Mantém a data fixa ao salvar ou limpar o formulário",
+    )
+
+    def _on_travar_data(e):
+        _data_travada["ativo"] = sw_travar_data.value
+
+    sw_travar_data.on_change = _on_travar_data
 
     dd_canal = ft.Dropdown(
         label="Canal de Venda",
@@ -244,6 +260,11 @@ def view(page: ft.Page) -> ft.Control:
         max_lines=3,
         expand=True,
     )
+    tf_nome_cliente = ft.TextField(
+        label="Nome do Cliente (opcional)",
+        hint_text="Para facilitar busca e identificação do pedido",
+        expand=True,
+    )
 
     txt_erro = ft.Text("", color=ft.Colors.RED_400, size=13)
 
@@ -253,6 +274,8 @@ def view(page: ft.Page) -> ft.Control:
     # ── Tabela de pedidos do dia ──────────────────────────────────────────
     col_tabela    = ft.Column(spacing=0, expand=True)
     _todos_pedidos: list = []
+    _modo_selecao       = {"ativo": False}
+    _pedidos_selecionados = {"ids": set()}
 
     tf_filtro = ft.TextField(
         label="Buscar pedido...",
@@ -295,6 +318,7 @@ def view(page: ft.Page) -> ft.Control:
                                 ft.DataColumn(ft.Text("Operador")),
                                 ft.DataColumn(ft.Text("Bairro")),
                                 ft.DataColumn(ft.Text("Taxa"), numeric=True),
+                                ft.DataColumn(ft.Text("Cliente")),
                                 ft.DataColumn(ft.Text("Obs")),
                                 ft.DataColumn(ft.Text("")),
                             ],
@@ -319,6 +343,85 @@ def view(page: ft.Page) -> ft.Control:
 
     tf_filtro.on_change         = _on_filtro_change
     btn_limpar_filtro.on_click  = _limpar_filtro
+
+    # ── Controles de alteração em lote ────────────────────────────────────
+
+    btn_modo_selecao = ft.ElevatedButton(
+        "Selecionar Pedidos",
+        icon=ft.Icons.CHECKLIST,
+        style=ft.ButtonStyle(bgcolor=ft.Colors.INDIGO_700, color=ft.Colors.WHITE),
+    )
+    tf_nova_data = ft.TextField(
+        label="Nova Data",
+        width=140,
+        hint_text="DD/MM/AAAA",
+        text_align=ft.TextAlign.CENTER,
+        visible=False,
+    )
+    btn_aplicar_lote = ft.ElevatedButton(
+        "Aplicar",
+        icon=ft.Icons.SAVE,
+        visible=False,
+        style=ft.ButtonStyle(bgcolor=ft.Colors.TEAL_700, color=ft.Colors.WHITE),
+    )
+    btn_cancelar_selecao = ft.TextButton("Cancelar", visible=False)
+
+    row_lote = ft.Row(
+        controls=[btn_modo_selecao, tf_nova_data, btn_aplicar_lote, btn_cancelar_selecao],
+        spacing=8,
+    )
+
+    def _toggle_modo_selecao(e):
+        _modo_selecao["ativo"] = not _modo_selecao["ativo"]
+        if _modo_selecao["ativo"]:
+            btn_modo_selecao.text    = "Cancelar Seleção"
+            tf_nova_data.visible     = True
+            btn_aplicar_lote.visible = True
+            btn_cancelar_selecao.visible = False
+        else:
+            btn_modo_selecao.text    = "Selecionar Pedidos"
+            tf_nova_data.visible     = False
+            btn_aplicar_lote.visible = False
+            btn_cancelar_selecao.visible = False
+            _pedidos_selecionados["ids"].clear()
+        _atualizar_tabela()
+        page.update()
+
+    def _aplicar_lote(e):
+        if not _pedidos_selecionados["ids"]:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Selecione ao menos um pedido."),
+                bgcolor=ft.Colors.ORANGE_700, open=True,
+            ))
+            page.update()
+            return
+        nova_data_iso = _data_br_para_iso(tf_nova_data.value or "")
+        if not nova_data_iso:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Informe uma data válida no formato DD/MM/AAAA."),
+                bgcolor=ft.Colors.RED_700, open=True,
+            ))
+            page.update()
+            return
+        ids = list(_pedidos_selecionados["ids"])
+        for pid in ids:
+            database.pedido_atualizar(pid, data=nova_data_iso)
+            database.log_registrar(
+                acao="EDITAR_PEDIDO",
+                tabela="vendas_pedidos",
+                id_registro=pid,
+                descricao=f"Data alterada em lote para {tf_nova_data.value}",
+            )
+        page.overlay.append(ft.SnackBar(
+            content=ft.Text(f"{len(ids)} pedido(s) atualizado(s) para {tf_nova_data.value}."),
+            bgcolor=ft.Colors.GREEN_700, open=True,
+        ))
+        _toggle_modo_selecao(None)
+        _atualizar_tabela()
+
+    btn_modo_selecao.on_click     = _toggle_modo_selecao
+    btn_aplicar_lote.on_click     = _aplicar_lote
+    btn_cancelar_selecao.on_click = _toggle_modo_selecao
 
     def _atualizar_tabela():
         data_iso = _data_br_para_iso(tf_data.value or hoje_br)
@@ -358,13 +461,36 @@ def view(page: ft.Page) -> ft.Control:
             em_edicao = _editando["id"] == p["id"]
             busca_data = (
                 f"{canal_amigavel} {nome_op} {bairro_n} "
-                f"{p['valor_total']:.2f} {pag_txt}"
+                f"{p['valor_total']:.2f} {pag_txt} "
+                f"{p['nome_cliente'] or ''}"
             ).lower()
+
+            def _on_checkbox_change(ev, _pid=p["id"]):
+                if ev.control.value:
+                    _pedidos_selecionados["ids"].add(_pid)
+                else:
+                    _pedidos_selecionados["ids"].discard(_pid)
+
+            hora_cell = ft.DataCell(
+                ft.Row(
+                    spacing=4,
+                    controls=[
+                        ft.Checkbox(
+                            value=p["id"] in _pedidos_selecionados["ids"],
+                            on_change=_on_checkbox_change,
+                        ),
+                        ft.Text(p["hora"] or "—"),
+                    ],
+                )
+                if _modo_selecao["ativo"]
+                else ft.Text(p["hora"] or "—")
+            )
+
             linhas.append(ft.DataRow(
                 data=busca_data,
                 color=ft.Colors.with_opacity(0.08, ft.Colors.BLUE) if em_edicao else None,
                 cells=[
-                    ft.DataCell(ft.Text(p["hora"] or "—")),
+                    hora_cell,
                     ft.DataCell(ft.Text(canal_amigavel)),
                     ft.DataCell(ft.Text(f"R$ {p['valor_total']:.2f}")),
                     ft.DataCell(ft.Text(pag_txt)),
@@ -373,6 +499,7 @@ def view(page: ft.Page) -> ft.Control:
                     ft.DataCell(ft.Text(
                         f"R$ {p['taxa_entrega']:.2f}" if p["taxa_entrega"] else "—"
                     )),
+                    ft.DataCell(ft.Text(p["nome_cliente"] or "—")),
                     ft.DataCell(ft.Text(p["obs"] or "")),
                     ft.DataCell(ft.Row(spacing=0, controls=[
                         ft.IconButton(
@@ -406,6 +533,9 @@ def view(page: ft.Page) -> ft.Control:
 
     def _on_canal_change(e):
         nome  = dd_canal.value or ""
+        if not nome:
+            _atualizar_opts_metodos(False)
+            return
         info  = canal_info.get(nome, {})
         requer_bairro = bool(info.get("requer_bairro", 0))
         eh_deles      = bool(info.get("entregador_plataforma", 0))
@@ -447,6 +577,9 @@ def view(page: ft.Page) -> ft.Control:
     def _limpar():
         data_atual           = tf_data.value
         dd_canal.value       = None
+        for dd_m, _, _ in _pag_itens:
+            dd_m.options = _opts_metodos_fisicos
+            dd_m.value   = None
         tf_valor.value       = ""
         dd_operador.value    = None
         dd_bairro.value      = None
@@ -454,6 +587,7 @@ def view(page: ft.Page) -> ft.Control:
         tf_taxa.value        = "0.00"
         tf_repasse.value     = "0.00"
         tf_obs.value         = ""
+        tf_nome_cliente.value = ""
         linha_bairro.visible = False
         linha_taxas.visible  = False
         tf_repasse.visible   = True
@@ -468,7 +602,7 @@ def view(page: ft.Page) -> ft.Control:
             dd_m.value = None
             tf_v.value = ""
 
-        tf_data.value = data_atual  # mantém a data selecionada
+        tf_data.value = data_atual if _data_travada["ativo"] else hoje_br
 
         _editando["id"]      = None
         txt_titulo.value     = "Novo Pedido"
@@ -493,7 +627,8 @@ def view(page: ft.Page) -> ft.Control:
             dd_canal.value    = p["canal"]
             tf_valor.value    = f"{p['valor_total']:.2f}"
             dd_operador.value = str(p["id_operador"]) if p["id_operador"] else None
-            tf_obs.value      = p["obs"] or ""
+            tf_obs.value         = p["obs"] or ""
+            tf_nome_cliente.value = p["nome_cliente"] or ""
 
             # Bairro
             if p["id_bairro"]:
@@ -569,6 +704,18 @@ def view(page: ft.Page) -> ft.Control:
             page.update()
             return
 
+        soma_pag = sum(v for _, v in pags_validos)
+        diferenca_pag = abs(soma_pag - valor)
+        if diferenca_pag > 0.05:
+            txt_erro.value = (
+                f"Atenção: a soma dos pagamentos (R$ {soma_pag:.2f}) "
+                f"difere do valor do pedido (R$ {valor:.2f}). "
+                f"Diferença: R$ {diferenca_pag:.2f}. "
+                f"Verifique os valores antes de salvar."
+            )
+            page.update()
+            return
+
         if not dd_operador.value:
             txt_erro.value = "Selecione o operador."
             page.update()
@@ -588,6 +735,8 @@ def view(page: ft.Page) -> ft.Control:
         repasse = 0.0 if eh_deles else _to_float(tf_repasse.value)
         obs     = tf_obs.value.strip() or None
 
+        tem_fiado = any(metodo == "Fiado" for metodo, _ in pags_validos)
+
         if _editando["id"] is not None:
             pid = _editando["id"]
             p_antes = database.pedido_buscar(pid)
@@ -595,6 +744,7 @@ def view(page: ft.Page) -> ft.Control:
             valor_antes = p_antes["valor_total"] if p_antes else 0.0
             database.pedido_atualizar(
                 pid,
+                data=_data_br_para_iso(tf_data.value or hoje_br),
                 canal=canal,
                 valor_total=valor,
                 id_operador=int(dd_operador.value),
@@ -602,17 +752,39 @@ def view(page: ft.Page) -> ft.Control:
                 taxa_entrega=taxa,
                 repasse_entregador=repasse,
                 obs=obs,
+                nome_cliente=tf_nome_cliente.value.strip() or None,
             )
             database.pagamento_deletar_por_pedido(pid)
             for metodo, val_pag in pags_validos:
                 database.pagamento_inserir(pid, metodo, val_pag, cortesia=(metodo == "Voucher"))
+            if tem_fiado:
+                fiado_existente = database.fiado_buscar_por_pedido(pid)
+                if fiado_existente:
+                    database.fiado_atualizar_por_pedido(
+                        pid,
+                        nome_cliente=tf_nome_cliente.value.strip() or "—",
+                        valor=valor,
+                        descricao=CANAL_NOMES.get(canal, canal),
+                        data_lancamento=_data_br_para_iso(tf_data.value or hoje_br),
+                    )
+                else:
+                    database.fiado_inserir(
+                        data=_data_br_para_iso(tf_data.value or hoje_br),
+                        nome_cliente=tf_nome_cliente.value.strip() or "—",
+                        valor=valor,
+                        descricao=CANAL_NOMES.get(canal, canal),
+                        obs="Lançado automaticamente via PDV",
+                        id_pedido=pid,
+                    )
+            else:
+                database.fiado_excluir_por_pedido(pid)
             database.log_registrar(
                 acao="EDITAR_PEDIDO",
                 tabela="vendas_pedidos",
                 id_registro=pid,
                 descricao=f"Pedido #{pid} editado",
-                valor_antes=f"canal={canal_antes}, valor={valor_antes}",
-                valor_depois=f"canal={canal}, valor={valor}",
+                valor_antes=f"data={p_antes['data']}, canal={canal_antes}, valor={valor_antes}",
+                valor_depois=f"data={_data_br_para_iso(tf_data.value or hoje_br)}, canal={canal}, valor={valor}",
             )
             _limpar()
             _atualizar_tabela()
@@ -633,10 +805,20 @@ def view(page: ft.Page) -> ft.Control:
                 taxa_entrega=taxa,
                 repasse_entregador=repasse,
                 obs=obs,
+                nome_cliente=tf_nome_cliente.value.strip() or None,
             )
             for metodo, val_pag in pags_validos:
                 database.pagamento_inserir(
                     id_pedido, metodo, val_pag, cortesia=(metodo == "Voucher")
+                )
+            if tem_fiado:
+                database.fiado_inserir(
+                    data=_data_br_para_iso(tf_data.value or hoje_br),
+                    nome_cliente=tf_nome_cliente.value.strip() or "—",
+                    valor=valor,
+                    descricao=CANAL_NOMES.get(canal, canal),
+                    obs="Lançado automaticamente via PDV",
+                    id_pedido=id_pedido,
                 )
             _limpar()
             _atualizar_tabela()
@@ -683,7 +865,7 @@ def view(page: ft.Page) -> ft.Control:
                 controls=[
                     txt_titulo,
                     ft.Divider(height=1),
-                    ft.Row([tf_data, btn_calendario, dd_canal], spacing=8),
+                    ft.Row([tf_data, btn_calendario, sw_travar_data, dd_canal], spacing=8),
                     tf_valor,
                     ft.Column(spacing=4, controls=[
                         ft.Text("Pagamentos", size=13, color=ft.Colors.GREY_500),
@@ -694,6 +876,7 @@ def view(page: ft.Page) -> ft.Control:
                     linha_bairro,
                     linha_taxas,
                     tf_obs,
+                    tf_nome_cliente,
                     txt_erro,
                     ft.Row([btn_salvar, btn_cancelar], spacing=12),
                 ],
@@ -712,6 +895,7 @@ def view(page: ft.Page) -> ft.Control:
                     ft.Text("Pedidos do Dia", size=18, weight=ft.FontWeight.BOLD),
                     ft.Divider(height=1),
                     ft.Row(controls=[tf_filtro, btn_limpar_filtro], spacing=8),
+                    row_lote,
                     col_tabela,
                 ],
             ),
