@@ -1,5 +1,0 @@
-﻿Data,Hora,Produto,Tipo,Quantidade,Preço Unit.,Valor Total,Motivo,Obs
-27/03/2026,22:18,Alga,ENTRADA,1.000,25.00,25.00,Compra,Reposição: Alga
-27/03/2026,21:32,Alga,SAIDA,5.000,25.00,125.00,Consumo,
-26/03/2026,21:02,Alga,ENTRADA,5.000,25.00,125.00,Compra,
-26/03/2026,21:01,Alga,SAIDA,8.000,25.00,200.00,Consumo,teste

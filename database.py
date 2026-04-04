@@ -728,8 +728,8 @@ def _popular_dados_iniciais(conn: sqlite3.Connection):
                 ("Vale",          "SAIDA",   1),  # vale retirado por funcionário
                 ("Sangria",       "SAIDA",   0),  # retirada de dinheiro do caixa
                 ("Consumo",       "SAIDA",   1),  # consumo de funcionário
-                ("Corrida Extra", "SAIDA",   1),  # corrida avulsa paga ao entregador
-                ("Reentrega",     "SAIDA",   1),  # custo de reentrega
+                ("Corrida Extra", "NEUTRO",  1),  # corrida avulsa paga ao entregador
+                ("Reentrega",     "NEUTRO",  1),  # custo de reentrega
                 ("Fiado",         "ENTRADA", 0),  # recebimento de fiado
                 ("Pagamento",     "SAIDA",   1),  # pagamento diverso a funcionário
                 ("Outros",        "ENTRADA", 0),  # entradas/saídas genéricas
@@ -2075,7 +2075,7 @@ def ponto_calcular_horas(
                 fim_int += timedelta(days=1)
             minutos_intervalo = int((fim_int - ini_int).total_seconds() / 60)
         else:
-            minutos_intervalo = 60
+            minutos_intervalo = 0
 
         horas_liquidas = horas_brutas - minutos_intervalo / 60
         horas_extras   = horas_liquidas - carga_horaria
@@ -2327,6 +2327,23 @@ def fiado_listar(apenas_abertos: bool = True) -> list:
             sql += " WHERE pago = 0"
         sql += " ORDER BY pago ASC, data_lancamento DESC"
         return conn.execute(sql).fetchall()
+    finally:
+        conn.close()
+
+
+def fiado_atualizar(id_fiado: int, **campos) -> bool:
+    """Atualiza campos editáveis de um fiado. Retorna True se alterado."""
+    _permitidos = {"nome_cliente", "valor", "descricao", "obs", "data_lancamento"}
+    sets = {k: v for k, v in campos.items() if k in _permitidos}
+    if not sets:
+        return False
+    sql = "UPDATE fiados SET " + ", ".join(f"{k} = ?" for k in sets)
+    sql += " WHERE id = ?"
+    conn = conectar()
+    try:
+        cur = conn.execute(sql, (*sets.values(), id_fiado))
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()
 

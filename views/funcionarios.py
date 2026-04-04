@@ -384,6 +384,21 @@ def view(page: ft.Page) -> ft.Control:
             "soma_vales":     soma_vales,
             "soma_consumos":  soma_consumos, "val_consumos": val_consumos,
             "total_liquido":  total_liquido,
+            "_vales_export": [
+                {"data": v["data"][8:10] + "/" + v["data"][5:7],
+                 "valor": v["valor"], "obs": v["obs"] or ""}
+                for v in rows_vales_det
+            ],
+            "_consumos_export": [
+                {"data": c["data"][8:10] + "/" + c["data"][5:7],
+                 "valor": c["valor"], "desconto": c["valor"] * 0.8,
+                 "obs": c["obs"] or ""}
+                for c in rows_consumos_det
+            ],
+            "_ocorr_export": [
+                {"data": o["data"][8:10] + "/" + o["data"][5:7], "tipo": o["tipo"]}
+                for o in rows_ocorr
+            ],
         })
 
         # ── Linhas do holerite ────────────────────────────────────────
@@ -814,7 +829,13 @@ def view(page: ft.Page) -> ft.Control:
                 "valor": d["val_consumos"], "tipo": "desconto",
             })
         resumo.append({"descricao": "TOTAL LÍQUIDO", "valor": d["total_liquido"], "tipo": "total"})
-        return {"resumo": resumo, "vales": [], "consumos": [], "ocorrencias": [], "ponto": []}
+        return {
+            "resumo":      resumo,
+            "vales":       d.get("_vales_export", []),
+            "consumos":    d.get("_consumos_export", []),
+            "ocorrencias": d.get("_ocorr_export", []),
+            "ponto":       [],
+        }
 
     def _exportar_excel(e):
         if not _holerite_dados:

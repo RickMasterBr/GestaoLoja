@@ -111,11 +111,19 @@ def view(page: ft.Page) -> ft.Control:
         num_dias = calendar.monthrange(ano, mes)[1]
         dias     = [date(ano, mes, d) for d in range(1, num_dias + 1)]
 
-        # Escalas do mês: (data_iso, id_pessoa) → tipo
-        escalas: dict = {}
-        for d in dias:
-            for row in database.escala_listar_por_data(d.isoformat()):
-                escalas[(d.isoformat(), row["id_pessoa"])] = row["tipo"]
+        # Escalas do mês: (data_iso, id_pessoa) → tipo — query única para o mês
+        data_ini_iso = dias[0].isoformat()
+        data_fim_iso = dias[-1].isoformat()
+        conn_esc = database.conectar()
+        try:
+            rows_esc = conn_esc.execute(
+                """SELECT data, id_pessoa, tipo FROM escalas_trabalho
+                   WHERE data BETWEEN ? AND ?""",
+                (data_ini_iso, data_fim_iso),
+            ).fetchall()
+        finally:
+            conn_esc.close()
+        escalas: dict = {(r["data"], r["id_pessoa"]): r["tipo"] for r in rows_esc}
 
         pessoas = _pessoas_ordenadas()
 

@@ -19,7 +19,11 @@
       "Bash(python -m py_compile views/entregadores.py)",
       "Bash(python -m py_compile views/parametros.py database.py)",
       "Bash(python -m py_compile views/relatorio_diario.py)",
-      "Bash(python -c \"from relatorios import excel_gerador, pdf_gerador; print\\(''OK''\\)\")"
+      "Bash(python -c \"from relatorios import excel_gerador, pdf_gerador; print\\(''OK''\\)\")",
+      "Bash(python -c \"import database; users = database.usuario_listar_ativos\\(\\); print\\(users\\)\")",
+      "Bash(python -c \"import database; users = database.usuario_listar_ativos\\(\\); [print\\(dict\\(u\\)\\) for u in users]\")",
+      "Bash(python -c \"import database; conn = database.conectar\\(\\); rows = conn.execute\\('SELECT id, nome, tipo, cargo, perfil_acesso, status_ativo, pin FROM cad_pessoas'\\).fetchall\\(\\); [print\\(dict\\(r\\)\\) for r in rows]; conn.close\\(\\)\")",
+      "Bash(python -c \"import database; conn = database.conectar\\(\\); conn.execute\\('UPDATE cad_pessoas SET status_ativo = 1 WHERE id = 1'\\); conn.commit\\(\\); conn.close\\(\\); print\\('Richard reativado'\\)\")"
     ]
   }
 }

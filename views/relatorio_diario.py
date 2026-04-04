@@ -326,7 +326,7 @@ def view(page: ft.Page) -> ft.Control:
                 lucro_liquido = bruto_online - comissao_online - tx_trans + subsidio
 
                 if nome_plat == "99Food":
-                    custo_log = plat.get("custo_logistico_maximo", 0.0)
+                    custo_log = qtd * plat.get("custo_logistico_maximo", 0.0)
                     itens.append(_item("(-) Custo Logístico (máx)", custo_log, vermelho=True))
                     lucro_liquido -= custo_log
                     liquido       -= custo_log

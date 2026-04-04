@@ -63,6 +63,9 @@ def _br(iso: str) -> str:
 def view(page: ft.Page) -> ft.Control:
     hoje_br = date.today().strftime("%d/%m/%Y")
 
+    # ── Estado ─────────────────────────────────────────────────────────────────
+    _editando_id: dict = {"v": None}
+
     # ── Formulário ─────────────────────────────────────────────────────────────
     tf_nome  = ft.TextField(label="Nome do cliente",       expand=True)
     tf_valor = ft.TextField(label="Valor (R$)",            expand=True,
@@ -174,6 +177,26 @@ def view(page: ft.Page) -> ft.Control:
                         _confirmar_exclusao(page, "este fiado", _excluir)
                     return handler
 
+                def _on_editar_fiado(fid):
+                    def handler(e):
+                        r = database.fiado_buscar(fid)
+                        if not r:
+                            return
+                        _editando_id["v"] = fid
+                        tf_nome.value  = r["nome_cliente"]
+                        tf_valor.value = f"{r['valor']:.2f}"
+                        tf_desc.value  = r["descricao"] or ""
+                        tf_obs.value   = r["obs"] or ""
+                        try:
+                            a, m, d = r["data_lancamento"].split("-")
+                            tf_data.value = f"{d}/{m}/{a}"
+                        except Exception:
+                            tf_data.value = hoje_br
+                        btn_registrar.text = "Salvar Alteração"
+                        txt_erro.value = ""
+                        page.update()
+                    return handler
+
                 acoes = ft.Row(spacing=0, controls=[
                     ft.ElevatedButton(
                         "Quitar",
@@ -183,6 +206,12 @@ def view(page: ft.Page) -> ft.Control:
                             bgcolor=ft.Colors.GREEN_800,
                             color=ft.Colors.WHITE,
                         ),
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.EDIT_OUTLINED,
+                        icon_color=ft.Colors.BLUE_400,
+                        tooltip="Editar fiado",
+                        on_click=_on_editar_fiado(f["id"]),
                     ),
                     ft.IconButton(
                         icon=ft.Icons.DELETE_OUTLINE,
@@ -229,6 +258,16 @@ def view(page: ft.Page) -> ft.Control:
 
         page.update()
 
+    def _limpar_form():
+        tf_nome.value  = ""
+        tf_valor.value = ""
+        tf_desc.value  = ""
+        tf_obs.value   = ""
+        tf_data.value  = hoje_br
+        txt_erro.value = ""
+        _editando_id["v"]  = None
+        btn_registrar.text = "Registrar Fiado"
+
     def _registrar(e):
         txt_erro.value = ""
         nome = tf_nome.value.strip()
@@ -247,26 +286,45 @@ def view(page: ft.Page) -> ft.Control:
             page.update()
             return
 
-        database.fiado_inserir(
-            data=_iso(tf_data.value or hoje_br),
-            nome_cliente=nome,
-            valor=valor,
-            descricao=tf_desc.value.strip() or None,
-            obs=tf_obs.value.strip() or None,
-        )
-        tf_nome.value  = ""
-        tf_valor.value = ""
-        tf_desc.value  = ""
-        tf_obs.value   = ""
-        tf_data.value  = hoje_br
+        if _editando_id["v"] is not None:
+            database.fiado_atualizar(
+                _editando_id["v"],
+                nome_cliente=nome,
+                valor=valor,
+                descricao=tf_desc.value.strip() or None,
+                obs=tf_obs.value.strip() or None,
+                data_lancamento=_iso(tf_data.value or hoje_br),
+            )
+            msg = f"Fiado de {nome} atualizado!"
+        else:
+            database.fiado_inserir(
+                data=_iso(tf_data.value or hoje_br),
+                nome_cliente=nome,
+                valor=valor,
+                descricao=tf_desc.value.strip() or None,
+                obs=tf_obs.value.strip() or None,
+            )
+            msg = f"Fiado de {nome} registrado!"
+
+        _limpar_form()
         page.overlay.append(ft.SnackBar(
-            content=ft.Text(f"Fiado de {nome} registrado!"),
+            content=ft.Text(msg),
             bgcolor=ft.Colors.INDIGO_700, open=True,
         ))
         _refresh()
 
     cb_apenas_abertos.on_change = _refresh
     _refresh()
+
+    btn_registrar = ft.ElevatedButton(
+        "Registrar Fiado",
+        icon=ft.Icons.ADD,
+        on_click=_registrar,
+        style=ft.ButtonStyle(
+            bgcolor=ft.Colors.INDIGO_600,
+            color=ft.Colors.WHITE,
+        ),
+    )
 
     # ── Layout ─────────────────────────────────────────────────────────────────
     return ft.Column(
@@ -284,15 +342,7 @@ def view(page: ft.Page) -> ft.Control:
                     ft.Row([tf_desc, tf_data], spacing=12),
                     tf_obs,
                     txt_erro,
-                    ft.ElevatedButton(
-                        "Registrar Fiado",
-                        icon=ft.Icons.ADD,
-                        on_click=_registrar,
-                        style=ft.ButtonStyle(
-                            bgcolor=ft.Colors.INDIGO_600,
-                            color=ft.Colors.WHITE,
-                        ),
-                    ),
+                    btn_registrar,
                 ]),
             )),
             # Tabela

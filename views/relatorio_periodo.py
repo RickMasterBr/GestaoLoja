@@ -467,7 +467,7 @@ def view(page: ft.Page) -> ft.Control:
                 lucro_liquido = bruto_online - comissao_online - tx_trans + subsidio
 
                 if nome_plat == "99Food":
-                    custo_log = plat.get("custo_logistico_maximo", 0.0)
+                    custo_log = qtd * plat.get("custo_logistico_maximo", 0.0)
                     itens.append(_item("(-) Custo Logístico (máx)", custo_log, vermelho=True))
                     lucro_liquido -= custo_log
                     liquido       -= custo_log
@@ -777,17 +777,18 @@ def view(page: ft.Page) -> ft.Control:
         _dados_pdf["pagamentos"]   = _dados_csv.get("pagamentos", [])
         _dados_pdf["plataformas"]  = _dados_csv.get("plataformas", {})
         _dados_pdf["entregadores"] = _dados_csv.get("entregadores", [])
+        _dados_pdf["funcionarios"] = _dados_csv.get("funcionarios", [])
 
-        linha_resumo = ft.Row(
+        linha_canais_pag = ft.Row(
             spacing=16,
             vertical_alignment=ft.CrossAxisAlignment.START,
             controls=[
-                ft.Container(expand=True, content=bloco1),
                 ft.Container(expand=True, content=bloco2),
+                ft.Container(expand=True, content=bloco3),
             ],
         )
         col_relatorio.controls.clear()
-        col_relatorio.controls += [linha_resumo, bloco3, bloco4, bloco5, bloco6, bloco7]
+        col_relatorio.controls += [bloco1, linha_canais_pag, bloco4, bloco5, bloco6, bloco7]
         page.update()
 
     # ── Exportar CSV ──────────────────────────────────────────────────────

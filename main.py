@@ -66,10 +66,11 @@ def _iniciar_app(page: ft.Page):
 def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
 
     # ── Filtrar telas pelo perfil ──────────────────────────────────────────
-    _hierarquia  = {"OPERADOR": 1, "GERENTE": 2, "ADMIN": 3}
-    _nivel       = _hierarquia.get(perfil, 0)
-    telas_perm   = [t for t in TELAS if _hierarquia.get(t["min_perfil"], 1) <= _nivel]
-    _views       = [t["view"] for t in telas_perm]
+    _hierarquia      = {"OPERADOR": 1, "GERENTE": 2, "ADMIN": 3}
+    _nivel           = _hierarquia.get(perfil, 0)
+    telas_perm       = [t for t in TELAS if _hierarquia.get(t["min_perfil"], 1) <= _nivel]
+    _views           = [t["view"] for t in telas_perm]
+    _idx_selecionado = {"v": 0}
 
     # ── Área de conteúdo (direita) ────────────────────────────────────────
     area_conteudo = ft.Container(
@@ -229,6 +230,74 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
         ),
     )
 
+    # ── Menu lateral customizado ──────────────────────────────────────────
+    menu_col = ft.Column(spacing=2, scroll=ft.ScrollMode.AUTO, expand=False)
+
+    def _build_menu():
+        menu_col.controls.clear()
+        for i, t in enumerate(telas_perm):
+            selecionado = (i == _idx_selecionado["v"])
+            menu_col.controls.append(
+                ft.Container(
+                    width=110,
+                    border_radius=8,
+                    ink=True,
+                    tooltip=t["label"],
+                    bgcolor=(
+                        ft.Colors.with_opacity(0.18, ft.Colors.INDIGO_400)
+                        if selecionado
+                        else ft.Colors.TRANSPARENT
+                    ),
+                    padding=ft.Padding(left=6, right=6, top=10, bottom=10),
+                    on_click=_make_nav_handler(i),
+                    content=ft.Column(
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=2,
+                        controls=[
+                            ft.Icon(
+                                t["icon"],
+                                size=20,
+                                color=(
+                                    ft.Colors.INDIGO_300
+                                    if selecionado
+                                    else ft.Colors.GREY_400
+                                ),
+                            ),
+                            ft.Text(
+                                t["label"],
+                                size=10,
+                                text_align=ft.TextAlign.CENTER,
+                                color=(
+                                    ft.Colors.INDIGO_200
+                                    if selecionado
+                                    else ft.Colors.GREY_400
+                                ),
+                                weight=(
+                                    ft.FontWeight.BOLD
+                                    if selecionado
+                                    else ft.FontWeight.NORMAL
+                                ),
+                            ),
+                        ],
+                    ),
+                )
+            )
+        page.update()
+
+    def _make_nav_handler(idx):
+        def handler(e):
+            _idx_selecionado["v"] = idx
+            _build_menu()
+            carregar_view(idx)
+        return handler
+
+    menu_wrapper = ft.Container(
+        width=110,
+        expand=False,
+        padding=ft.Padding(top=8, bottom=8, left=4, right=4),
+        content=menu_col,
+    )
+
     def carregar_view(indice: int):
         """Instancia a view selecionada e atualiza a área de conteúdo."""
         try:
@@ -241,7 +310,8 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
                 carregar_view(_idx)
 
             def _ir_pdv(e):
-                rail.selected_index = 0
+                _idx_selecionado["v"] = 0
+                _build_menu()
                 carregar_view(0)
                 page.update()
 
@@ -256,35 +326,13 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
                         on_click=_tentar_novamente,
                     ),
                     ft.OutlinedButton(
-                        "Ir para PDV",
-                        icon=ft.Icons.POINT_OF_SALE,
+                        "Ir para Dashboard",
+                        icon=ft.Icons.DASHBOARD,
                         on_click=_ir_pdv,
                     ),
                 ]),
             ])
         page.update()
-
-    # ── NavigationRail (esquerda, fixo) ───────────────────────────────────
-    rail = ft.NavigationRail(
-        selected_index=0,
-        label_type=ft.NavigationRailLabelType.ALL,
-        min_width=110,
-        group_alignment=-1.0,
-        destinations=[
-            ft.NavigationRailDestination(
-                icon=t["icon"],
-                label=t["label"],
-            )
-            for t in telas_perm
-        ],
-        on_change=lambda e: carregar_view(e.control.selected_index),
-    )
-
-    rail_wrapper = ft.Container(
-        content=rail,
-        width=110,
-        # sem expand — largura fixa; altura delimitada pelo STRETCH do Row pai
-    )
 
     # ── Layout principal ──────────────────────────────────────────────────
     page.add(
@@ -296,7 +344,7 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
                 ft.Divider(height=1),
                 ft.Row(
                     controls=[
-                        rail_wrapper,
+                        menu_wrapper,
                         ft.VerticalDivider(width=1),
                         area_conteudo,
                     ],
@@ -310,6 +358,7 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
     )
 
     # Carrega a primeira view ao iniciar
+    _build_menu()
     carregar_view(0)
 
 

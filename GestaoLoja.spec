@@ -1,21 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_all
-
-datas = [('C:\\Users\\Richard\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\flet_desktop\\app', 'flet_desktop\\app')]
-binaries = []
-hiddenimports = []
-tmp_ret = collect_all('flet')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('flet_desktop')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=binaries,
-    datas=datas,
-    hiddenimports=hiddenimports,
+    binaries=[],
+    datas=[],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -28,26 +19,21 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
     name='GestaoLoja',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-)
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='GestaoLoja',
+    version='C:\\Users\\Richard\\AppData\\Local\\Temp\\545bbace-82a8-4dfe-adfc-6e494414c4aa',
 )
