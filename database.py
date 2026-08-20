@@ -3,10 +3,37 @@ database.py — Módulo de banco de dados para o sistema de fechamento de caixa.
 Gerencia todas as tabelas SQLite, funções CRUD e dados iniciais do aplicativo.
 """
 
+import contextlib
 import hashlib
+import logging
 import os
 import shutil
 import sqlite3
+import time
+
+# ── Instrumentação de performance (temporário) ────────────────────────────────
+_perf_logger = logging.getLogger("perf")
+_perf_logger.setLevel(logging.DEBUG)
+_perf_logger.propagate = False  # não repassa para o root logger (evita poluição Flet)
+_perf_handler = logging.FileHandler("perf_log.txt", encoding="utf-8")
+_perf_handler.setFormatter(logging.Formatter(
+    "%(asctime)s.%(msecs)03d | %(message)s", datefmt="%H:%M:%S"
+))
+_perf_logger.addHandler(_perf_handler)
+
+
+def _t(label: str):
+    """Retorna um context manager que loga o tempo de execução do bloco."""
+    @contextlib.contextmanager
+    def _cm():
+        t0 = time.perf_counter()
+        try:
+            yield
+        finally:
+            ms = (time.perf_counter() - t0) * 1000
+            _perf_logger.debug(f"{label:<55} {ms:8.1f} ms")
+    return _cm()
+# ─────────────────────────────────────────────────────────────────────────────
 
 # ─────────────────────────────────────────────
 #  CONFIGURAÇÃO — tenta os caminhos do Google Drive
@@ -186,14 +213,16 @@ def sincronizar_banco() -> dict:
 # ══════════════════════════════════════════════
 
 def conectar() -> sqlite3.Connection:
-    """Retorna uma conexão com WAL mode ativado e foreign keys habilitadas."""
-    conn = sqlite3.connect(get_db_path(), timeout=10)
+    """Retorna uma conexão com foreign keys habilitadas.
+    WAL mode é setado uma única vez em inicializar_banco() e persiste no arquivo.
+    """
+    _path = get_db_path()
+    with _t(f"conectar > sqlite3.connect ({_path[-30:]})"):
+        conn = sqlite3.connect(_path, timeout=10)
     conn.row_factory = sqlite3.Row          # acesso por nome de coluna
-    resultado = conn.execute("PRAGMA journal_mode=WAL").fetchone()  # WAL mode: melhor concorrência
-    if resultado[0].upper() != "WAL":
-        print(f"[AVISO] WAL mode não ativado em {DB_PATH}. Modo atual: {resultado[0]}")
     conn.execute("PRAGMA busy_timeout=8000")  # 8 s de espera no nível do engine SQLite
-    conn.execute("PRAGMA foreign_keys=ON")  # integridade referencial
+    with _t("conectar > PRAGMA foreign_keys=ON"):
+        conn.execute("PRAGMA foreign_keys=ON")  # integridade referencial
     return conn
 
 
@@ -201,6 +230,7 @@ def inicializar_banco():
     """Cria todas as tabelas (se não existirem) e popula dados iniciais."""
     conn = conectar()
     try:
+        conn.execute("PRAGMA journal_mode=WAL")  # setado uma vez, persiste no arquivo
         _criar_tabelas(conn)
         _migrar_colunas_plataformas(conn)
         _migrar_tipo_salario_entregador(conn)
@@ -1682,19 +1712,22 @@ def pedido_inserir(data: str, canal: str, valor_total: float,
     if canal.endswith("_Deles"):
         taxa_entrega = 0.0
         repasse_entregador = 0.0
-    conn = conectar()
+    with _t("pedido_inserir > conectar"):
+        conn = conectar()
     try:
-        cur = conn.execute(
-            """INSERT INTO vendas_pedidos
-               (data, hora, canal, valor_total,
-                id_operador, id_bairro, taxa_entrega, repasse_entregador, obs,
-                nome_cliente)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (data, hora, canal, valor_total,
-             id_operador, id_bairro, taxa_entrega, repasse_entregador, obs,
-             nome_cliente)
-        )
-        conn.commit()
+        with _t("pedido_inserir > execute INSERT"):
+            cur = conn.execute(
+                """INSERT INTO vendas_pedidos
+                   (data, hora, canal, valor_total,
+                    id_operador, id_bairro, taxa_entrega, repasse_entregador, obs,
+                    nome_cliente)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (data, hora, canal, valor_total,
+                 id_operador, id_bairro, taxa_entrega, repasse_entregador, obs,
+                 nome_cliente)
+            )
+        with _t("pedido_inserir > commit"):
+            conn.commit()
         return cur.lastrowid
     finally:
         conn.close()
@@ -1773,15 +1806,69 @@ def pedido_excluir(id_pedido: int) -> bool:
 def pagamento_inserir(id_pedido: int, metodo: str, valor: float,
                       cortesia: bool = False) -> int:
     """Registra um pagamento vinculado a um pedido. Retorna o id gerado."""
-    conn = conectar()
+    with _t("pagamento_inserir > conectar"):
+        conn = conectar()
     try:
-        cur = conn.execute(
-            """INSERT INTO vendas_pagamentos (id_pedido, metodo, valor, cortesia)
-               VALUES (?, ?, ?, ?)""",
-            (id_pedido, metodo, valor, int(cortesia))
-        )
-        conn.commit()
+        with _t("pagamento_inserir > execute INSERT"):
+            cur = conn.execute(
+                """INSERT INTO vendas_pagamentos (id_pedido, metodo, valor, cortesia)
+                   VALUES (?, ?, ?, ?)""",
+                (id_pedido, metodo, valor, int(cortesia))
+            )
+        with _t("pagamento_inserir > commit"):
+            conn.commit()
         return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def pedido_salvar_completo(
+    data: str, canal: str, valor_total: float,
+    pagamentos: list[tuple[str, float, bool]],
+    hora: str = None, id_operador: int = None,
+    id_bairro: int = None, taxa_entrega: float = 0.0,
+    repasse_entregador: float = 0.0, obs: str = None,
+    nome_cliente: str = None,
+) -> int:
+    """
+    Insere pedido + todos os pagamentos em uma única transação.
+    pagamentos: lista de (metodo, valor, cortesia)
+    Retorna o id do pedido criado.
+    """
+    if canal.endswith("_Deles"):
+        taxa_entrega = 0.0
+        repasse_entregador = 0.0
+
+    with _t("pedido_salvar_completo > conectar"):
+        conn = conectar()
+    try:
+        with _t("pedido_salvar_completo > execute INSERT pedido"):
+            cur = conn.execute(
+                """INSERT INTO vendas_pedidos
+                   (data, hora, canal, valor_total,
+                    id_operador, id_bairro, taxa_entrega, repasse_entregador, obs,
+                    nome_cliente)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (data, hora, canal, valor_total,
+                 id_operador, id_bairro, taxa_entrega, repasse_entregador, obs,
+                 nome_cliente)
+            )
+        id_pedido = cur.lastrowid
+
+        with _t("pedido_salvar_completo > execute INSERT pagamentos"):
+            for metodo, valor, cortesia in pagamentos:
+                conn.execute(
+                    """INSERT INTO vendas_pagamentos (id_pedido, metodo, valor, cortesia)
+                       VALUES (?, ?, ?, ?)""",
+                    (id_pedido, metodo, valor, int(cortesia))
+                )
+
+        with _t("pedido_salvar_completo > commit"):
+            conn.commit()
+        return id_pedido
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -1794,6 +1881,33 @@ def pagamento_buscar_por_pedido(id_pedido: int) -> list:
             "SELECT * FROM vendas_pagamentos WHERE id_pedido = ? ORDER BY id",
             (id_pedido,)
         ).fetchall()
+    finally:
+        conn.close()
+
+
+def pagamento_listar_por_data(data: str) -> dict:
+    """
+    Retorna todos os pagamentos de todos os pedidos de uma data,
+    agrupados por id_pedido. Uma única query substitui o loop N+1.
+    Retorna: {id_pedido: [row, row, ...]}
+    """
+    with _t("pagamento_listar_por_data > conectar"):
+        conn = conectar()
+    try:
+        with _t("pagamento_listar_por_data > SELECT JOIN"):
+            rows = conn.execute(
+                """SELECT vp.*
+                   FROM vendas_pagamentos vp
+                   JOIN vendas_pedidos p ON p.id = vp.id_pedido
+                   WHERE p.data = ?
+                   ORDER BY vp.id_pedido, vp.id""",
+                (data,)
+            ).fetchall()
+
+        resultado: dict = {}
+        for row in rows:
+            resultado.setdefault(row["id_pedido"], []).append(row)
+        return resultado
     finally:
         conn.close()
 
@@ -1947,14 +2061,17 @@ def fluxo_caixa_abrir(data: str, troco_inicial: float = 0.0) -> bool:
     Cria o registro de caixa do dia se ainda não existir.
     Retorna True se criado, False se já existia.
     """
-    conn = conectar()
+    with _t("fluxo_caixa_abrir > conectar"):
+        conn = conectar()
     try:
-        cur = conn.execute(
-            """INSERT OR IGNORE INTO fluxo_caixa_diario (data, troco_inicial)
-               VALUES (?, ?)""",
-            (data, troco_inicial)
-        )
-        conn.commit()
+        with _t("fluxo_caixa_abrir > execute INSERT OR IGNORE"):
+            cur = conn.execute(
+                """INSERT OR IGNORE INTO fluxo_caixa_diario (data, troco_inicial)
+                   VALUES (?, ?)""",
+                (data, troco_inicial)
+            )
+        with _t("fluxo_caixa_abrir > commit"):
+            conn.commit()
         return cur.rowcount > 0
     finally:
         conn.close()
@@ -1991,14 +2108,17 @@ def fluxo_caixa_atualizar(data: str, **campos) -> bool:
     """
     if not campos:
         return False
-    conn = conectar()
+    with _t("fluxo_caixa_atualizar > conectar"):
+        conn = conectar()
     try:
         set_clause = ", ".join(f"{col} = ?" for col in campos)
         valores = list(campos.values()) + [data]
-        cur = conn.execute(
-            f"UPDATE fluxo_caixa_diario SET {set_clause} WHERE data = ?", valores
-        )
-        conn.commit()
+        with _t("fluxo_caixa_atualizar > execute UPDATE"):
+            cur = conn.execute(
+                f"UPDATE fluxo_caixa_diario SET {set_clause} WHERE data = ?", valores
+            )
+        with _t("fluxo_caixa_atualizar > commit"):
+            conn.commit()
         return cur.rowcount > 0
     finally:
         conn.close()
@@ -2010,50 +2130,57 @@ def fluxo_caixa_recalcular(data: str) -> dict:
     e movimentações, atualiza o registro e retorna os valores calculados.
     Considera apenas transações em 'Dinheiro'.
     """
-    conn = conectar()
+    with _t("fluxo_caixa_recalcular > conectar"):
+        conn = conectar()
     try:
         # Entradas em dinheiro vindas de pedidos (exclui pagamentos marcados como cortesia)
-        row = conn.execute(
-            """SELECT COALESCE(SUM(vp.valor), 0)
-               FROM vendas_pagamentos vp
-               JOIN vendas_pedidos p ON p.id = vp.id_pedido
-               WHERE p.data = ? AND vp.metodo = 'Dinheiro' AND vp.cortesia = 0""",
-            (data,)
-        ).fetchone()
+        with _t("fluxo_caixa_recalcular > SELECT entradas_pedidos (JOIN)"):
+            row = conn.execute(
+                """SELECT COALESCE(SUM(vp.valor), 0)
+                   FROM vendas_pagamentos vp
+                   JOIN vendas_pedidos p ON p.id = vp.id_pedido
+                   WHERE p.data = ? AND vp.metodo = 'Dinheiro' AND vp.cortesia = 0""",
+                (data,)
+            ).fetchone()
         entradas_pedidos = row[0] if row else 0.0
 
         # Entradas e saídas em dinheiro nas movimentações extras
-        row_ent = conn.execute(
-            """SELECT COALESCE(SUM(valor), 0) FROM movimentacoes_extras
-               WHERE data = ? AND fluxo = 'ENTRADA' AND metodo = 'Dinheiro'""",
-            (data,)
-        ).fetchone()
-        row_sai = conn.execute(
-            """SELECT COALESCE(SUM(valor), 0) FROM movimentacoes_extras
-               WHERE data = ? AND fluxo = 'SAIDA' AND metodo = 'Dinheiro'""",
-            (data,)
-        ).fetchone()
+        with _t("fluxo_caixa_recalcular > SELECT movimentacoes ENTRADA"):
+            row_ent = conn.execute(
+                """SELECT COALESCE(SUM(valor), 0) FROM movimentacoes_extras
+                   WHERE data = ? AND fluxo = 'ENTRADA' AND metodo = 'Dinheiro'""",
+                (data,)
+            ).fetchone()
+        with _t("fluxo_caixa_recalcular > SELECT movimentacoes SAIDA"):
+            row_sai = conn.execute(
+                """SELECT COALESCE(SUM(valor), 0) FROM movimentacoes_extras
+                   WHERE data = ? AND fluxo = 'SAIDA' AND metodo = 'Dinheiro'""",
+                (data,)
+            ).fetchone()
 
         total_entradas = entradas_pedidos + (row_ent[0] if row_ent else 0.0)
         total_saidas   = row_sai[0] if row_sai else 0.0
 
         # Recupera o troco inicial para compor o saldo teórico
-        fc = conn.execute(
-            "SELECT troco_inicial FROM fluxo_caixa_diario WHERE data = ?", (data,)
-        ).fetchone()
+        with _t("fluxo_caixa_recalcular > SELECT troco_inicial"):
+            fc = conn.execute(
+                "SELECT troco_inicial FROM fluxo_caixa_diario WHERE data = ?", (data,)
+            ).fetchone()
         troco = fc["troco_inicial"] if fc else 0.0
 
         saldo_teorico = troco + total_entradas - total_saidas
 
-        conn.execute(
-            """UPDATE fluxo_caixa_diario
-               SET total_especie_entradas = ?,
-                   total_especie_saidas   = ?,
-                   saldo_teorico          = ?
-               WHERE data = ?""",
-            (total_entradas, total_saidas, saldo_teorico, data)
-        )
-        conn.commit()
+        with _t("fluxo_caixa_recalcular > execute UPDATE"):
+            conn.execute(
+                """UPDATE fluxo_caixa_diario
+                   SET total_especie_entradas = ?,
+                       total_especie_saidas   = ?,
+                       saldo_teorico          = ?
+                   WHERE data = ?""",
+                (total_entradas, total_saidas, saldo_teorico, data)
+            )
+        with _t("fluxo_caixa_recalcular > commit"):
+            conn.commit()
         return {
             "total_especie_entradas": total_entradas,
             "total_especie_saidas":   total_saidas,
@@ -2641,15 +2768,18 @@ def fiado_inserir(data: str, nome_cliente: str, valor: float,
                   descricao: str = None, obs: str = None,
                   id_pedido: int = None) -> int:
     """Registra um novo fiado. Retorna o id gerado."""
-    conn = conectar()
+    with _t("fiado_inserir > conectar"):
+        conn = conectar()
     try:
-        cur = conn.execute(
-            """INSERT INTO fiados
-                   (data_lancamento, nome_cliente, valor, descricao, obs, id_pedido)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (data, nome_cliente, valor, descricao, obs, id_pedido),
-        )
-        conn.commit()
+        with _t("fiado_inserir > execute INSERT"):
+            cur = conn.execute(
+                """INSERT INTO fiados
+                       (data_lancamento, nome_cliente, valor, descricao, obs, id_pedido)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (data, nome_cliente, valor, descricao, obs, id_pedido),
+            )
+        with _t("fiado_inserir > commit"):
+            conn.commit()
         return cur.lastrowid
     finally:
         conn.close()
@@ -3367,21 +3497,24 @@ def log_registrar(
     """
     from datetime import datetime
     try:
-        conn = conectar()
+        with _t("log_registrar > conectar"):
+            conn = conectar()
         try:
-            conn.execute(
-                """INSERT INTO logs_auditoria
-                   (data_hora, acao, tabela, id_registro,
-                    descricao, valor_antes, valor_depois, usuario)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    acao, tabela, id_registro,
-                    descricao, valor_antes, valor_depois,
-                    usuario or "Sistema",
-                ),
-            )
-            conn.commit()
+            with _t("log_registrar > execute INSERT"):
+                conn.execute(
+                    """INSERT INTO logs_auditoria
+                       (data_hora, acao, tabela, id_registro,
+                        descricao, valor_antes, valor_depois, usuario)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        acao, tabela, id_registro,
+                        descricao, valor_antes, valor_depois,
+                        usuario or "Sistema",
+                    ),
+                )
+            with _t("log_registrar > commit"):
+                conn.commit()
         finally:
             conn.close()
     except Exception:

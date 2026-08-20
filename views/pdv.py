@@ -2,10 +2,27 @@
 views/pdv.py — Tela de PDV: lançamento e listagem de pedidos do dia.
 """
 
+import logging
+import os
+import time
+
 import flet as ft
 from datetime import date, datetime
 
 import database
+
+_perf_logger = logging.getLogger("perf")
+
+# ── Log de diagnóstico em arquivo (persiste mesmo se a UI travar) ─────────────
+_log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "perf_loja.txt")
+logging.basicConfig(
+    filename=_log_path,
+    level=logging.DEBUG,
+    format="%(asctime)s.%(msecs)03d | %(message)s",
+    datefmt="%H:%M:%S",
+    encoding="utf-8",
+)
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 # ── Utilitários ───────────────────────────────────────────────────────────────
@@ -270,6 +287,7 @@ def view(page: ft.Page) -> ft.Control:
 
     _editando  = {"id": None}
     txt_titulo = ft.Text("Novo Pedido", size=18, weight=ft.FontWeight.BOLD)
+    txt_perf   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
 
     # ── Tabela de pedidos do dia ──────────────────────────────────────────
     col_tabela    = ft.Column(spacing=0, expand=True)
@@ -424,8 +442,10 @@ def view(page: ft.Page) -> ft.Control:
     btn_cancelar_selecao.on_click = _toggle_modo_selecao
 
     def _atualizar_tabela():
+        _t0_tab = time.perf_counter()
         data_iso = _data_br_para_iso(tf_data.value or hoje_br)
         pedidos  = database.pedido_listar_por_data(data_iso)
+        _perf_logger.debug(f"{'_atualizar_tabela > pedido_listar_por_data':<55} {(time.perf_counter() - _t0_tab)*1000:8.1f} ms")
 
         def _on_excluir(id_pedido, canal_p, valor_p, data_p):
             def handler(e):
@@ -448,9 +468,13 @@ def view(page: ft.Page) -> ft.Control:
         def _on_editar(id_pedido):
             return _iniciar_edicao(id_pedido)
 
+        _t0_loop_pags = time.perf_counter()
+        pagamentos_por_pedido = database.pagamento_listar_por_data(data_iso)
+        _perf_logger.debug(f"{'_atualizar_tabela > pagamento_listar_por_data':<55} {(time.perf_counter() - _t0_loop_pags)*1000:8.1f} ms")
+
         linhas = []
         for p in pedidos:
-            pags    = database.pagamento_buscar_por_pedido(p["id"])
+            pags    = pagamentos_por_pedido.get(p["id"], [])
             pag_txt = " | ".join(
                 f"{pg['metodo']} R${pg['valor']:.2f}" for pg in pags
             ) or "—"
@@ -518,9 +542,13 @@ def view(page: ft.Page) -> ft.Control:
                 ],
             ))
 
+        _perf_logger.debug(f"{'_atualizar_tabela > pag_listar + build linhas (total)':<55} {(time.perf_counter() - _t0_loop_pags)*1000:8.1f} ms")
+
+        _t0_rebuild = time.perf_counter()
         _todos_pedidos.clear()
         _todos_pedidos.extend(linhas)
         _filtrar(tf_filtro.value or "")
+        _perf_logger.debug(f"{'_atualizar_tabela > rebuild controles Flet':<55} {(time.perf_counter() - _t0_rebuild)*1000:8.1f} ms")
 
     # ── Lógica dinâmica ───────────────────────────────────────────────────
 
@@ -679,17 +707,36 @@ def view(page: ft.Page) -> ft.Control:
     # ── Salvar ────────────────────────────────────────────────────────────
 
     def _salvar(e):
+        logging.debug("_salvar INICIO — botao clicado")
+        _t0 = time.perf_counter()
         txt_erro.value = ""
 
+        # ── Feedback visual imediato ──────────────────────────────────────
+        btn_salvar.disabled = True
+        btn_salvar.text     = "Salvando..."
+        btn_salvar.icon     = ft.Icons.HOURGLASS_EMPTY
+        page.update()
+        logging.debug(f"_salvar spinner visivel — {(time.perf_counter() - _t0)*1000:.0f}ms desde clique")
+        txt_perf.value = "Iniciando save..."
+        page.update()
+
+        def _restaurar_botao():
+            btn_salvar.disabled = False
+            btn_salvar.text     = "Salvar Pedido"
+            btn_salvar.icon     = ft.Icons.SAVE
+
+        # ── Validações ────────────────────────────────────────────────────
         canal = dd_canal.value
         if not canal:
             txt_erro.value = "Selecione o canal de venda."
+            _restaurar_botao()
             page.update()
             return
 
         valor = _to_float(tf_valor.value)
         if valor <= 0:
             txt_erro.value = "Informe o valor total do pedido."
+            _restaurar_botao()
             page.update()
             return
 
@@ -701,6 +748,7 @@ def view(page: ft.Page) -> ft.Control:
         ]
         if not pags_validos:
             txt_erro.value = "Informe ao menos um pagamento com método selecionado."
+            _restaurar_botao()
             page.update()
             return
 
@@ -713,11 +761,13 @@ def view(page: ft.Page) -> ft.Control:
                 f"Diferença: R$ {diferenca_pag:.2f}. "
                 f"Verifique os valores antes de salvar."
             )
+            _restaurar_botao()
             page.update()
             return
 
         if not dd_operador.value:
             txt_erro.value = "Selecione o operador."
+            _restaurar_botao()
             page.update()
             return
 
@@ -727,6 +777,7 @@ def view(page: ft.Page) -> ft.Control:
 
         if requer_b and id_bairro is None:
             txt_erro.value = "Selecione o bairro para este canal."
+            _restaurar_botao()
             page.update()
             return
 
@@ -788,6 +839,9 @@ def view(page: ft.Page) -> ft.Control:
             )
             _limpar()
             _atualizar_tabela()
+            _tempo_total = (time.perf_counter() - _t0) * 1000
+            txt_perf.value = f"Total: {_tempo_total:.0f}ms | {time.strftime('%H:%M:%S')}"
+            _restaurar_botao()
             page.overlay.append(ft.SnackBar(
                 content=ft.Text(f"Pedido #{pid} atualizado com sucesso."),
                 bgcolor=ft.Colors.GREEN_700,
@@ -795,11 +849,17 @@ def view(page: ft.Page) -> ft.Control:
             ))
             page.update()
         else:
-            id_pedido = database.pedido_inserir(
+            _t0_total = time.perf_counter()
+
+            id_pedido = database.pedido_salvar_completo(
                 data=_data_br_para_iso(tf_data.value or hoje_br),
                 hora=datetime.now().strftime("%H:%M"),
                 canal=canal,
                 valor_total=valor,
+                pagamentos=[
+                    (metodo, val_pag, metodo == "Voucher")
+                    for metodo, val_pag in pags_validos
+                ],
                 id_operador=int(dd_operador.value),
                 id_bairro=id_bairro,
                 taxa_entrega=taxa,
@@ -807,10 +867,11 @@ def view(page: ft.Page) -> ft.Control:
                 obs=obs,
                 nome_cliente=tf_nome_cliente.value.strip() or None,
             )
-            for metodo, val_pag in pags_validos:
-                database.pagamento_inserir(
-                    id_pedido, metodo, val_pag, cortesia=(metodo == "Voucher")
-                )
+            _perf_logger.debug(f"{'pdv._salvar > pedido_salvar_completo':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms acumulado")
+            logging.debug(f"_salvar DB insert — {(time.perf_counter() - _t0)*1000:.0f}ms")
+            txt_perf.value = f"DB insert: {(time.perf_counter() - _t0)*1000:.0f}ms"
+            page.update()
+
             if tem_fiado:
                 database.fiado_inserir(
                     data=_data_br_para_iso(tf_data.value or hoje_br),
@@ -820,8 +881,19 @@ def view(page: ft.Page) -> ft.Control:
                     obs="Lançado automaticamente via PDV",
                     id_pedido=id_pedido,
                 )
+                _perf_logger.debug(f"{'pdv._salvar > fiado_inserir':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms acumulado")
+
             _limpar()
             _atualizar_tabela()
+            _perf_logger.debug(f"{'pdv._salvar > _atualizar_tabela':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms acumulado")
+            logging.debug(f"_salvar tabela atualizada — {(time.perf_counter() - _t0)*1000:.0f}ms")
+            txt_perf.value = f"Tabela: {(time.perf_counter() - _t0)*1000:.0f}ms"
+            page.update()
+
+            _tempo_total = (time.perf_counter() - _t0) * 1000
+            txt_perf.value = f"Total: {_tempo_total:.0f}ms | {time.strftime('%H:%M:%S')}"
+            logging.debug(f"_salvar FIM — total {_tempo_total:.0f}ms")
+            _restaurar_botao()
             page.overlay.append(ft.SnackBar(
                 content=ft.Text("Pedido salvo!"),
                 bgcolor=ft.Colors.GREEN_700,
@@ -829,6 +901,8 @@ def view(page: ft.Page) -> ft.Control:
             ))
             dd_canal.focus()
             page.update()
+            _perf_logger.debug(f"{'pdv._salvar > page.update':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms acumulado")
+            _perf_logger.debug(f"{'pdv._salvar > TOTAL':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms")
 
     # ── Layout ────────────────────────────────────────────────────────────
 
@@ -879,6 +953,7 @@ def view(page: ft.Page) -> ft.Control:
                     tf_nome_cliente,
                     txt_erro,
                     ft.Row([btn_salvar, btn_cancelar], spacing=12),
+                    txt_perf,
                 ],
             ),
         ),

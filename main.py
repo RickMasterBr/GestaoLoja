@@ -3,10 +3,44 @@ main.py — Ponto de entrada do app Gestão Loja.
 Configura a janela, o NavigationRail lateral e carrega as views sob demanda.
 """
 
+import ctypes
+import logging
+import os
+import subprocess
+import time
+
 import flet as ft
 from datetime import date
 
 import database
+
+
+def _encerrar_instancias_anteriores() -> None:
+    """Encerra silenciosamente qualquer processo GestaoLoja.exe anterior ao atual."""
+    pid_atual = os.getpid()
+    try:
+        resultado = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq GestaoLoja.exe", "/FO", "CSV", "/NH"],
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        for linha in resultado.stdout.splitlines():
+            partes = linha.strip().strip('"').split('","')
+            if len(partes) < 2:
+                continue
+            try:
+                pid = int(partes[1])
+            except ValueError:
+                continue
+            if pid != pid_atual:
+                subprocess.run(
+                    ["taskkill", "/F", "/PID", str(pid)],
+                    capture_output=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+    except Exception:
+        pass
 from views import (
     dashboard,
     pdv,
@@ -45,6 +79,9 @@ TELAS = [
 
 
 def _iniciar_app(page: ft.Page):
+    _t_boot = time.perf_counter()
+    logging.debug("main() iniciado — Flet UI thread ativa")
+
     page.title = "Gestão Loja"
     tema_salvo = database.config_obter("tema", "DARK")
     page.theme_mode = (ft.ThemeMode.DARK
@@ -55,16 +92,16 @@ def _iniciar_app(page: ft.Page):
 
     def _on_login(perfil: str):
         page.clean()
-        _carregar_app_principal(page, perfil, _on_login)
+        _carregar_app_principal(page, perfil, _on_login, _t_boot)
 
     usuarios = database.usuario_listar_ativos()
     if usuarios:
         page.add(login.view(page, _on_login))
     else:
-        _carregar_app_principal(page, "ADMIN", _on_login)
+        _carregar_app_principal(page, "ADMIN", _on_login, _t_boot)
 
 
-def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
+def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: float = 0.0):
 
     # ── Filtrar telas pelo perfil ──────────────────────────────────────────
     _hierarquia      = {"OPERADOR": 1, "GERENTE": 2, "ADMIN": 3}
@@ -606,11 +643,20 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None):
         )
     )
 
+    def _ao_fechar(_e):
+        ctypes.windll.kernel32.TerminateProcess(
+            ctypes.windll.kernel32.GetCurrentProcess(), 0
+        )
+
+    page.on_disconnect = _ao_fechar
+
     # Carrega a primeira view ao iniciar
     _build_menu()
     carregar_view(0)
+    logging.debug(f"primeira view carregada — {(time.perf_counter() - _t_boot)*1000:.0f}ms desde main()")
 
 
 if __name__ == "__main__":
+    _encerrar_instancias_anteriores()
     database.inicializar_banco()
     ft.app(target=_iniciar_app)

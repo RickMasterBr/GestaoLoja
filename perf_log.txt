@@ -1,0 +1,863 @@
+19:52:56.804 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)     21.1 ms
+19:52:56.846 | conectar > PRAGMA journal_mode=WAL                          41.3 ms
+19:52:56.846 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:52:57.757 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+19:52:57.792 | conectar > PRAGMA journal_mode=WAL                          34.4 ms
+19:52:57.792 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:52:58.756 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.8 ms
+19:52:58.803 | conectar > PRAGMA journal_mode=WAL                          46.4 ms
+19:52:58.803 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:52:58.826 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      8.7 ms
+19:52:58.870 | conectar > PRAGMA journal_mode=WAL                          43.9 ms
+19:52:58.870 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:52:58.883 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:52:58.905 | conectar > PRAGMA journal_mode=WAL                          21.5 ms
+19:52:58.905 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:52:58.915 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:52:58.944 | conectar > PRAGMA journal_mode=WAL                          28.2 ms
+19:52:58.944 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.188 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      6.0 ms
+19:53:02.217 | conectar > PRAGMA journal_mode=WAL                          29.4 ms
+19:53:02.218 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.230 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+19:53:02.257 | conectar > PRAGMA journal_mode=WAL                          27.2 ms
+19:53:02.257 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.257 | log_registrar > conectar                                    29.4 ms
+19:53:02.259 | log_registrar > execute INSERT                               1.1 ms
+19:53:02.263 | log_registrar > commit                                       4.0 ms
+19:53:02.287 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.7 ms
+19:53:02.313 | conectar > PRAGMA journal_mode=WAL                          25.7 ms
+19:53:02.313 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.331 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+19:53:02.361 | conectar > PRAGMA journal_mode=WAL                          29.7 ms
+19:53:02.361 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.410 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+19:53:02.435 | conectar > PRAGMA journal_mode=WAL                          24.9 ms
+19:53:02.435 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.440 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:02.487 | conectar > PRAGMA journal_mode=WAL                          47.4 ms
+19:53:02.487 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.489 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.3 ms
+19:53:02.494 | conectar > PRAGMA journal_mode=WAL                           4.1 ms
+19:53:02.494 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.494 | fluxo_caixa_abrir > conectar                                 5.9 ms
+19:53:02.495 | fluxo_caixa_abrir > execute INSERT OR IGNORE                 0.4 ms
+19:53:02.498 | fluxo_caixa_abrir > commit                                   3.6 ms
+19:53:02.501 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+19:53:02.522 | conectar > PRAGMA journal_mode=WAL                          21.0 ms
+19:53:02.522 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.525 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.2 ms
+19:53:02.529 | conectar > PRAGMA journal_mode=WAL                           4.1 ms
+19:53:02.529 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.529 | fluxo_caixa_recalcular > conectar                            5.8 ms
+19:53:02.532 | fluxo_caixa_recalcular > SELECT entradas_pedidos (JOIN)      2.5 ms
+19:53:02.532 | fluxo_caixa_recalcular > SELECT movimentacoes ENTRADA        0.3 ms
+19:53:02.532 | fluxo_caixa_recalcular > SELECT movimentacoes SAIDA          0.1 ms
+19:53:02.533 | fluxo_caixa_recalcular > SELECT troco_inicial                0.8 ms
+19:53:02.534 | fluxo_caixa_recalcular > execute UPDATE                      0.1 ms
+19:53:02.534 | fluxo_caixa_recalcular > commit                              0.0 ms
+19:53:02.554 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.3 ms
+19:53:02.581 | conectar > PRAGMA journal_mode=WAL                          27.0 ms
+19:53:02.581 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.592 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+19:53:02.624 | conectar > PRAGMA journal_mode=WAL                          31.9 ms
+19:53:02.624 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.636 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+19:53:02.663 | conectar > PRAGMA journal_mode=WAL                          27.6 ms
+19:53:02.663 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.674 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+19:53:02.697 | conectar > PRAGMA journal_mode=WAL                          23.5 ms
+19:53:02.697 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.721 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.1 ms
+19:53:02.745 | conectar > PRAGMA journal_mode=WAL                          23.5 ms
+19:53:02.745 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.762 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+19:53:02.786 | conectar > PRAGMA journal_mode=WAL                          24.0 ms
+19:53:02.786 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.797 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+19:53:02.821 | conectar > PRAGMA journal_mode=WAL                          24.1 ms
+19:53:02.821 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.832 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+19:53:02.856 | conectar > PRAGMA journal_mode=WAL                          23.8 ms
+19:53:02.856 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.865 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:02.886 | conectar > PRAGMA journal_mode=WAL                          20.6 ms
+19:53:02.886 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.901 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+19:53:02.922 | conectar > PRAGMA journal_mode=WAL                          20.6 ms
+19:53:02.922 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.931 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:02.952 | conectar > PRAGMA journal_mode=WAL                          20.9 ms
+19:53:02.952 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.961 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+19:53:02.981 | conectar > PRAGMA journal_mode=WAL                          20.1 ms
+19:53:02.981 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:02.991 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:03.012 | conectar > PRAGMA journal_mode=WAL                          21.1 ms
+19:53:03.012 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:03.027 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:03.049 | conectar > PRAGMA journal_mode=WAL                          21.3 ms
+19:53:03.049 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:03.058 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:03.079 | conectar > PRAGMA journal_mode=WAL                          20.7 ms
+19:53:03.079 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:03.088 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:03.109 | conectar > PRAGMA journal_mode=WAL                          20.9 ms
+19:53:03.109 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:03.118 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:03.147 | conectar > PRAGMA journal_mode=WAL                          28.9 ms
+19:53:03.147 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:03.156 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:03.178 | conectar > PRAGMA journal_mode=WAL                          21.6 ms
+19:53:03.178 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:03.188 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:03.213 | conectar > PRAGMA journal_mode=WAL                          25.1 ms
+19:53:03.213 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:03.223 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+19:53:03.247 | conectar > PRAGMA journal_mode=WAL                          23.4 ms
+19:53:03.247 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:03.256 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+19:53:03.286 | conectar > PRAGMA journal_mode=WAL                          29.9 ms
+19:53:03.286 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:03.295 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:03.317 | conectar > PRAGMA journal_mode=WAL                          21.7 ms
+19:53:03.317 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:03.326 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+19:53:03.348 | conectar > PRAGMA journal_mode=WAL                          21.5 ms
+19:53:03.348 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:03.357 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+19:53:03.379 | conectar > PRAGMA journal_mode=WAL                          21.7 ms
+19:53:03.379 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:05.602 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+19:53:05.638 | conectar > PRAGMA journal_mode=WAL                          35.5 ms
+19:53:05.638 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:05.650 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.4 ms
+19:53:05.676 | conectar > PRAGMA journal_mode=WAL                          25.3 ms
+19:53:05.676 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:05.688 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+19:53:05.714 | conectar > PRAGMA journal_mode=WAL                          26.1 ms
+19:53:05.714 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:05.724 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+19:53:05.750 | conectar > PRAGMA journal_mode=WAL                          25.0 ms
+19:53:05.750 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:05.765 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+19:53:05.797 | conectar > PRAGMA journal_mode=WAL                          31.8 ms
+19:53:05.797 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:05.807 | _atualizar_tabela > pedido_listar_por_data                  43.6 ms
+19:53:05.807 | _atualizar_tabela > loop pagamento_buscar (total)            0.0 ms
+19:53:05.807 | _atualizar_tabela > rebuild controles Flet                   0.1 ms
+19:53:31.737 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      6.2 ms
+19:53:31.778 | conectar > PRAGMA journal_mode=WAL                          40.3 ms
+19:53:31.778 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:31.778 | pedido_inserir > conectar                                   47.0 ms
+19:53:31.781 | pedido_inserir > execute INSERT                              2.6 ms
+19:53:31.787 | pedido_inserir > commit                                      6.2 ms
+19:53:31.809 | pdv._salvar > pedido_inserir                                78.5 ms acumulado
+19:53:31.815 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.9 ms
+19:53:31.851 | conectar > PRAGMA journal_mode=WAL                          36.5 ms
+19:53:31.852 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:31.852 | pagamento_inserir > conectar                                42.0 ms
+19:53:31.853 | pagamento_inserir > execute INSERT                           1.0 ms
+19:53:31.858 | pagamento_inserir > commit                                   4.7 ms
+19:53:31.876 | pdv._salvar > pagamento_inserir[0]                         145.4 ms acumulado
+19:53:31.928 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.5 ms
+19:53:31.968 | conectar > PRAGMA journal_mode=WAL                          40.1 ms
+19:53:31.969 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:31.980 | _atualizar_tabela > pedido_listar_por_data                  57.1 ms
+19:53:31.983 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.1 ms
+19:53:32.015 | conectar > PRAGMA journal_mode=WAL                          31.5 ms
+19:53:32.015 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:32.027 | _atualizar_tabela > loop pagamento_buscar (total)           46.0 ms
+19:53:32.027 | _atualizar_tabela > rebuild controles Flet                   0.7 ms
+19:53:32.028 | pdv._salvar > _atualizar_tabela                            296.7 ms acumulado
+19:53:32.104 | pdv._salvar > page.update                                  373.0 ms acumulado
+19:53:32.104 | pdv._salvar > TOTAL                                        373.2 ms
+19:53:46.040 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      9.0 ms
+19:53:46.069 | conectar > PRAGMA journal_mode=WAL                          29.5 ms
+19:53:46.070 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:46.070 | pedido_inserir > conectar                                   39.0 ms
+19:53:46.071 | pedido_inserir > execute INSERT                              0.8 ms
+19:53:46.075 | pedido_inserir > commit                                      4.0 ms
+19:53:46.092 | pdv._salvar > pedido_inserir                                61.3 ms acumulado
+19:53:46.096 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.2 ms
+19:53:46.128 | conectar > PRAGMA journal_mode=WAL                          31.2 ms
+19:53:46.128 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:46.128 | pagamento_inserir > conectar                                36.0 ms
+19:53:46.129 | pagamento_inserir > execute INSERT                           1.0 ms
+19:53:46.134 | pagamento_inserir > commit                                   4.5 ms
+19:53:46.154 | pdv._salvar > pagamento_inserir[0]                         123.0 ms acumulado
+19:53:46.215 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.8 ms
+19:53:46.247 | conectar > PRAGMA journal_mode=WAL                          31.6 ms
+19:53:46.247 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:46.257 | _atualizar_tabela > pedido_listar_por_data                  45.5 ms
+19:53:46.258 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:46.290 | conectar > PRAGMA journal_mode=WAL                          31.9 ms
+19:53:46.291 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:46.302 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+19:53:46.326 | conectar > PRAGMA journal_mode=WAL                          23.7 ms
+19:53:46.326 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:46.336 | _atualizar_tabela > loop pagamento_buscar (total)           79.1 ms
+19:53:46.337 | _atualizar_tabela > rebuild controles Flet                   0.7 ms
+19:53:46.337 | pdv._salvar > _atualizar_tabela                            306.1 ms acumulado
+19:53:46.403 | pdv._salvar > page.update                                  372.3 ms acumulado
+19:53:46.403 | pdv._salvar > TOTAL                                        372.4 ms
+19:53:58.530 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      6.3 ms
+19:53:58.560 | conectar > PRAGMA journal_mode=WAL                          29.4 ms
+19:53:58.560 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:58.560 | pedido_inserir > conectar                                   36.2 ms
+19:53:58.561 | pedido_inserir > execute INSERT                              0.8 ms
+19:53:58.566 | pedido_inserir > commit                                      4.3 ms
+19:53:58.582 | pdv._salvar > pedido_inserir                                57.9 ms acumulado
+19:53:58.586 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.8 ms
+19:53:58.612 | conectar > PRAGMA journal_mode=WAL                          25.7 ms
+19:53:58.612 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:58.612 | pagamento_inserir > conectar                                30.0 ms
+19:53:58.613 | pagamento_inserir > execute INSERT                           0.7 ms
+19:53:58.617 | pagamento_inserir > commit                                   3.5 ms
+19:53:58.632 | pdv._salvar > pagamento_inserir[0]                         107.9 ms acumulado
+19:53:58.703 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.5 ms
+19:53:58.729 | conectar > PRAGMA journal_mode=WAL                          25.7 ms
+19:53:58.729 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:58.739 | _atualizar_tabela > pedido_listar_por_data                  39.6 ms
+19:53:58.741 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+19:53:58.774 | conectar > PRAGMA journal_mode=WAL                          32.4 ms
+19:53:58.774 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:58.786 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:58.810 | conectar > PRAGMA journal_mode=WAL                          24.3 ms
+19:53:58.810 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:58.822 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:53:58.845 | conectar > PRAGMA journal_mode=WAL                          23.2 ms
+19:53:58.845 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:53:58.854 | _atualizar_tabela > loop pagamento_buscar (total)          114.8 ms
+19:53:58.855 | _atualizar_tabela > rebuild controles Flet                   0.7 ms
+19:53:58.855 | pdv._salvar > _atualizar_tabela                            331.1 ms acumulado
+19:53:58.929 | pdv._salvar > page.update                                  405.2 ms acumulado
+19:53:58.929 | pdv._salvar > TOTAL                                        405.4 ms
+19:54:06.514 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.9 ms
+19:54:06.547 | conectar > PRAGMA journal_mode=WAL                          33.5 ms
+19:54:06.548 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:54:06.581 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.3 ms
+19:54:06.608 | conectar > PRAGMA journal_mode=WAL                          27.1 ms
+19:54:06.608 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:54:06.608 | log_registrar > conectar                                    32.0 ms
+19:54:06.609 | log_registrar > execute INSERT                               0.7 ms
+19:54:06.613 | log_registrar > commit                                       3.7 ms
+19:54:06.634 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.9 ms
+19:54:06.656 | conectar > PRAGMA journal_mode=WAL                          22.4 ms
+19:54:06.656 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:54:06.665 | _atualizar_tabela > pedido_listar_por_data                  35.2 ms
+19:54:06.667 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+19:54:06.690 | conectar > PRAGMA journal_mode=WAL                          23.0 ms
+19:54:06.690 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:54:06.701 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+19:54:06.730 | conectar > PRAGMA journal_mode=WAL                          28.9 ms
+19:54:06.730 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:54:06.739 | _atualizar_tabela > loop pagamento_buscar (total)           74.2 ms
+19:54:06.740 | _atualizar_tabela > rebuild controles Flet                   0.7 ms
+19:54:08.553 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+19:54:08.581 | conectar > PRAGMA journal_mode=WAL                          28.3 ms
+19:54:08.581 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:54:08.609 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      5.9 ms
+19:54:08.635 | conectar > PRAGMA journal_mode=WAL                          25.4 ms
+19:54:08.635 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:54:08.635 | log_registrar > conectar                                    31.8 ms
+19:54:08.636 | log_registrar > execute INSERT                               0.7 ms
+19:54:08.639 | log_registrar > commit                                       3.2 ms
+19:54:08.660 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      5.0 ms
+19:54:08.692 | conectar > PRAGMA journal_mode=WAL                          31.8 ms
+19:54:08.693 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:54:08.702 | _atualizar_tabela > pedido_listar_por_data                  46.4 ms
+19:54:08.704 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+19:54:08.729 | conectar > PRAGMA journal_mode=WAL                          24.7 ms
+19:54:08.729 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:54:08.739 | _atualizar_tabela > loop pagamento_buscar (total)           37.5 ms
+19:54:08.741 | _atualizar_tabela > rebuild controles Flet                   1.2 ms
+19:54:10.220 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.2 ms
+19:54:10.243 | conectar > PRAGMA journal_mode=WAL                          23.4 ms
+19:54:10.243 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:54:10.268 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.1 ms
+19:54:10.300 | conectar > PRAGMA journal_mode=WAL                          32.3 ms
+19:54:10.300 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:54:10.301 | log_registrar > conectar                                    37.0 ms
+19:54:10.301 | log_registrar > execute INSERT                               0.6 ms
+19:54:10.306 | log_registrar > commit                                       4.3 ms
+19:54:10.329 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      5.6 ms
+19:54:10.357 | conectar > PRAGMA journal_mode=WAL                          27.7 ms
+19:54:10.357 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:54:10.367 | _atualizar_tabela > pedido_listar_por_data                  43.3 ms
+19:54:10.367 | _atualizar_tabela > loop pagamento_buscar (total)            0.0 ms
+19:54:10.367 | _atualizar_tabela > rebuild controles Flet                   0.1 ms
+19:59:26.350 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)     97.3 ms
+19:59:26.355 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+19:59:33.404 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)     13.8 ms
+19:59:33.409 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:00:29.863 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)     57.6 ms
+20:00:29.867 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:01:30.870 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)     33.4 ms
+20:01:30.871 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:17.613 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)     10.3 ms
+20:02:17.613 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:18.482 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.0 ms
+20:02:18.482 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:19.506 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.1 ms
+20:02:19.506 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:19.592 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      8.7 ms
+20:02:19.592 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:19.670 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.6 ms
+20:02:19.670 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:19.781 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      8.9 ms
+20:02:19.781 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:25.752 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      7.6 ms
+20:02:25.752 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:25.795 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+20:02:25.795 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:25.795 | log_registrar > conectar                                     1.9 ms
+20:02:25.821 | log_registrar > execute INSERT                              25.3 ms
+20:02:25.825 | log_registrar > commit                                       3.9 ms
+20:02:25.850 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.2 ms
+20:02:25.850 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:25.893 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.1 ms
+20:02:25.893 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:25.969 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+20:02:25.969 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.000 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.3 ms
+20:02:26.000 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.359 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.0 ms
+20:02:26.359 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.359 | fluxo_caixa_abrir > conectar                                 1.3 ms
+20:02:26.364 | fluxo_caixa_abrir > execute INSERT OR IGNORE                 4.9 ms
+20:02:26.365 | fluxo_caixa_abrir > commit                                   0.0 ms
+20:02:26.366 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.2 ms
+20:02:26.366 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.372 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      0.9 ms
+20:02:26.372 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.372 | fluxo_caixa_recalcular > conectar                            1.2 ms
+20:02:26.378 | fluxo_caixa_recalcular > SELECT entradas_pedidos (JOIN)      5.7 ms
+20:02:26.378 | fluxo_caixa_recalcular > SELECT movimentacoes ENTRADA        0.3 ms
+20:02:26.378 | fluxo_caixa_recalcular > SELECT movimentacoes SAIDA          0.1 ms
+20:02:26.379 | fluxo_caixa_recalcular > SELECT troco_inicial                0.4 ms
+20:02:26.379 | fluxo_caixa_recalcular > execute UPDATE                      0.1 ms
+20:02:26.379 | fluxo_caixa_recalcular > commit                              0.0 ms
+20:02:26.390 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+20:02:26.391 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.425 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.1 ms
+20:02:26.426 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.469 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+20:02:26.470 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.502 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+20:02:26.503 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.536 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+20:02:26.537 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.576 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+20:02:26.576 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.609 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+20:02:26.609 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.641 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+20:02:26.641 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.674 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+20:02:26.674 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.713 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+20:02:26.713 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.746 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+20:02:26.746 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.782 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+20:02:26.783 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.819 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+20:02:26.819 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.857 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+20:02:26.857 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.890 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+20:02:26.890 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.925 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+20:02:26.925 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.957 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+20:02:26.957 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:26.996 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+20:02:26.996 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:27.029 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+20:02:27.029 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:27.064 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+20:02:27.064 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:27.098 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+20:02:27.099 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:27.140 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+20:02:27.140 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:27.173 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+20:02:27.173 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:27.211 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.5 ms
+20:02:27.211 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:29.235 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.4 ms
+20:02:29.235 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:29.290 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+20:02:29.290 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:29.330 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+20:02:29.330 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:29.370 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+20:02:29.370 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:29.419 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+20:02:29.419 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:29.455 | _atualizar_tabela > pedido_listar_por_data                  37.6 ms
+20:02:29.457 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+20:02:29.457 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:29.457 | pagamento_listar_por_data > conectar                         1.7 ms
+20:02:29.489 | pagamento_listar_por_data > SELECT JOIN                     32.2 ms
+20:02:29.498 | _atualizar_tabela > pagamento_listar_por_data               43.2 ms
+20:02:29.498 | _atualizar_tabela > pag_listar + build linhas (total)       43.4 ms
+20:02:29.499 | _atualizar_tabela > rebuild controles Flet                   0.1 ms
+20:02:30.727 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+20:02:30.727 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:30.767 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+20:02:30.767 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:30.808 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.0 ms
+20:02:30.809 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:30.845 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+20:02:30.845 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:30.881 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.2 ms
+20:02:30.881 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:30.919 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+20:02:30.919 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:31.431 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.2 ms
+20:02:31.431 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:31.467 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+20:02:31.467 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:31.501 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.3 ms
+20:02:31.501 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:31.535 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+20:02:31.536 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:31.581 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.1 ms
+20:02:31.581 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:31.615 | _atualizar_tabela > pedido_listar_por_data                  36.0 ms
+20:02:31.616 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+20:02:31.617 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:31.617 | pagamento_listar_por_data > conectar                         1.8 ms
+20:02:31.643 | pagamento_listar_por_data > SELECT JOIN                     26.7 ms
+20:02:31.653 | _atualizar_tabela > pagamento_listar_por_data               37.8 ms
+20:02:31.653 | _atualizar_tabela > pag_listar + build linhas (total)       38.0 ms
+20:02:31.653 | _atualizar_tabela > rebuild controles Flet                   0.1 ms
+20:02:42.828 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      9.2 ms
+20:02:42.828 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:42.829 | pedido_salvar_completo > conectar                            9.5 ms
+20:02:42.863 | pedido_salvar_completo > execute INSERT pedido              34.6 ms
+20:02:42.864 | pedido_salvar_completo > execute INSERT pagamentos           0.7 ms
+20:02:42.870 | pedido_salvar_completo > commit                              5.2 ms
+20:02:42.897 | pdv._salvar > pedido_salvar_completo                        77.5 ms acumulado
+20:02:42.939 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.0 ms
+20:02:42.939 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:42.980 | _atualizar_tabela > pedido_listar_por_data                  45.7 ms
+20:02:42.983 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.2 ms
+20:02:42.983 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:42.983 | pagamento_listar_por_data > conectar                         2.4 ms
+20:02:43.012 | pagamento_listar_por_data > SELECT JOIN                     29.2 ms
+20:02:43.022 | _atualizar_tabela > pagamento_listar_por_data               41.0 ms
+20:02:43.023 | _atualizar_tabela > pag_listar + build linhas (total)       42.2 ms
+20:02:43.026 | _atualizar_tabela > rebuild controles Flet                   2.7 ms
+20:02:43.026 | pdv._salvar > _atualizar_tabela                            206.9 ms acumulado
+20:02:43.113 | pdv._salvar > page.update                                  294.2 ms acumulado
+20:02:43.113 | pdv._salvar > TOTAL                                        294.4 ms
+20:02:47.447 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      5.3 ms
+20:02:47.448 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:47.507 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      5.1 ms
+20:02:47.507 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:47.507 | log_registrar > conectar                                     5.4 ms
+20:02:47.534 | log_registrar > execute INSERT                              27.0 ms
+20:02:47.539 | log_registrar > commit                                       4.3 ms
+20:02:47.560 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.8 ms
+20:02:47.560 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:47.595 | _atualizar_tabela > pedido_listar_por_data                  39.5 ms
+20:02:47.597 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+20:02:47.597 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:02:47.597 | pagamento_listar_por_data > conectar                         2.0 ms
+20:02:47.626 | pagamento_listar_por_data > SELECT JOIN                     28.1 ms
+20:02:47.635 | _atualizar_tabela > pagamento_listar_por_data               39.3 ms
+20:02:47.635 | _atualizar_tabela > pag_listar + build linhas (total)       39.5 ms
+20:02:47.635 | _atualizar_tabela > rebuild controles Flet                   0.1 ms
+20:11:19.525 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)    108.9 ms
+20:11:19.530 | conectar > PRAGMA foreign_keys=ON                            0.4 ms
+20:13:05.911 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)     17.8 ms
+20:13:05.913 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:16:07.557 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)    125.9 ms
+20:16:07.562 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+20:23:31.124 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)     82.5 ms
+20:23:31.129 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:47.968 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)     68.0 ms
+21:56:47.972 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:49.529 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+21:56:49.529 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:50.678 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      6.6 ms
+21:56:50.679 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:50.845 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.6 ms
+21:56:50.846 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:50.948 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      5.0 ms
+21:56:50.948 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:51.027 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+21:56:51.027 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.140 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      6.5 ms
+21:56:54.140 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.203 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.5 ms
+21:56:54.203 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.203 | log_registrar > conectar                                     2.9 ms
+21:56:54.243 | log_registrar > execute INSERT                              39.9 ms
+21:56:54.250 | log_registrar > commit                                       6.2 ms
+21:56:54.283 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.8 ms
+21:56:54.283 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.326 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.4 ms
+21:56:54.326 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.420 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.8 ms
+21:56:54.420 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.457 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+21:56:54.457 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.676 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.3 ms
+21:56:54.677 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.677 | fluxo_caixa_abrir > conectar                                 1.8 ms
+21:56:54.683 | fluxo_caixa_abrir > execute INSERT OR IGNORE                 5.8 ms
+21:56:54.683 | fluxo_caixa_abrir > commit                                   0.0 ms
+21:56:54.685 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+21:56:54.685 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.691 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.1 ms
+21:56:54.691 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.691 | fluxo_caixa_recalcular > conectar                            1.4 ms
+21:56:54.698 | fluxo_caixa_recalcular > SELECT entradas_pedidos (JOIN)      6.7 ms
+21:56:54.699 | fluxo_caixa_recalcular > SELECT movimentacoes ENTRADA        0.6 ms
+21:56:54.699 | fluxo_caixa_recalcular > SELECT movimentacoes SAIDA          0.2 ms
+21:56:54.700 | fluxo_caixa_recalcular > SELECT troco_inicial                0.4 ms
+21:56:54.700 | fluxo_caixa_recalcular > execute UPDATE                      0.1 ms
+21:56:54.700 | fluxo_caixa_recalcular > commit                              0.0 ms
+21:56:54.721 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+21:56:54.721 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.756 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+21:56:54.756 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.794 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+21:56:54.794 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.828 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+21:56:54.828 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.873 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+21:56:54.873 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.908 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+21:56:54.908 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.942 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+21:56:54.942 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:54.980 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+21:56:54.980 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.037 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+21:56:55.037 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.075 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+21:56:55.075 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.124 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.3 ms
+21:56:55.124 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.179 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.4 ms
+21:56:55.179 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.250 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+21:56:55.250 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.282 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+21:56:55.282 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.314 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+21:56:55.314 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.350 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+21:56:55.350 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.391 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+21:56:55.391 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.425 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+21:56:55.425 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.459 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+21:56:55.459 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.494 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+21:56:55.494 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.533 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+21:56:55.533 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.566 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+21:56:55.566 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.599 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+21:56:55.599 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:56:55.638 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.0 ms
+21:56:55.638 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:02.916 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      7.3 ms
+21:57:02.920 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:03.749 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+21:57:03.750 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:04.920 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.2 ms
+21:57:04.920 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:05.007 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      5.9 ms
+21:57:05.007 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:05.156 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      8.5 ms
+21:57:05.156 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:05.224 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.1 ms
+21:57:05.225 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:08.524 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      5.6 ms
+21:57:08.524 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:08.579 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+21:57:08.579 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:08.579 | log_registrar > conectar                                     2.0 ms
+21:57:08.607 | log_registrar > execute INSERT                              27.6 ms
+21:57:08.611 | log_registrar > commit                                       3.6 ms
+21:57:08.638 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.5 ms
+21:57:08.638 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:08.679 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+21:57:08.679 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:08.786 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.7 ms
+21:57:08.786 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:08.820 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+21:57:08.820 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:08.836 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.2 ms
+21:57:08.836 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:08.836 | fluxo_caixa_abrir > conectar                                 1.4 ms
+21:57:08.841 | fluxo_caixa_abrir > execute INSERT OR IGNORE                 5.0 ms
+21:57:08.842 | fluxo_caixa_abrir > commit                                   0.0 ms
+21:57:08.843 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.2 ms
+21:57:08.844 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:08.851 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+21:57:08.851 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:08.851 | fluxo_caixa_recalcular > conectar                            2.0 ms
+21:57:08.858 | fluxo_caixa_recalcular > SELECT entradas_pedidos (JOIN)      6.9 ms
+21:57:08.859 | fluxo_caixa_recalcular > SELECT movimentacoes ENTRADA        0.4 ms
+21:57:08.859 | fluxo_caixa_recalcular > SELECT movimentacoes SAIDA          0.2 ms
+21:57:08.860 | fluxo_caixa_recalcular > SELECT troco_inicial                0.4 ms
+21:57:08.860 | fluxo_caixa_recalcular > execute UPDATE                      0.2 ms
+21:57:08.860 | fluxo_caixa_recalcular > commit                              0.0 ms
+21:57:08.874 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.4 ms
+21:57:08.874 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:08.916 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.2 ms
+21:57:08.917 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:08.960 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+21:57:08.960 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.012 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+21:57:09.012 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.062 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.5 ms
+21:57:09.062 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.112 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.2 ms
+21:57:09.112 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.157 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.0 ms
+21:57:09.158 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.228 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.2 ms
+21:57:09.228 | conectar > PRAGMA foreign_keys=ON                            0.2 ms
+21:57:09.287 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.1 ms
+21:57:09.287 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.353 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+21:57:09.353 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.391 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+21:57:09.391 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.439 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.0 ms
+21:57:09.439 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.477 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.3 ms
+21:57:09.477 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.516 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+21:57:09.516 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.554 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.3 ms
+21:57:09.554 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.600 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+21:57:09.600 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.633 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.3 ms
+21:57:09.633 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.666 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+21:57:09.666 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.697 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+21:57:09.698 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.737 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+21:57:09.738 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.769 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+21:57:09.769 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.801 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+21:57:09.801 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.839 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+21:57:09.839 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+21:57:09.871 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+21:57:09.871 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:06.720 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      5.2 ms
+22:15:06.725 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:07.749 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.8 ms
+22:15:07.750 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:08.550 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+22:15:08.550 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:08.595 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.0 ms
+22:15:08.595 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:08.643 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.0 ms
+22:15:08.643 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:08.691 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.1 ms
+22:15:08.691 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:11.873 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.8 ms
+22:15:11.873 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:11.919 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.2 ms
+22:15:11.919 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:11.919 | log_registrar > conectar                                     2.5 ms
+22:15:11.949 | log_registrar > execute INSERT                              30.0 ms
+22:15:11.953 | log_registrar > commit                                       3.6 ms
+22:15:11.986 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.9 ms
+22:15:11.987 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.096 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.2 ms
+22:15:12.096 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.223 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.5 ms
+22:15:12.223 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.270 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:15:12.271 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.288 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.2 ms
+22:15:12.288 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.288 | fluxo_caixa_abrir > conectar                                 1.5 ms
+22:15:12.293 | fluxo_caixa_abrir > execute INSERT OR IGNORE                 5.3 ms
+22:15:12.294 | fluxo_caixa_abrir > commit                                   0.0 ms
+22:15:12.295 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+22:15:12.296 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.303 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.1 ms
+22:15:12.303 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.303 | fluxo_caixa_recalcular > conectar                            1.4 ms
+22:15:12.311 | fluxo_caixa_recalcular > SELECT entradas_pedidos (JOIN)      7.3 ms
+22:15:12.311 | fluxo_caixa_recalcular > SELECT movimentacoes ENTRADA        0.5 ms
+22:15:12.312 | fluxo_caixa_recalcular > SELECT movimentacoes SAIDA          0.3 ms
+22:15:12.313 | fluxo_caixa_recalcular > SELECT troco_inicial                0.8 ms
+22:15:12.313 | fluxo_caixa_recalcular > execute UPDATE                      0.3 ms
+22:15:12.314 | fluxo_caixa_recalcular > commit                              0.0 ms
+22:15:12.332 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.5 ms
+22:15:12.333 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.395 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+22:15:12.395 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.445 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.3 ms
+22:15:12.445 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.493 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.0 ms
+22:15:12.493 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.538 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+22:15:12.538 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.592 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.3 ms
+22:15:12.593 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.634 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:15:12.635 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.676 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:15:12.676 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.714 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:15:12.714 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.759 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+22:15:12.759 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.797 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:15:12.798 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.835 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+22:15:12.835 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.876 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+22:15:12.876 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.925 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+22:15:12.925 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:12.968 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.1 ms
+22:15:12.968 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:13.009 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:15:13.009 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:13.054 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:15:13.055 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:13.095 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+22:15:13.095 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:13.137 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+22:15:13.137 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:13.178 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+22:15:13.178 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:13.222 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.9 ms
+22:15:13.223 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:13.260 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:15:13.260 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:13.297 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+22:15:13.297 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:15:13.334 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:15:13.334 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:29.316 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)     42.2 ms
+22:16:29.319 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:30.354 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.2 ms
+22:16:30.354 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:31.124 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.1 ms
+22:16:31.125 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:31.185 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.8 ms
+22:16:31.185 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:31.264 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      3.1 ms
+22:16:31.265 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:31.334 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.7 ms
+22:16:31.335 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.038 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.6 ms
+22:16:34.038 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.095 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:16:34.095 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.095 | log_registrar > conectar                                     1.9 ms
+22:16:34.129 | log_registrar > execute INSERT                              34.2 ms
+22:16:34.133 | log_registrar > commit                                       3.5 ms
+22:16:34.162 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      4.5 ms
+22:16:34.162 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.205 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.9 ms
+22:16:34.206 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.310 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.2 ms
+22:16:34.310 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.353 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+22:16:34.353 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.709 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.2 ms
+22:16:34.709 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.709 | fluxo_caixa_abrir > conectar                                 1.5 ms
+22:16:34.714 | fluxo_caixa_abrir > execute INSERT OR IGNORE                 5.2 ms
+22:16:34.715 | fluxo_caixa_abrir > commit                                   0.0 ms
+22:16:34.716 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.1 ms
+22:16:34.716 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.723 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+22:16:34.724 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.724 | fluxo_caixa_recalcular > conectar                            1.8 ms
+22:16:34.732 | fluxo_caixa_recalcular > SELECT entradas_pedidos (JOIN)      8.1 ms
+22:16:34.733 | fluxo_caixa_recalcular > SELECT movimentacoes ENTRADA        0.6 ms
+22:16:34.733 | fluxo_caixa_recalcular > SELECT movimentacoes SAIDA          0.2 ms
+22:16:34.733 | fluxo_caixa_recalcular > SELECT troco_inicial                0.4 ms
+22:16:34.734 | fluxo_caixa_recalcular > execute UPDATE                      0.1 ms
+22:16:34.734 | fluxo_caixa_recalcular > commit                              0.0 ms
+22:16:34.747 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:16:34.747 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.784 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+22:16:34.784 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.823 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:16:34.823 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.861 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+22:16:34.862 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.903 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.8 ms
+22:16:34.904 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.937 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.3 ms
+22:16:34.937 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:34.970 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+22:16:34.970 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.003 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+22:16:35.003 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.058 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+22:16:35.058 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.091 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+22:16:35.092 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.125 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+22:16:35.125 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.157 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:16:35.157 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.197 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+22:16:35.197 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.228 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+22:16:35.229 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.260 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+22:16:35.261 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.293 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:16:35.293 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.332 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:16:35.332 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.365 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+22:16:35.365 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.398 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+22:16:35.398 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.431 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+22:16:35.431 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.470 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.4 ms
+22:16:35.470 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.503 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+22:16:35.503 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.537 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+22:16:35.538 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:35.578 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.5 ms
+22:16:35.579 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:39.020 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      6.5 ms
+22:16:39.020 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:39.083 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+22:16:39.083 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:39.130 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:16:39.130 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:39.177 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.6 ms
+22:16:39.177 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:39.227 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      2.0 ms
+22:16:39.227 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:39.264 | _atualizar_tabela > pedido_listar_por_data                  39.0 ms
+22:16:39.266 | conectar > sqlite3.connect (L5FZOc_\loja_app\loja_caixa.db)      1.7 ms
+22:16:39.266 | conectar > PRAGMA foreign_keys=ON                            0.0 ms
+22:16:39.266 | pagamento_listar_por_data > conectar                         2.0 ms
+22:16:39.294 | pagamento_listar_por_data > SELECT JOIN                     27.8 ms
+22:16:39.304 | _atualizar_tabela > pagamento_listar_por_data               39.6 ms
+22:16:39.304 | _atualizar_tabela > pag_listar + build linhas (total)       39.8 ms
+22:16:39.304 | _atualizar_tabela > rebuild controles Flet                   0.1 ms
