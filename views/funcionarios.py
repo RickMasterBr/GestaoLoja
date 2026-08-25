@@ -12,7 +12,7 @@ from datetime import date
 import flet as ft
 
 import database
-from relatorios.pdf_gerador import gerar_pdf_holerite, abrir_pdf
+from relatorios.pdf_gerador import gerar_pdf_holerite, gerar_pdf_espelho_ponto, abrir_pdf
 from relatorios.excel_gerador import excel_holerite
 
 # ── Instrumentação de performance (mesmo logger "perf" de database.py) ────
@@ -644,55 +644,100 @@ def view(page: ft.Page) -> ft.Control:
                 ],
             )
 
-            # Tabela de detalhamento por dia
-            dias_com_escala = {
-                row["data"]
-                for row in database.escala_listar_por_pessoa(
-                    id_func, data_ini_iso, data_fim_iso
-                )
-                if row["tipo"] in ("TRABALHOU", "EXTRA")
-            }
-
+            # Tabela de detalhamento por dia (todos os dias do mês no estilo tradicional)
+            ponto_map = {det["data"]: det for det in resumo_pt["detalhes"]}
             linhas_ponto = []
-            for det in resumo_pt["detalhes"]:
-                if det["data"] not in dias_com_escala:
-                    continue
-                data_br = det["data"][8:10] + "/" + det["data"][5:7]
-                ent_str = det["hora_entrada"] or "—"
-                sai_str = det["hora_saida"]   or "—"
-                int_str = (
-                    f"{det['hora_ini_int']}–{det['hora_fim_int']}"
-                    if det["hora_ini_int"] and det["hora_fim_int"]
-                    else f"{det['minutos_intervalo']}min" if det["completo"] else "—"
-                )
-                bru_str = f"{det['horas_brutas']:.1f}h"   if det["completo"] else "—"
-                liq_str = f"{det['horas_liquidas']:.1f}h" if det["completo"] else "—"
+            ponto_export_list = []
 
-                if not det["hora_entrada"]:
-                    ext_txt, ext_cor = "—", ft.Colors.GREY_600
-                elif not det["hora_saida"]:
-                    ext_txt, ext_cor = "Incompleto", ft.Colors.GREY_500
-                elif det["horas_extras"] > 0:
-                    ext_txt, ext_cor = f"+{det['horas_extras']:.1f}h", ft.Colors.GREEN_400
-                elif det["horas_extras"] < 0:
-                    ext_txt, ext_cor = f"{det['horas_extras']:.1f}h", ft.Colors.ORANGE_400
+            for d_num in range(1, ultimo_dia + 1):
+                data_iso = f"{ano:04d}-{mes:02d}-{d_num:02d}"
+                data_obj = date(ano, mes, d_num)
+                dia_sem_abr = DIA_SEMANA[data_obj.weekday()]
+                data_br = f"{d_num:02d}/{mes:02d} ({dia_sem_abr})"
+
+                det = ponto_map.get(data_iso)
+                tipo_esc = escala_map.get(data_iso)
+
+                if det and det.get("hora_entrada"):
+                    ent_str = det["hora_entrada"]
+                    sai_str = det["hora_saida"] or "—"
+                    int_str = (
+                        f"{det['hora_ini_int']}–{det['hora_fim_int']}"
+                        if det.get("hora_ini_int") and det.get("hora_fim_int")
+                        else f"{det['minutos_intervalo']}min" if det.get("completo") else "—"
+                    )
+                    bru_str = f"{det['horas_brutas']:.1f}h" if det.get("completo") else "—"
+                    liq_str = f"{det['horas_liquidas']:.1f}h" if det.get("completo") else "—"
+
+                    if not det.get("hora_saida"):
+                        ext_txt, ext_cor = "Incompleto", ft.Colors.GREY_500
+                    elif det.get("horas_extras", 0) > 0:
+                        ext_txt, ext_cor = f"+{det['horas_extras']:.1f}h", ft.Colors.GREEN_400
+                    elif det.get("horas_extras", 0) < 0:
+                        ext_txt, ext_cor = f"{det['horas_extras']:.1f}h", ft.Colors.ORANGE_400
+                    else:
+                        ext_txt, ext_cor = "Cumprida", ft.Colors.GREEN_300
+                elif tipo_esc == "FOLGA":
+                    ent_str, sai_str, int_str, bru_str, liq_str = "FOLGA", "—", "—", "—", "—"
+                    ext_txt, ext_cor = "Folga", ft.Colors.BLUE_300
+                elif tipo_esc == "FALTA":
+                    ent_str, sai_str, int_str, bru_str, liq_str = "FALTA", "—", "—", "—", "—"
+                    ext_txt, ext_cor = "-Falta", ft.Colors.RED_400
+                elif tipo_esc == "FERIADO":
+                    ent_str, sai_str, int_str, bru_str, liq_str = "FERIADO", "—", "—", "—", "—"
+                    ext_txt, ext_cor = "Feriado", ft.Colors.BLUE_300
+                elif tipo_esc in ("TRABALHOU", "EXTRA"):
+                    ent_str, sai_str, int_str, bru_str, liq_str = "Sem Ponto", "—", "—", "—", "—"
+                    ext_txt, ext_cor = "Pendente", ft.Colors.ORANGE_300
                 else:
-                    ext_txt, ext_cor = "Cumprida", ft.Colors.GREEN_300
+                    ent_str, sai_str, int_str, bru_str, liq_str = "—", "—", "—", "—", "—"
+                    ext_txt, ext_cor = "—", ft.Colors.GREY_600
 
                 linhas_ponto.append(ft.DataRow(cells=[
                     ft.DataCell(ft.Text(data_br, size=12)),
-                    ft.DataCell(ft.Text(ent_str, size=12)),
+                    ft.DataCell(ft.Text(ent_str, size=12, color=ft.Colors.GREY_400 if ent_str in ("FOLGA", "FERIADO", "—") else None)),
                     ft.DataCell(ft.Text(sai_str, size=12)),
                     ft.DataCell(ft.Text(int_str, size=12)),
                     ft.DataCell(ft.Text(bru_str, size=12)),
                     ft.DataCell(ft.Text(liq_str, size=12)),
                     ft.DataCell(ft.Text(
                         ext_txt, size=12,
-                        weight=ft.FontWeight.BOLD if det.get("horas_extras", 0) > 0
-                        else ft.FontWeight.NORMAL,
+                        weight=ft.FontWeight.BOLD if ext_txt.startswith("+") or ext_txt.startswith("-") else ft.FontWeight.NORMAL,
                         color=ext_cor,
                     )),
                 ]))
+
+                ponto_export_list.append({
+                    "data": data_br,
+                    "entrada": ent_str,
+                    "saida": sai_str,
+                    "intervalo": int_str,
+                    "horas_brutas": bru_str,
+                    "horas_liquidas": liq_str,
+                    "extras_faltantes": ext_txt,
+                })
+
+            _holerite_dados["_ponto_export"] = ponto_export_list
+            _holerite_dados["_ponto_resumo_export"] = {
+                "dias_com_ponto": resumo_pt["dias_com_ponto"],
+                "dias_completos": resumo_pt["dias_completos"],
+                "total_horas_liquidas": resumo_pt["total_horas_liquidas"],
+                "total_horas_extras": resumo_pt["total_horas_extras"],
+                "total_horas_faltantes": resumo_pt["total_horas_faltantes"],
+                "valor_total_extras": resumo_pt["valor_total_extras"],
+            }
+            _holerite_dados["tipo_salario"] = tipo_sal
+            _holerite_dados["carga_horaria"] = ch_diaria
+
+            btn_pdf_ponto = ft.ElevatedButton(
+                "Espelho de Ponto (PDF)",
+                icon=ft.Icons.PICTURE_AS_PDF,
+                on_click=_exportar_pdf_ponto,
+                style=ft.ButtonStyle(
+                    bgcolor=ft.Colors.BLUE_GREY_800,
+                    color=ft.Colors.WHITE,
+                ),
+            )
 
             nota_ponto = ft.Text(
                 "Cálculo: (Saída − Entrada) − 1h intervalo padrão. "
@@ -708,8 +753,15 @@ def view(page: ft.Page) -> ft.Control:
                 spacing=12,
                 controls=[
                     ft.Divider(height=1),
-                    ft.Text("Controle de Ponto", size=15,
-                            weight=ft.FontWeight.BOLD, color=None),
+                    ft.Row(
+                        controls=[
+                            ft.Text("Controle de Ponto", size=15,
+                                    weight=ft.FontWeight.BOLD, color=None),
+                            btn_pdf_ponto,
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
                     cards_resumo,
                     _mini_tabela(
                         ["Data", "Entrada", "Saída", "Intervalo",
@@ -858,7 +910,7 @@ def view(page: ft.Page) -> ft.Control:
             "vales":       d.get("_vales_export", []),
             "consumos":    d.get("_consumos_export", []),
             "ocorrencias": d.get("_ocorr_export", []),
-            "ponto":       [],
+            "ponto":       d.get("_ponto_export", []),
         }
 
     def _exportar_excel(e):
@@ -903,6 +955,41 @@ def view(page: ft.Page) -> ft.Control:
         except Exception as exc:
             page.overlay.append(ft.SnackBar(
                 content=ft.Text(f"Erro ao gerar arquivo: {exc}"),
+                bgcolor=ft.Colors.RED_700, open=True,
+            ))
+        page.update()
+
+    def _exportar_pdf_ponto(e):
+        if not _holerite_dados or not _holerite_dados.get("_ponto_export"):
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Sem registros de ponto para exportar."),
+                bgcolor=ft.Colors.ORANGE_700, open=True,
+            ))
+            page.update()
+            return
+        try:
+            d = _holerite_dados
+            dados_ponto = {
+                "resumo": d.get("_ponto_resumo_export", {}),
+                "registros": d.get("_ponto_export", []),
+                "info_func": {
+                    "nome": d["funcionario"],
+                    "mes_ano": d["mes_ano"],
+                    "tipo_salario": d.get("tipo_salario", ""),
+                    "carga_horaria": d.get("carga_horaria", 8.0),
+                }
+            }
+            caminho = gerar_pdf_espelho_ponto(d["funcionario"], d["mes_ano"], dados_ponto)
+            abrir_pdf(caminho)
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text("Espelho de ponto aberto para visualização."),
+                bgcolor=ft.Colors.GREEN_700, open=True,
+            ))
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text(f"Erro ao gerar espelho de ponto: {exc}"),
                 bgcolor=ft.Colors.RED_700, open=True,
             ))
         page.update()

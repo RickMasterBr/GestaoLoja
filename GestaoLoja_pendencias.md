@@ -19,12 +19,12 @@ _Atualizado: 25/08/2026_
 - **Salário flexível para funcionários "extra"** (pagamento semanal, periodicidade ajustável). Não iniciado — adiado para próxima etapa a pedido do Richard.
 - **Como funciona o pagamento dos extras.** Lógica de cálculo ainda não revisada nem explicada em detalhe.
 - **Categorias separadas no Fluxo de Caixa.** Não iniciado.
-- **Relatório de ponto do funcionário em PDF**, gerado direto na aba Funcionários ao selecionar um funcionário específico. Não iniciado.
-- **Incluir esse relatório de ponto no relatório geral que já existe.** Não iniciado.
-- **Poder excluir um registro de ponto** (a linha mais embaixo da tabela de ponto, na aba Funcionários, ao selecionar o funcionário). Não iniciado.
+- **Poder excluir um registro de ponto** (a linha mais embaixo da tabela de ponto, na aba Funcionários, ao selecionar o funcionário). Pausado para alinhamento prévio com a equipe.
 
 ## O que já foi resolvido e validado nesta sessão (para referência)
 
+- **Relatório de Ponto em PDF (Espelho de Ponto Individual):** Gerador `gerar_pdf_espelho_ponto` criado com tabela completa de todos os dias do mês, quadro de resumo de horas, destaques coloridos e termo de declaração com campo de assinaturas. Botão dedicado "Espelho de Ponto (PDF)" adicionado na seção de Ponto da aba Funcionários.
+- **Inclusão do Ponto no Holerite PDF:** Os dados de ponto agora são repassados ao gerador do Holerite completo (`gerar_pdf_holerite`), preenchendo a seção de ponto que antes vinha em branco.
 - **Aba Funcionários (holerite):** Auto-carregamento ao entrar na tela (com 1º funcionário pré-selecionado), reatividade instantânea ao trocar funcionário, mês, ano ou calendário, e indicador de tempo de resposta (`txt_perf` + `_perf_logger`).
 - Migração do Google Drive de modo Stream para Mirror (causa raiz da lentidão original do PDV).
 - Bug `ft.Border.BorderSide` no Fluxo de Caixa.

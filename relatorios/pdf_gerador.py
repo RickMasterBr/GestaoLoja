@@ -855,8 +855,9 @@ def gerar_pdf_holerite(nome: str, mes_ano: str, dados: dict) -> str:
         story.append(_sp())
         story.append(_secao("Controle de Ponto"))
         story.append(_sp())
-        cab_p = ["Data", "Entrada", "Saída", "H.Brutas", "H.Líquidas", "Extras/Falt."]
+        cab_p = ["Data", "Entrada", "Saída", "Intervalo", "H.Brutas", "H.Líq.", "Extras/Falt."]
         lin_p = [[r.get("data", ""), r.get("entrada", ""), r.get("saida", ""),
+                  r.get("intervalo", "—"),
                   r.get("horas_brutas", ""), r.get("horas_liquidas", ""),
                   str(r.get("extras_faltantes", ""))]
                  for r in ponto]
@@ -866,13 +867,19 @@ def gerar_pdf_holerite(nome: str, mes_ano: str, dados: dict) -> str:
             ev = str(r.get("extras_faltantes", ""))
             ri = i + 1
             if ev.startswith("+"):
-                color_pt.append(("TEXTCOLOR", (5, ri), (5, ri), _VERDE))
-            elif ev.startswith("-"):
-                color_pt.append(("TEXTCOLOR", (5, ri), (5, ri), _VERMELHO))
-        cw_p = [_LU*0.14, _LU*0.12, _LU*0.12, _LU*0.14, _LU*0.14, _LU*0.34]
+                color_pt.append(("TEXTCOLOR", (6, ri), (6, ri), _VERDE))
+            elif ev.startswith("-") or "FALTA" in ev.upper():
+                color_pt.append(("TEXTCOLOR", (6, ri), (6, ri), _VERMELHO))
+            elif "FOLGA" in ev.upper() or "FERIADO" in ev.upper():
+                color_pt.append(("TEXTCOLOR", (6, ri), (6, ri), _AZUL))
+        cw_p = [_LU*0.18, _LU*0.12, _LU*0.12, _LU*0.16, _LU*0.12, _LU*0.12, _LU*0.18]
         t_p = Table([cab_p] + lin_p, colWidths=cw_p)
         t_p.setStyle(TableStyle(
-            _cab_style() + _body_style() + [_alt_rows(1, n)] + color_pt
+            _cab_style() + _body_style() + [_alt_rows(1, n)] + color_pt + [
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
         ))
         story.append(t_p)
 
@@ -881,7 +888,140 @@ def gerar_pdf_holerite(nome: str, mes_ano: str, dados: dict) -> str:
     return caminho
 
 
+# ── Gerador Espelho de Ponto Individual ───────────────────────────────────────
+
+def gerar_pdf_espelho_ponto(nome: str, mes_ano: str, dados: dict) -> str:
+    """Gera PDF do espelho de ponto individual do funcionário para todo o mês."""
+    _carregar()
+    ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nome_arq = nome.replace(" ", "_").lower()
+    caminho  = os.path.join(tempfile.gettempdir(), f"ponto_{nome_arq}_{ts}.pdf")
+    doc = SimpleDocTemplate(
+        caminho, pagesize=A4,
+        leftMargin=2*cm, rightMargin=2*cm,
+        topMargin=2*cm,  bottomMargin=2*cm,
+    )
+    story = []
+
+    info = dados.get("info_func", {})
+    tipo_sal = info.get("tipo_salario", "")
+    carga_h  = info.get("carga_horaria", 8.0)
+
+    story.append(Paragraph("Gestão Loja", _ST_NOME_LOJA))
+    story.append(Paragraph("Espelho de Ponto Individual", _ST_SUBTITULO))
+    sub_info = f"Funcionário: <b>{nome}</b> &nbsp;|&nbsp; Período: <b>{mes_ano}</b> &nbsp;|&nbsp; Carga: <b>{carga_h:.1f}h/dia</b>"
+    story.append(Paragraph(sub_info, _ST_DATA_HDR))
+    story.append(HRFlowable(width="100%", thickness=2, color=_AZUL, spaceAfter=8))
+
+    # Quadro de Resumo de Horas
+    resumo = dados.get("resumo", {})
+    if resumo:
+        story.append(_secao("Resumo de Horas do Período"))
+        story.append(_sp())
+        lin_res = [
+            ["Dias c/ Ponto:", str(resumo.get("dias_com_ponto", 0)),
+             "Jornadas Completas:", str(resumo.get("dias_completos", 0))],
+            ["Total Horas Líquidas:", f"{resumo.get('total_horas_liquidas', 0.0):.1f}h",
+             "Saldo Horas Extras:", f"+{resumo.get('total_horas_extras', 0.0):.1f}h"],
+            ["Horas Faltantes:", f"-{resumo.get('total_horas_faltantes', 0.0):.1f}h",
+             "Valor Est. Extras:", f"R$ {resumo.get('valor_total_extras', 0.0):.2f}" if resumo.get('valor_total_extras') else "—"],
+        ]
+        t_res = Table(lin_res, colWidths=[_LU*0.25, _LU*0.25, _LU*0.25, _LU*0.25])
+        t_res.setStyle(TableStyle([
+            ("FONTNAME",       (0, 0), (-1, -1), "Helvetica"),
+            ("FONTSIZE",       (0, 0), (-1, -1), 9),
+            ("FONTNAME",       (0, 0), (0, -1), "Helvetica-Bold"),
+            ("FONTNAME",       (2, 0), (2, -1), "Helvetica-Bold"),
+            ("ALIGN",          (1, 0), (1, -1), "LEFT"),
+            ("ALIGN",          (3, 0), (3, -1), "LEFT"),
+            ("TOPPADDING",     (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING",  (0, 0), (-1, -1), 3),
+            ("LEFTPADDING",    (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING",   (0, 0), (-1, -1), 6),
+            _alt_rows(0, 2),
+            ("GRID",           (0, 0), (-1, -1), 0.5, _CINZA_GRADE),
+            ("TEXTCOLOR",      (3, 1), (3, 1), _VERDE),
+            ("TEXTCOLOR",      (1, 2), (1, 2), _VERMELHO),
+        ]))
+        story.append(t_res)
+        story.append(_sp())
+
+    # Tabela Detalhada de Ponto
+    registros = dados.get("registros", [])
+    if registros:
+        story.append(_secao("Registros de Ponto Diário"))
+        story.append(_sp())
+        cab_p = ["Data", "Entrada", "Saída", "Intervalo", "H.Brutas", "H.Líq.", "Situação / Saldo"]
+        lin_p = [
+            [
+                r.get("data", ""),
+                r.get("entrada", "—"),
+                r.get("saida", "—"),
+                r.get("intervalo", "—"),
+                r.get("horas_brutas", "—"),
+                r.get("horas_liquidas", "—"),
+                str(r.get("extras_faltantes", "—")),
+            ]
+            for r in registros
+        ]
+        n = len(lin_p)
+        color_pt = []
+        for i, r in enumerate(registros):
+            ev = str(r.get("extras_faltantes", ""))
+            ri = i + 1
+            if ev.startswith("+"):
+                color_pt.append(("TEXTCOLOR", (6, ri), (6, ri), _VERDE))
+            elif ev.startswith("-") or "FALTA" in ev.upper():
+                color_pt.append(("TEXTCOLOR", (6, ri), (6, ri), _VERMELHO))
+            elif "FOLGA" in ev.upper() or "FERIADO" in ev.upper():
+                color_pt.append(("TEXTCOLOR", (6, ri), (6, ri), _AZUL))
+        cw_p = [_LU*0.20, _LU*0.12, _LU*0.12, _LU*0.16, _LU*0.12, _LU*0.12, _LU*0.16]
+        t_p = Table([cab_p] + lin_p, colWidths=cw_p)
+        t_p.setStyle(TableStyle(
+            _cab_style() + _body_style() + [_alt_rows(1, n)] + color_pt + [
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        ))
+        story.append(t_p)
+    else:
+        story.append(Paragraph("Sem registros de ponto para este período.", _ST_SEM_DADOS))
+
+    # Bloco de declaração e assinaturas
+    story.append(Spacer(1, 14))
+    st_declaracao = ParagraphStyle(
+        "decl", fontName="Helvetica", fontSize=8,
+        textColor=_CINZA_TEXT, alignment=TA_CENTER, spaceAfter=20,
+    )
+    story.append(Paragraph(
+        "Reconheço a exatidão dos horários e frequências constantes deste espelho de ponto referente ao período indicado.",
+        st_declaracao,
+    ))
+
+    # Assinaturas lado a lado
+    lin_ass = [
+        ["____________________________________________", "____________________________________________"],
+        [f"{nome}\nEmpregado(a)", "Gestão Loja\nEmpregador / Responsável"],
+        ["Data: _____ / _____ / _________", "Data: _____ / _____ / _________"],
+    ]
+    t_ass = Table(lin_ass, colWidths=[_LU*0.50, _LU*0.50])
+    t_ass.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    story.append(t_ass)
+
+    _rodape(story)
+    doc.build(story)
+    return caminho
+
+
 # ── Gerador entregadores ──────────────────────────────────────────────────────
+
 
 def gerar_pdf_entregadores(data_br: str, dados: dict) -> str:
     """Gera PDF do painel de entregadores (dia + semana)."""
