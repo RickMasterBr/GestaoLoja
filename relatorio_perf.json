@@ -1,0 +1,2566 @@
+{
+ "resultados": [
+  {
+   "tela": "extras",
+   "rodada": 1,
+   "ms_import": 2.1446000318974257,
+   "ms_build": 179.34100003913045,
+   "ms_update": 11.907699983567,
+   "n_controles": 33,
+   "ms_sql_total": 17.992799868807197,
+   "ms_conectar": 6.623900029808283,
+   "n_queries": 6,
+   "n_conexoes": 6,
+   "top_db_funcs": [
+    [
+     "database.pessoa_listar()",
+     [
+      3,
+      20.99340013228357
+     ]
+    ],
+    [
+     "database.categoria_extra_listar()",
+     [
+      1,
+      6.541899987496436
+     ]
+    ],
+    [
+     "database.metodo_pag_listar()",
+     [
+      1,
+      5.35009999293834
+     ]
+    ],
+    [
+     "database.mov_extra_listar_por_data()",
+     [
+      1,
+      4.9897999269887805
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      3,
+      9.529799921438098
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_categorias_extra ORDER",
+     [
+      1,
+      3.053199965506792
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_metodos_pag ORDER BY n",
+     [
+      1,
+      2.675900002941489
+     ]
+    ],
+    [
+     "SQL exec SELECT me.*, cp.nome AS nome_pessoa, ce.",
+     [
+      1,
+      2.3554000072181225
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      3,
+      0.2861999673768878
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_categorias_extra ORDER",
+     [
+      1,
+      0.05530007183551788
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_metodos_pag ORDER BY n",
+     [
+      1,
+      0.03569992259144783
+     ]
+    ],
+    [
+     "SQL fetchall SELECT me.*, cp.nome AS nome_pessoa, ce.",
+     [
+      1,
+      0.001300009898841381
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "fluxo_caixa",
+   "rodada": 1,
+   "ms_import": 476.33149998728186,
+   "ms_build": 42.95739997178316,
+   "ms_update": 18.56460003182292,
+   "n_controles": 58,
+   "ms_sql_total": 0,
+   "ms_conectar": 0,
+   "n_queries": 0,
+   "n_conexoes": 0,
+   "top_db_funcs": [],
+   "top_sql": []
+  },
+  {
+   "tela": "fluxo_caixa",
+   "rodada": 1,
+   "acao": "Gerar (aba Diario)",
+   "ms_acao": 47.89919999893755,
+   "ms_sql_total": 5.777299869805574,
+   "ms_conectar": 1.561800017952919,
+   "n_queries": 1,
+   "n_conexoes": 1,
+   "n_controles": 99,
+   "top_db_funcs": [
+    [
+     "database.fluxo_caixa_listar_lancamentos()",
+     [
+      1,
+      10.41559991426766
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      5.739299929700792
+     ]
+    ],
+    [
+     "SQL fetchall WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      0.03799994010478258
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "fluxo_caixa",
+   "rodada": 1,
+   "acao": "Gerar (aba Periodo)",
+   "ms_acao": 31.113100005313754,
+   "ms_sql_total": 6.7038999404758215,
+   "ms_conectar": 2.074100077152252,
+   "n_queries": 1,
+   "n_conexoes": 1,
+   "n_controles": 155,
+   "top_db_funcs": [
+    [
+     "database.fluxo_caixa_listar_lancamentos()",
+     [
+      1,
+      11.79949997458607
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      6.671899929642677
+     ]
+    ],
+    [
+     "SQL fetchall WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      0.03200001083314419
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "escala_geral",
+   "rodada": 1,
+   "ms_import": 5.0403999630361795,
+   "ms_build": 114.83299999963492,
+   "ms_update": 299.903400009498,
+   "n_controles": 1227,
+   "ms_sql_total": 8.607299998402596,
+   "ms_conectar": 2.5636000791564584,
+   "n_queries": 2,
+   "n_conexoes": 2,
+   "top_db_funcs": [
+    [
+     "database.pessoa_listar()",
+     [
+      1,
+      9.055100032128394
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      1,
+      4.206100013107061
+     ]
+    ],
+    [
+     "SQL exec SELECT data, id_pessoa, tipo FROM escala",
+     [
+      1,
+      3.8087000139057636
+     ]
+    ],
+    [
+     "SQL fetchall SELECT data, id_pessoa, tipo FROM escala",
+     [
+      1,
+      0.4240999696776271
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      1,
+      0.16840000171214342
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "escala_geral",
+   "rodada": 1,
+   "acao": "Trocar para secao Ponto",
+   "ms_acao": 73.85929999873042,
+   "ms_sql_total": 0,
+   "ms_conectar": 0,
+   "n_queries": 0,
+   "n_conexoes": 0,
+   "n_controles": 1227,
+   "top_db_funcs": [],
+   "top_sql": []
+  },
+  {
+   "tela": "estoque",
+   "rodada": 1,
+   "ms_import": 1.5842999564483762,
+   "ms_build": 150.2064000815153,
+   "ms_update": 40.28299998026341,
+   "n_controles": 177,
+   "ms_sql_total": 24.943500058725476,
+   "ms_conectar": 11.980899958871305,
+   "n_queries": 10,
+   "n_conexoes": 10,
+   "top_db_funcs": [
+    [
+     "database.estoque_produto_listar()",
+     [
+      4,
+      25.176099967211485
+     ]
+    ],
+    [
+     "database.estoque_categoria_listar()",
+     [
+      4,
+      19.97509994544089
+     ]
+    ],
+    [
+     "database.estoque_produtos_abaixo_minimo()",
+     [
+      1,
+      6.051499978639185
+     ]
+    ],
+    [
+     "database.estoque_valor_total()",
+     [
+      1,
+      4.294799990020692
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT ep.*, ec.nome AS nome_categoria,",
+     [
+      4,
+      11.346599785611033
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM estoque_categorias WHERE a",
+     [
+      3,
+      6.911100004799664
+     ]
+    ],
+    [
+     "SQL exec SELECT ep.*, ec.nome AS nome_categoria F",
+     [
+      1,
+      2.5553000159561634
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM estoque_categorias ORDER B",
+     [
+      1,
+      2.012800076045096
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(quantidade_atual * p",
+     [
+      1,
+      1.9836000865325332
+     ]
+    ],
+    [
+     "SQL fetchall SELECT ep.*, ec.nome AS nome_categoria,",
+     [
+      4,
+      0.05780009087175131
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM estoque_categorias WHERE a",
+     [
+      3,
+      0.04700000863522291
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM estoque_categorias ORDER B",
+     [
+      1,
+      0.016000005416572094
+     ]
+    ],
+    [
+     "SQL fetchone SELECT COALESCE(SUM(quantidade_atual * p",
+     [
+      1,
+      0.011199968867003918
+     ]
+    ],
+    [
+     "SQL fetchall SELECT ep.*, ec.nome AS nome_categoria F",
+     [
+      1,
+      0.002100015990436077
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "relatorio_diario",
+   "rodada": 1,
+   "ms_import": 1.1576999677345157,
+   "ms_build": 129.88730007782578,
+   "ms_update": 26.19159989990294,
+   "n_controles": 257,
+   "ms_sql_total": 62.883799779228866,
+   "ms_conectar": 17.226600321009755,
+   "n_queries": 67,
+   "n_conexoes": 19,
+   "top_db_funcs": [
+    [
+     "database.calcular_pagamento_entregador()",
+     [
+      10,
+      57.40950000472367
+     ]
+    ],
+    [
+     "database.config_obter()",
+     [
+      2,
+      7.409099955111742
+     ]
+    ],
+    [
+     "database.fluxo_caixa_recalcular()",
+     [
+      1,
+      7.406499935314059
+     ]
+    ],
+    [
+     "database.plataforma_listar()",
+     [
+      1,
+      3.4957999596372247
+     ]
+    ],
+    [
+     "database.fluxo_caixa_abrir()",
+     [
+      1,
+      3.111200057901442
+     ]
+    ],
+    [
+     "database.pessoa_listar()",
+     [
+      1,
+      3.093999926932156
+     ]
+    ],
+    [
+     "database.mov_extra_listar_por_data()",
+     [
+      1,
+      2.5999000063166022
+     ]
+    ],
+    [
+     "database.fluxo_caixa_buscar()",
+     [
+      1,
+      2.3117000237107277
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT diaria_valor, tipo_salario FROM c",
+     [
+      10,
+      16.695099882781506
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) AS qtd, COALESCE(SUM(rep",
+     [
+      10,
+      10.44169976375997
+     ]
+    ],
+    [
+     "SQL exec WITH pc AS ( SELECT id_pedido, COUNT(*)",
+     [
+      4,
+      4.94699995033443
+     ]
+    ],
+    [
+     "SQL exec SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      3.823600010946393
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(me.valor), 0) AS tot",
+     [
+      20,
+      3.6485999589785933
+     ]
+    ],
+    [
+     "SQL exec SELECT valor FROM cad_configuracoes WHER",
+     [
+      2,
+      3.411000012420118
+     ]
+    ],
+    [
+     "SQL exec WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      2.5674999924376607
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(vp.valor), 0) FROM v",
+     [
+      1,
+      2.4549999507144094
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) AS qtd, COALESCE(SUM(val",
+     [
+      4,
+      2.026400063186884
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_plataformas ORDER BY n",
+     [
+      1,
+      1.8962000031024218
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "relatorio_periodo",
+   "rodada": 1,
+   "ms_import": 1.1257999576628208,
+   "ms_build": 1.4283000491559505,
+   "ms_update": 4.5365000842139125,
+   "n_controles": 15,
+   "ms_sql_total": 0,
+   "ms_conectar": 0,
+   "n_queries": 0,
+   "n_conexoes": 0,
+   "top_db_funcs": [],
+   "top_sql": []
+  },
+  {
+   "tela": "relatorio_periodo",
+   "rodada": 1,
+   "acao": "Gerar Relatorio (mes corrente)",
+   "ms_acao": 3144.1093999892473,
+   "ms_sql_total": 2839.7264005616307,
+   "ms_conectar": 85.81119950395077,
+   "n_queries": 171,
+   "n_conexoes": 89,
+   "n_controles": 876,
+   "top_db_funcs": [
+    [
+     "database.escala_contar_dias()",
+     [
+      84,
+      289.2034990945831
+     ]
+    ],
+    [
+     "database.pessoa_listar()",
+     [
+      2,
+      9.697699919342995
+     ]
+    ],
+    [
+     "database.plataforma_listar()",
+     [
+      1,
+      5.1500999834388494
+     ]
+    ],
+    [
+     "database.config_obter()",
+     [
+      1,
+      4.239500034600496
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL fetchall SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      1273.750300053507
+     ]
+    ],
+    [
+     "SQL exec WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      925.2274000318721
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(DISTINCT p.id) AS total_ped",
+     [
+      1,
+      328.5240000113845
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM escalas_trabalho WH",
+     [
+      84,
+      139.48369945865124
+     ]
+    ],
+    [
+     "SQL exec SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      110.62829999718815
+     ]
+    ],
+    [
+     "SQL exec WITH pc AS ( SELECT id_pedido, COUNT(*)",
+     [
+      4,
+      25.722900172695518
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(me.valor), 0) AS tot",
+     [
+      52,
+      5.008700303733349
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) AS total_entregas, COALE",
+     [
+      10,
+      4.461999982595444
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      2,
+      4.332999931648374
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(vp.valor), 0) AS fat",
+     [
+      1,
+      4.068800015375018
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "relatorio_periodo",
+   "rodada": 1,
+   "acao": "Gerar Relatorio (90 dias)",
+   "ms_acao": 2248.5491998959333,
+   "ms_sql_total": 2030.0416992977262,
+   "ms_conectar": 58.80499957129359,
+   "n_queries": 171,
+   "n_conexoes": 89,
+   "n_controles": 876,
+   "top_db_funcs": [
+    [
+     "database.escala_contar_dias()",
+     [
+      84,
+      201.61409967113286
+     ]
+    ],
+    [
+     "database.config_obter()",
+     [
+      1,
+      5.606899969279766
+     ]
+    ],
+    [
+     "database.pessoa_listar()",
+     [
+      2,
+      5.461700027808547
+     ]
+    ],
+    [
+     "database.plataforma_listar()",
+     [
+      1,
+      2.2390999365597963
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL fetchall SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      860.6848999625072
+     ]
+    ],
+    [
+     "SQL exec WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      649.4422999676317
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(DISTINCT p.id) AS total_ped",
+     [
+      1,
+      321.1172999581322
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM escalas_trabalho WH",
+     [
+      84,
+      96.61809960380197
+     ]
+    ],
+    [
+     "SQL exec SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      61.324500013142824
+     ]
+    ],
+    [
+     "SQL exec WITH pc AS ( SELECT id_pedido, COUNT(*)",
+     [
+      4,
+      15.671499888412654
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) AS total_entregas, COALE",
+     [
+      10,
+      3.7802000297233462
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(me.valor), 0) AS tot",
+     [
+      52,
+      3.5639998968690634
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(p.taxa_entrega), 0)",
+     [
+      6,
+      2.993699978105724
+     ]
+    ],
+    [
+     "SQL exec SELECT valor FROM cad_configuracoes WHER",
+     [
+      1,
+      2.8086999664083123
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "relatorio_periodo",
+   "rodada": 1,
+   "acao": "Gerar Relatorio (365 dias)",
+   "ms_acao": 1860.5187999783084,
+   "ms_sql_total": 1622.2749004373327,
+   "ms_conectar": 60.65399933140725,
+   "n_queries": 171,
+   "n_conexoes": 89,
+   "n_controles": 876,
+   "top_db_funcs": [
+    [
+     "database.escala_contar_dias()",
+     [
+      84,
+      207.9114989610389
+     ]
+    ],
+    [
+     "database.config_obter()",
+     [
+      1,
+      10.657900013029575
+     ]
+    ],
+    [
+     "database.pessoa_listar()",
+     [
+      2,
+      5.712399957701564
+     ]
+    ],
+    [
+     "database.plataforma_listar()",
+     [
+      1,
+      3.60619998537004
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL fetchall SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      625.6822000723332
+     ]
+    ],
+    [
+     "SQL exec WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      532.8543999930844
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(DISTINCT p.id) AS total_ped",
+     [
+      1,
+      250.38169999606907
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM escalas_trabalho WH",
+     [
+      84,
+      101.72850056551397
+     ]
+    ],
+    [
+     "SQL exec SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      67.4705000128597
+     ]
+    ],
+    [
+     "SQL exec WITH pc AS ( SELECT id_pedido, COUNT(*)",
+     [
+      4,
+      15.61739994212985
+     ]
+    ],
+    [
+     "SQL exec SELECT valor FROM cad_configuracoes WHER",
+     [
+      1,
+      5.593099980615079
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(me.valor), 0) AS tot",
+     [
+      52,
+      3.605700097978115
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) AS total_entregas, COALE",
+     [
+      10,
+      3.0637999298051
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      2,
+      2.560199936851859
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "funcionarios",
+   "rodada": 1,
+   "ms_import": 0.861500040628016,
+   "ms_build": 6.095599965192378,
+   "ms_update": 7.059299969114363,
+   "n_controles": 10,
+   "ms_sql_total": 2.2368000354617834,
+   "ms_conectar": 0.9136000880971551,
+   "n_queries": 1,
+   "n_conexoes": 1,
+   "top_db_funcs": [
+    [
+     "database.pessoa_listar()",
+     [
+      1,
+      5.149099975824356
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      1,
+      2.161600044928491
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      1,
+      0.0751999905332923
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "funcionarios",
+   "rodada": 1,
+   "acao": "Carregar (1o funcionario, mes corrente)",
+   "ms_acao": 106.06310004368424,
+   "ms_sql_total": 15.664900187402964,
+   "ms_conectar": 5.8006999315693974,
+   "n_queries": 15,
+   "n_conexoes": 5,
+   "n_controles": 373,
+   "top_db_funcs": [
+    [
+     "database.ponto_resumo_mensal()",
+     [
+      1,
+      12.580999988131225
+     ]
+    ],
+    [
+     "database.escala_listar_por_pessoa()",
+     [
+      2,
+      11.65280002169311
+     ]
+    ],
+    [
+     "database.ponto_calcular_horas()",
+     [
+      6,
+      7.072600186802447
+     ]
+    ],
+    [
+     "database.pessoa_buscar()",
+     [
+      1,
+      6.316300015896559
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT * FROM escalas_trabalho WHERE id_",
+     [
+      2,
+      5.8304001577198505
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM escalas_trabalho WH",
+     [
+      4,
+      3.6365999840199947
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE id = ?",
+     [
+      1,
+      2.692400012165308
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM registros_ponto WHERE id_p",
+     [
+      1,
+      2.284300047904253
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(me.valor), 0) AS tot",
+     [
+      2,
+      0.39439997635781765
+     ]
+    ],
+    [
+     "SQL exec SELECT me.data, me.valor, me.obs FROM mo",
+     [
+      2,
+      0.22389995865523815
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM escalas_trabalho WHERE id_",
+     [
+      2,
+      0.15580002218484879
+     ]
+    ],
+    [
+     "SQL exec SELECT data, tipo FROM escalas_trabalho",
+     [
+      1,
+      0.10830000974237919
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM movimentacoes_extra",
+     [
+      1,
+      0.09099999442696571
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM registros_ponto WHERE id_p",
+     [
+      1,
+      0.07379997987300158
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "entregadores",
+   "rodada": 1,
+   "ms_import": 1.2291999300941825,
+   "ms_build": 95.63260001596063,
+   "ms_update": 46.03650001809001,
+   "n_controles": 524,
+   "ms_sql_total": 32.60900021996349,
+   "ms_conectar": 6.659200182184577,
+   "n_queries": 57,
+   "n_conexoes": 7,
+   "top_db_funcs": [
+    [
+     "database.calcular_pagamento_entregador()",
+     [
+      5,
+      29.423799947835505
+     ]
+    ],
+    [
+     "database.pessoa_listar()",
+     [
+      1,
+      6.424600025638938
+     ]
+    ],
+    [
+     "database.sessao_obter()",
+     [
+      1,
+      0.06740004755556583
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT diaria_valor, tipo_salario FROM c",
+     [
+      5,
+      8.718900033272803
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) AS qtd, COALESCE(SUM(rep",
+     [
+      10,
+      7.36199994571507
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      1,
+      2.995199989527464
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(me.valor), 0) AS tot",
+     [
+      20,
+      2.6610003551468253
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(DISTINCT data) AS dias FROM",
+     [
+      5,
+      2.3745999205857515
+     ]
+    ],
+    [
+     "SQL exec SELECT p.data, COUNT(*) AS entregas, COA",
+     [
+      5,
+      2.2685000440105796
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(p.taxa_entrega), 0)",
+     [
+      2,
+      1.8078999128192663
+     ]
+    ],
+    [
+     "SQL exec SELECT id FROM cad_categorias_extra WHER",
+     [
+      1,
+      1.4503001002594829
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(p.repasse_entregador",
+     [
+      2,
+      1.0534999892115593
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM movimentacoes_extra",
+     [
+      5,
+      0.5240000318735838
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "fornecedores",
+   "rodada": 1,
+   "ms_import": 0.8753000292927027,
+   "ms_build": 30.253399978391826,
+   "ms_update": 26.342099998146296,
+   "n_controles": 216,
+   "ms_sql_total": 3.230400034226477,
+   "ms_conectar": 0.9764999849721789,
+   "n_queries": 1,
+   "n_conexoes": 1,
+   "top_db_funcs": [
+    [
+     "database.fornecedor_listar()",
+     [
+      1,
+      6.493899971246719
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT * FROM cad_fornecedores WHERE ati",
+     [
+      1,
+      3.179799998179078
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_fornecedores WHERE ati",
+     [
+      1,
+      0.050600036047399044
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "parametros",
+   "rodada": 1,
+   "ms_import": 1.5669999411329627,
+   "ms_build": 58.817700017243624,
+   "ms_update": 69.28070005960763,
+   "n_controles": 1151,
+   "ms_sql_total": 14.498800039291382,
+   "ms_conectar": 6.1744998674839735,
+   "n_queries": 9,
+   "n_conexoes": 9,
+   "top_db_funcs": [
+    [
+     "database.config_obter()",
+     [
+      4,
+      10.671700001694262
+     ]
+    ],
+    [
+     "database.pessoa_listar()",
+     [
+      1,
+      6.563700037077069
+     ]
+    ],
+    [
+     "database.plataforma_listar()",
+     [
+      1,
+      4.186699981801212
+     ]
+    ],
+    [
+     "database.bairro_listar()",
+     [
+      1,
+      3.7391999503597617
+     ]
+    ],
+    [
+     "database.categoria_extra_listar()",
+     [
+      1,
+      3.528399975039065
+     ]
+    ],
+    [
+     "database.metodo_pag_listar()",
+     [
+      1,
+      2.7364999987185
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT valor FROM cad_configuracoes WHER",
+     [
+      4,
+      5.015400005504489
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 ORDE",
+     [
+      1,
+      3.0761000234633684
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_plataformas ORDER BY n",
+     [
+      1,
+      1.7689999658614397
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_bairros ORDER BY nome_",
+     [
+      1,
+      1.738599967211485
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_metodos_pag ORDER BY n",
+     [
+      1,
+      1.29210005979985
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_categorias_extra ORDER",
+     [
+      1,
+      1.268399995751679
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_pessoas WHERE 1=1 ORDE",
+     [
+      1,
+      0.21119997836649418
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_bairros ORDER BY nome_",
+     [
+      1,
+      0.032800016924738884
+     ]
+    ],
+    [
+     "SQL fetchone SELECT valor FROM cad_configuracoes WHER",
+     [
+      4,
+      0.026499968953430653
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_categorias_extra ORDER",
+     [
+      1,
+      0.026099965907633305
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "extras",
+   "rodada": 2,
+   "ms_import": 0.009999959729611874,
+   "ms_build": 27.31449995189905,
+   "ms_update": 12.59810000192374,
+   "n_controles": 33,
+   "ms_sql_total": 12.135099968872964,
+   "ms_conectar": 4.4151999754831195,
+   "n_queries": 6,
+   "n_conexoes": 6,
+   "top_db_funcs": [
+    [
+     "database.pessoa_listar()",
+     [
+      3,
+      12.676100013777614
+     ]
+    ],
+    [
+     "database.categoria_extra_listar()",
+     [
+      1,
+      5.490500014275312
+     ]
+    ],
+    [
+     "database.metodo_pag_listar()",
+     [
+      1,
+      3.7058000452816486
+     ]
+    ],
+    [
+     "database.mov_extra_listar_por_data()",
+     [
+      1,
+      3.562500001862645
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      3,
+      5.540400044992566
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_categorias_extra ORDER",
+     [
+      1,
+      2.9214000096544623
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_metodos_pag ORDER BY n",
+     [
+      1,
+      1.6875999281182885
+     ]
+    ],
+    [
+     "SQL exec SELECT me.*, cp.nome AS nome_pessoa, ce.",
+     [
+      1,
+      1.6818000003695488
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      3,
+      0.22599997464567423
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_categorias_extra ORDER",
+     [
+      1,
+      0.041899969801306725
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_metodos_pag ORDER BY n",
+     [
+      1,
+      0.03520003519952297
+     ]
+    ],
+    [
+     "SQL fetchall SELECT me.*, cp.nome AS nome_pessoa, ce.",
+     [
+      1,
+      0.000800006091594696
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "fluxo_caixa",
+   "rodada": 2,
+   "ms_import": 0.009299954399466515,
+   "ms_build": 3.2760000322014093,
+   "ms_update": 11.48979994468391,
+   "n_controles": 58,
+   "ms_sql_total": 0,
+   "ms_conectar": 0,
+   "n_queries": 0,
+   "n_conexoes": 0,
+   "top_db_funcs": [],
+   "top_sql": []
+  },
+  {
+   "tela": "fluxo_caixa",
+   "rodada": 2,
+   "acao": "Gerar (aba Diario)",
+   "ms_acao": 21.548799937590957,
+   "ms_sql_total": 6.525799981318414,
+   "ms_conectar": 1.8227000255137682,
+   "n_queries": 1,
+   "n_conexoes": 1,
+   "n_controles": 99,
+   "top_db_funcs": [
+    [
+     "database.fluxo_caixa_listar_lancamentos()",
+     [
+      1,
+      10.664900066331029
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      6.501500029116869
+     ]
+    ],
+    [
+     "SQL fetchall WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      0.02429995220154524
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "fluxo_caixa",
+   "rodada": 2,
+   "acao": "Gerar (aba Periodo)",
+   "ms_acao": 21.963100065477192,
+   "ms_sql_total": 4.19150001835078,
+   "ms_conectar": 1.3436999870464206,
+   "n_queries": 1,
+   "n_conexoes": 1,
+   "n_controles": 155,
+   "top_db_funcs": [
+    [
+     "database.fluxo_caixa_listar_lancamentos()",
+     [
+      1,
+      7.176900049671531
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      4.167600069195032
+     ]
+    ],
+    [
+     "SQL fetchall WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      0.02389994915574789
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "escala_geral",
+   "rodada": 2,
+   "ms_import": 0.014299992471933365,
+   "ms_build": 50.10460002813488,
+   "ms_update": 210.5851999949664,
+   "n_controles": 1227,
+   "ms_sql_total": 3.616599948145449,
+   "ms_conectar": 1.2657998595386744,
+   "n_queries": 2,
+   "n_conexoes": 2,
+   "top_db_funcs": [
+    [
+     "database.pessoa_listar()",
+     [
+      1,
+      3.1592000741511583
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT data, id_pessoa, tipo FROM escala",
+     [
+      1,
+      1.8053000094369054
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      1,
+      1.5128999948501587
+     ]
+    ],
+    [
+     "SQL fetchall SELECT data, id_pessoa, tipo FROM escala",
+     [
+      1,
+      0.22449996322393417
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      1,
+      0.07389998063445091
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "escala_geral",
+   "rodada": 2,
+   "acao": "Trocar para secao Ponto",
+   "ms_acao": 62.602999969385564,
+   "ms_sql_total": 0,
+   "ms_conectar": 0,
+   "n_queries": 0,
+   "n_conexoes": 0,
+   "n_controles": 1227,
+   "top_db_funcs": [],
+   "top_sql": []
+  },
+  {
+   "tela": "estoque",
+   "rodada": 2,
+   "ms_import": 0.011299969628453255,
+   "ms_build": 108.48980001173913,
+   "ms_update": 30.59229999780655,
+   "n_controles": 177,
+   "ms_sql_total": 20.029800129123032,
+   "ms_conectar": 7.364700082689524,
+   "n_queries": 10,
+   "n_conexoes": 10,
+   "top_db_funcs": [
+    [
+     "database.estoque_categoria_listar()",
+     [
+      4,
+      18.117700004950166
+     ]
+    ],
+    [
+     "database.estoque_produto_listar()",
+     [
+      4,
+      15.642899903468788
+     ]
+    ],
+    [
+     "database.estoque_produtos_abaixo_minimo()",
+     [
+      1,
+      3.994600032456219
+     ]
+    ],
+    [
+     "database.estoque_valor_total()",
+     [
+      1,
+      3.2594000222161412
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT ep.*, ec.nome AS nome_categoria,",
+     [
+      4,
+      7.140700006857514
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM estoque_categorias WHERE a",
+     [
+      3,
+      5.795600125566125
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM estoque_categorias ORDER B",
+     [
+      1,
+      3.5688000498339534
+     ]
+    ],
+    [
+     "SQL exec SELECT ep.*, ec.nome AS nome_categoria F",
+     [
+      1,
+      1.8668000120669603
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(quantidade_atual * p",
+     [
+      1,
+      1.5595000004395843
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM estoque_categorias WHERE a",
+     [
+      3,
+      0.0377000542357564
+     ]
+    ],
+    [
+     "SQL fetchall SELECT ep.*, ec.nome AS nome_categoria,",
+     [
+      4,
+      0.03629992716014385
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM estoque_categorias ORDER B",
+     [
+      1,
+      0.014299992471933365
+     ]
+    ],
+    [
+     "SQL fetchone SELECT COALESCE(SUM(quantidade_atual * p",
+     [
+      1,
+      0.008899951353669167
+     ]
+    ],
+    [
+     "SQL fetchall SELECT ep.*, ec.nome AS nome_categoria F",
+     [
+      1,
+      0.001200009137392044
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "relatorio_diario",
+   "rodada": 2,
+   "ms_import": 0.010599964298307896,
+   "ms_build": 83.03179999347776,
+   "ms_update": 21.447000093758106,
+   "n_controles": 257,
+   "ms_sql_total": 39.52479874715209,
+   "ms_conectar": 11.004599859006703,
+   "n_queries": 67,
+   "n_conexoes": 19,
+   "top_db_funcs": [
+    [
+     "database.calcular_pagamento_entregador()",
+     [
+      10,
+      31.579400296323
+     ]
+    ],
+    [
+     "database.config_obter()",
+     [
+      2,
+      5.505500012077391
+     ]
+    ],
+    [
+     "database.fluxo_caixa_recalcular()",
+     [
+      1,
+      3.8148999447003007
+     ]
+    ],
+    [
+     "database.plataforma_listar()",
+     [
+      1,
+      2.7067000046372414
+     ]
+    ],
+    [
+     "database.pessoa_listar()",
+     [
+      1,
+      2.668699948117137
+     ]
+    ],
+    [
+     "database.fluxo_caixa_abrir()",
+     [
+      1,
+      2.38389999140054
+     ]
+    ],
+    [
+     "database.mov_extra_listar_por_data()",
+     [
+      1,
+      1.8600000767037272
+     ]
+    ],
+    [
+     "database.fluxo_caixa_buscar()",
+     [
+      1,
+      1.7788000404834747
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT diaria_valor, tipo_salario FROM c",
+     [
+      10,
+      9.157299995422363
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) AS qtd, COALESCE(SUM(rep",
+     [
+      10,
+      6.264299852773547
+     ]
+    ],
+    [
+     "SQL exec WITH pc AS ( SELECT id_pedido, COUNT(*)",
+     [
+      4,
+      3.0242997454479337
+     ]
+    ],
+    [
+     "SQL exec SELECT valor FROM cad_configuracoes WHER",
+     [
+      2,
+      2.6437999913468957
+     ]
+    ],
+    [
+     "SQL exec SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      2.251700032502413
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(me.valor), 0) AS tot",
+     [
+      20,
+      1.9564998801797628
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(vp.valor), 0) FROM v",
+     [
+      1,
+      1.8553000409156084
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM ( SELECT id_pedido",
+     [
+      1,
+      1.614399952813983
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_plataformas ORDER BY n",
+     [
+      1,
+      1.459800056181848
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) AS qtd, COALESCE(SUM(val",
+     [
+      4,
+      1.4460999518632889
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "relatorio_periodo",
+   "rodada": 2,
+   "ms_import": 0.00870006624609232,
+   "ms_build": 0.6798999384045601,
+   "ms_update": 3.943099989555776,
+   "n_controles": 15,
+   "ms_sql_total": 0,
+   "ms_conectar": 0,
+   "n_queries": 0,
+   "n_conexoes": 0,
+   "top_db_funcs": [],
+   "top_sql": []
+  },
+  {
+   "tela": "relatorio_periodo",
+   "rodada": 2,
+   "acao": "Gerar Relatorio (mes corrente)",
+   "ms_acao": 1468.8773000380024,
+   "ms_sql_total": 1319.7561983251944,
+   "ms_conectar": 39.71279924735427,
+   "n_queries": 171,
+   "n_conexoes": 89,
+   "n_controles": 876,
+   "top_db_funcs": [
+    [
+     "database.escala_contar_dias()",
+     [
+      84,
+      133.35139979608357
+     ]
+    ],
+    [
+     "database.pessoa_listar()",
+     [
+      2,
+      7.5205999892205
+     ]
+    ],
+    [
+     "database.config_obter()",
+     [
+      1,
+      2.5290000485256314
+     ]
+    ],
+    [
+     "database.plataforma_listar()",
+     [
+      1,
+      1.9696999806910753
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL fetchall SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      534.7419999307021
+     ]
+    ],
+    [
+     "SQL exec WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      421.37019999790937
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(DISTINCT p.id) AS total_ped",
+     [
+      1,
+      218.21279998403043
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM escalas_trabalho WH",
+     [
+      84,
+      64.6612998098135
+     ]
+    ],
+    [
+     "SQL exec SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      45.44189991429448
+     ]
+    ],
+    [
+     "SQL exec WITH pc AS ( SELECT id_pedido, COUNT(*)",
+     [
+      4,
+      13.419500086456537
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      2,
+      3.734199912287295
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) AS total_entregas, COALE",
+     [
+      10,
+      3.2394997542724013
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(me.valor), 0) AS tot",
+     [
+      52,
+      2.5882002664729953
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(p.taxa_entrega), 0)",
+     [
+      6,
+      2.1964999614283442
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "relatorio_periodo",
+   "rodada": 2,
+   "acao": "Gerar Relatorio (90 dias)",
+   "ms_acao": 1451.8585000187159,
+   "ms_sql_total": 1291.6745990514755,
+   "ms_conectar": 40.494899498298764,
+   "n_queries": 171,
+   "n_conexoes": 89,
+   "n_controles": 876,
+   "top_db_funcs": [
+    [
+     "database.escala_contar_dias()",
+     [
+      84,
+      137.34309969004244
+     ]
+    ],
+    [
+     "database.config_obter()",
+     [
+      1,
+      3.919099923223257
+     ]
+    ],
+    [
+     "database.pessoa_listar()",
+     [
+      2,
+      3.674900042824447
+     ]
+    ],
+    [
+     "database.plataforma_listar()",
+     [
+      1,
+      2.1995999850332737
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL fetchall SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      528.5177999176085
+     ]
+    ],
+    [
+     "SQL exec WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      429.6135999029502
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(DISTINCT p.id) AS total_ped",
+     [
+      1,
+      191.23039999976754
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM escalas_trabalho WH",
+     [
+      84,
+      67.69449962303042
+     ]
+    ],
+    [
+     "SQL exec SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      39.84770004171878
+     ]
+    ],
+    [
+     "SQL exec WITH pc AS ( SELECT id_pedido, COUNT(*)",
+     [
+      4,
+      14.861700125038624
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) AS total_entregas, COALE",
+     [
+      10,
+      3.2436001347377896
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(p.taxa_entrega), 0)",
+     [
+      6,
+      2.838899730704725
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(me.valor), 0) AS tot",
+     [
+      52,
+      2.7197995223104954
+     ]
+    ],
+    [
+     "SQL exec SELECT valor FROM cad_configuracoes WHER",
+     [
+      1,
+      1.8826000159606338
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "relatorio_periodo",
+   "rodada": 2,
+   "acao": "Gerar Relatorio (365 dias)",
+   "ms_acao": 1498.548200004734,
+   "ms_sql_total": 1336.1122998176143,
+   "ms_conectar": 39.693700266070664,
+   "n_queries": 171,
+   "n_conexoes": 89,
+   "n_controles": 876,
+   "top_db_funcs": [
+    [
+     "database.escala_contar_dias()",
+     [
+      84,
+      139.22120013739914
+     ]
+    ],
+    [
+     "database.pessoa_listar()",
+     [
+      2,
+      3.723599947988987
+     ]
+    ],
+    [
+     "database.config_obter()",
+     [
+      1,
+      3.2647999469190836
+     ]
+    ],
+    [
+     "database.plataforma_listar()",
+     [
+      1,
+      2.2230999311432242
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL fetchall SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      558.0939000938088
+     ]
+    ],
+    [
+     "SQL exec WITH pag_count AS ( SELECT id_pedido, CO",
+     [
+      1,
+      426.41319998074323
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(DISTINCT p.id) AS total_ped",
+     [
+      1,
+      205.934299970977
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM escalas_trabalho WH",
+     [
+      84,
+      69.78119979612529
+     ]
+    ],
+    [
+     "SQL exec SELECT canal, SUM(CASE WHEN NOT EXISTS(",
+     [
+      1,
+      42.801399948075414
+     ]
+    ],
+    [
+     "SQL exec WITH pc AS ( SELECT id_pedido, COUNT(*)",
+     [
+      4,
+      13.748700032010674
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) AS total_entregas, COALE",
+     [
+      10,
+      3.1407001661136746
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(me.valor), 0) AS tot",
+     [
+      52,
+      2.6711999671533704
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(p.taxa_entrega), 0)",
+     [
+      6,
+      2.35099985729903
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      2,
+      1.6206000000238419
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "funcionarios",
+   "rodada": 2,
+   "ms_import": 0.0076999422162771225,
+   "ms_build": 3.7751999916508794,
+   "ms_update": 5.3322999738156796,
+   "n_controles": 10,
+   "ms_sql_total": 1.4928999589756131,
+   "ms_conectar": 0.6935999263077974,
+   "n_queries": 1,
+   "n_conexoes": 1,
+   "top_db_funcs": [
+    [
+     "database.pessoa_listar()",
+     [
+      1,
+      3.14539996907115
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      1,
+      1.446699956431985
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      1,
+      0.046200002543628216
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "funcionarios",
+   "rodada": 2,
+   "acao": "Carregar (1o funcionario, mes corrente)",
+   "ms_acao": 60.30620005913079,
+   "ms_sql_total": 7.528499816544354,
+   "ms_conectar": 4.581799730658531,
+   "n_queries": 15,
+   "n_conexoes": 5,
+   "n_controles": 373,
+   "top_db_funcs": [
+    [
+     "database.escala_listar_por_pessoa()",
+     [
+      2,
+      5.435100058093667
+     ]
+    ],
+    [
+     "database.ponto_resumo_mensal()",
+     [
+      1,
+      5.294899921864271
+     ]
+    ],
+    [
+     "database.pessoa_buscar()",
+     [
+      1,
+      3.4319000551477075
+     ]
+    ],
+    [
+     "database.ponto_calcular_horas()",
+     [
+      6,
+      0.6586998933926225
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT * FROM escalas_trabalho WHERE id_",
+     [
+      2,
+      2.5406000204384327
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM registros_ponto WHERE id_p",
+     [
+      1,
+      1.5449000056833029
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM escalas_trabalho WH",
+     [
+      4,
+      1.4298000605776906
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE id = ?",
+     [
+      1,
+      1.3936999021098018
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(me.valor), 0) AS tot",
+     [
+      2,
+      0.16589998267591
+     ]
+    ],
+    [
+     "SQL exec SELECT me.data, me.valor, me.obs FROM mo",
+     [
+      2,
+      0.13229995965957642
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM escalas_trabalho WHERE id_",
+     [
+      2,
+      0.10710000060498714
+     ]
+    ],
+    [
+     "SQL exec SELECT data, tipo FROM escalas_trabalho",
+     [
+      1,
+      0.05700008478015661
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM movimentacoes_extra",
+     [
+      1,
+      0.04910002462565899
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM registros_ponto WHERE id_p",
+     [
+      1,
+      0.04099996294826269
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "entregadores",
+   "rodada": 2,
+   "ms_import": 0.0075999414548277855,
+   "ms_build": 51.7334999749437,
+   "ms_update": 33.40459999162704,
+   "n_controles": 524,
+   "ms_sql_total": 17.739199218340218,
+   "ms_conectar": 3.397699911147356,
+   "n_queries": 57,
+   "n_conexoes": 7,
+   "top_db_funcs": [
+    [
+     "database.calcular_pagamento_entregador()",
+     [
+      5,
+      13.759400113485754
+     ]
+    ],
+    [
+     "database.pessoa_listar()",
+     [
+      1,
+      3.233300056308508
+     ]
+    ],
+    [
+     "database.sessao_obter()",
+     [
+      1,
+      0.07310009095817804
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT COUNT(*) AS qtd, COALESCE(SUM(rep",
+     [
+      10,
+      4.050800111144781
+     ]
+    ],
+    [
+     "SQL exec SELECT diaria_valor, tipo_salario FROM c",
+     [
+      5,
+      3.97639989387244
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 AND",
+     [
+      1,
+      1.5755000058561563
+     ]
+    ],
+    [
+     "SQL exec SELECT id FROM cad_categorias_extra WHER",
+     [
+      1,
+      1.5510000521317124
+     ]
+    ],
+    [
+     "SQL exec SELECT p.data, COUNT(*) AS entregas, COA",
+     [
+      5,
+      1.5139001188799739
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(DISTINCT data) AS dias FROM",
+     [
+      5,
+      1.4201001031324267
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(me.valor), 0) AS tot",
+     [
+      20,
+      1.30429957062006
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(p.taxa_entrega), 0)",
+     [
+      2,
+      0.9572999551892281
+     ]
+    ],
+    [
+     "SQL exec SELECT COALESCE(SUM(p.repasse_entregador",
+     [
+      2,
+      0.6668000714853406
+     ]
+    ],
+    [
+     "SQL exec SELECT COUNT(*) FROM movimentacoes_extra",
+     [
+      5,
+      0.264700036495924
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "fornecedores",
+   "rodada": 2,
+   "ms_import": 0.008199946023523808,
+   "ms_build": 17.317899968475103,
+   "ms_update": 18.688000040128827,
+   "n_controles": 216,
+   "ms_sql_total": 1.7248999793082476,
+   "ms_conectar": 0.6921999156475067,
+   "n_queries": 1,
+   "n_conexoes": 1,
+   "top_db_funcs": [
+    [
+     "database.fornecedor_listar()",
+     [
+      1,
+      3.4978000912815332
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT * FROM cad_fornecedores WHERE ati",
+     [
+      1,
+      1.6925999661907554
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_fornecedores WHERE ati",
+     [
+      1,
+      0.0323000131174922
+     ]
+    ]
+   ]
+  },
+  {
+   "tela": "parametros",
+   "rodada": 2,
+   "ms_import": 0.008899951353669167,
+   "ms_build": 58.331500040367246,
+   "ms_update": 103.39180007576942,
+   "n_controles": 1151,
+   "ms_sql_total": 14.789200155064464,
+   "ms_conectar": 5.543999839574099,
+   "n_queries": 9,
+   "n_conexoes": 9,
+   "top_db_funcs": [
+    [
+     "database.config_obter()",
+     [
+      4,
+      11.742299888283014
+     ]
+    ],
+    [
+     "database.categoria_extra_listar()",
+     [
+      1,
+      7.479300023987889
+     ]
+    ],
+    [
+     "database.bairro_listar()",
+     [
+      1,
+      3.679899964481592
+     ]
+    ],
+    [
+     "database.pessoa_listar()",
+     [
+      1,
+      3.5300999879837036
+     ]
+    ],
+    [
+     "database.plataforma_listar()",
+     [
+      1,
+      3.0256001045927405
+     ]
+    ],
+    [
+     "database.metodo_pag_listar()",
+     [
+      1,
+      2.7797999791800976
+     ]
+    ]
+   ],
+   "top_sql": [
+    [
+     "SQL exec SELECT valor FROM cad_configuracoes WHER",
+     [
+      4,
+      5.627900012768805
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_categorias_extra ORDER",
+     [
+      1,
+      2.6572999777272344
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_bairros ORDER BY nome_",
+     [
+      1,
+      1.8701000371947885
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_pessoas WHERE 1=1 ORDE",
+     [
+      1,
+      1.6494999872520566
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_plataformas ORDER BY n",
+     [
+      1,
+      1.3777000131085515
+     ]
+    ],
+    [
+     "SQL exec SELECT * FROM cad_metodos_pag ORDER BY n",
+     [
+      1,
+      1.330800005234778
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_pessoas WHERE 1=1 ORDE",
+     [
+      1,
+      0.13539998326450586
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_bairros ORDER BY nome_",
+     [
+      1,
+      0.03650004509836435
+     ]
+    ],
+    [
+     "SQL fetchall SELECT * FROM cad_categorias_extra ORDER",
+     [
+      1,
+      0.031400006264448166
+     ]
+    ],
+    [
+     "SQL fetchone SELECT valor FROM cad_configuracoes WHER",
+     [
+      4,
+      0.029999995604157448
+     ]
+    ]
+   ]
+  }
+ ]
+}

@@ -4,7 +4,9 @@ views/funcionarios.py — Escala mensal e holerite por funcionário interno.
 
 import calendar
 import csv
+import logging
 import os
+import time
 from datetime import date
 
 import flet as ft
@@ -12,6 +14,9 @@ import flet as ft
 import database
 from relatorios.pdf_gerador import gerar_pdf_holerite, abrir_pdf
 from relatorios.excel_gerador import excel_holerite
+
+# ── Instrumentação de performance (mesmo logger "perf" de database.py) ────
+_perf_logger = logging.getLogger("perf")
 
 
 # ── Constantes ────────────────────────────────────────────────────────────────
@@ -103,17 +108,29 @@ def _mini_tabela(colunas: list, linhas: list) -> ft.Row:
 # ── View principal ────────────────────────────────────────────────────────────
 
 def view(page: ft.Page) -> ft.Control:
+    _t0_view   = time.perf_counter()
     hoje       = date.today()
     pessoas_db = database.pessoa_listar(tipo="INTERNO", apenas_ativos=True)
+    id_padrao  = str(pessoas_db[0]["id"]) if pessoas_db else None
+
+    txt_perf = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
+
+    def _ao_mudar_filtro(e=None):
+        if dd_funcionario.value:
+            _carregar_seguro()
+        else:
+            page.update()
 
     dd_funcionario = ft.Dropdown(
         label="Funcionário",
         width=260,
+        value=id_padrao,
         options=[
             ft.dropdown.Option(key=str(p["id"]), text=p["nome"])
             for p in pessoas_db
         ],
         hint_text="Sem funcionários internos" if not pessoas_db else None,
+        on_select=_ao_mudar_filtro,
     )
 
     dd_mes = ft.Dropdown(
@@ -124,6 +141,7 @@ def view(page: ft.Page) -> ft.Control:
             ft.dropdown.Option(key=str(n), text=nome)
             for n, nome in MESES
         ],
+        on_select=_ao_mudar_filtro,
     )
 
     tf_ano = ft.TextField(
@@ -132,6 +150,8 @@ def view(page: ft.Page) -> ft.Control:
         width=90,
         keyboard_type=ft.KeyboardType.NUMBER,
         text_align=ft.TextAlign.CENTER,
+        on_blur=_ao_mudar_filtro,
+        on_submit=_ao_mudar_filtro,
     )
 
     # ── DatePicker para seleção rápida de mês ─────────────────────────────
@@ -140,7 +160,7 @@ def view(page: ft.Page) -> ft.Control:
             picked = e.control.value
             dd_mes.value = str(picked.month)
             tf_ano.value = str(picked.year)
-            page.update()
+            _ao_mudar_filtro()
 
     date_picker = ft.DatePicker(on_change=_on_date_picked)
     page.overlay.append(date_picker)
@@ -156,6 +176,7 @@ def view(page: ft.Page) -> ft.Control:
 
     # ─────────────────────────────────────────────────────────────────────
     def _carregar(e=None):
+        _t0 = time.perf_counter()
         if not dd_funcionario.value:
             page.overlay.append(ft.SnackBar(
                 content=ft.Text("Selecione um funcionário."),
@@ -738,6 +759,9 @@ def view(page: ft.Page) -> ft.Control:
 
         col_conteudo.controls.clear()
         col_conteudo.controls += [bloco1, bloco2]
+        _ms = (time.perf_counter() - _t0) * 1000
+        _perf_logger.debug(f"{'funcionarios._carregar > TOTAL':<55} {_ms:8.1f} ms")
+        txt_perf.value = f"funcionarios._carregar: {_ms:.0f}ms | {time.strftime('%H:%M:%S')}"
         page.update()
 
     def _carregar_seguro(e=None):
@@ -892,18 +916,25 @@ def view(page: ft.Page) -> ft.Control:
         style=ft.ButtonStyle(bgcolor=ft.Colors.TEAL_600, color=ft.Colors.WHITE),
     )
 
+    if id_padrao:
+        _carregar_seguro()
+
+    _ms_view = (time.perf_counter() - _t0_view) * 1000
+    _perf_logger.debug(f"{'funcionarios.view > TOTAL':<55} {_ms_view:8.1f} ms")
+
     return ft.Column(
         scroll=ft.ScrollMode.AUTO,
         expand=True,
         spacing=16,
         controls=[
             ft.Row(
-                controls=[dd_funcionario, dd_mes, tf_ano, btn_calendario, btn_carregar],
+                controls=[dd_funcionario, dd_mes, tf_ano, btn_calendario, btn_carregar, txt_perf],
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=8,
                 wrap=True,
             ),
             ft.Text(
-                "Selecione o funcionário, mês e ano e clique em Carregar.",
+                "Selecione o funcionário e o período para visualizar a escala e holerite.",
                 color=ft.Colors.GREY_500, italic=True, size=12,
             ),
             ft.Divider(height=1),

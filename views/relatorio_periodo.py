@@ -6,11 +6,17 @@ import csv
 import os
 from datetime import date, timedelta
 
+import logging
+import time
+
 import flet as ft
 
 import database
 from relatorios.pdf_gerador import gerar_pdf_periodo, abrir_pdf
 from relatorios.excel_gerador import excel_relatorio_periodo
+
+# ── Instrumentação de performance (mesmo logger "perf" de database.py) ────
+_perf_logger = logging.getLogger("perf")
 
 
 # ── Utilitários ───────────────────────────────────────────────────────────────
@@ -165,11 +171,13 @@ def view(page: ft.Page) -> ft.Control:
     )
 
     col_relatorio = ft.Column(spacing=16, expand=True)
+    txt_perf   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
     _dados_csv: dict = {}
     _dados_pdf: dict = {}
 
     # ─────────────────────────────────────────────────────────────────────
     def _gerar(e=None):
+        _t0_total = time.perf_counter()
         _dados_csv.clear()
 
         data_ini_iso = _data_br_para_iso(tf_inicio.value or inicio_br)
@@ -696,17 +704,16 @@ def view(page: ft.Page) -> ft.Control:
             linhas_f = []
             _dados_csv["funcionarios"] = []
 
+            _contagem_escala = database.escala_contar_dias_periodo(
+                data_ini_iso, data_fim_iso)
+
             for func in internos:
                 id_func = func["id"]
 
-                dias_trab = database.escala_contar_dias(
-                    id_func, data_ini_iso, data_fim_iso, "TRABALHOU")
-                faltas    = database.escala_contar_dias(
-                    id_func, data_ini_iso, data_fim_iso, "FALTA")
-                extras    = database.escala_contar_dias(
-                    id_func, data_ini_iso, data_fim_iso, "EXTRA")
-                feriados  = database.escala_contar_dias(
-                    id_func, data_ini_iso, data_fim_iso, "FERIADO")
+                dias_trab = _contagem_escala.get((id_func, "TRABALHOU"), 0)
+                faltas    = _contagem_escala.get((id_func, "FALTA"), 0)
+                extras    = _contagem_escala.get((id_func, "EXTRA"), 0)
+                feriados  = _contagem_escala.get((id_func, "FERIADO"), 0)
 
                 r_vales_f = conn.execute("""
                     SELECT COALESCE(SUM(me.valor), 0) AS total
@@ -917,7 +924,11 @@ def view(page: ft.Page) -> ft.Control:
         )
         col_relatorio.controls.clear()
         col_relatorio.controls += [bloco1, linha_canais_pag, bloco4, bloco5, bloco6, bloco7, bloco8]
+        txt_perf.value = f"Total: {(time.perf_counter() - _t0_total)*1000:.0f}ms | {time.strftime('%H:%M:%S')}"
+        _perf_logger.debug(f"{'relatorio_periodo._gerar > queries+controles':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms acumulado")
         page.update()
+        _perf_logger.debug(f"{'relatorio_periodo._gerar > page.update':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms acumulado")
+        _perf_logger.debug(f"{'relatorio_periodo._gerar > TOTAL':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms")
 
     # ── Exportar CSV ──────────────────────────────────────────────────────
 
@@ -1120,6 +1131,7 @@ def view(page: ft.Page) -> ft.Control:
                     "Use Exportar CSV para salvar em exports/.",
                     color=ft.Colors.GREY_500, italic=True, size=12,
                 ),
+                txt_perf,
             ],
         ),
     ))

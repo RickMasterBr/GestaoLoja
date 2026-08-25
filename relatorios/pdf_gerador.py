@@ -3,72 +3,99 @@ relatorios/pdf_gerador.py — Geração de relatórios PDF para impressão.
 Abre o arquivo diretamente no visualizador padrão do Windows via os.startfile().
 """
 
+from __future__ import annotations
+
 import os
 import tempfile
 from datetime import datetime
 
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.lib.units import cm
-from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph,
-    Spacer, HRFlowable,
-)
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
 
-# ── Paleta de cores ───────────────────────────────────────────────────────────
+# ── Carga preguicosa do reportlab ──────────────────────────────────
+# O reportlab custa ~200 ms para importar e este modulo e importado no boot do
+# app (6 views o importam no topo). _carregar() adia esse custo ate a primeira
+# exportacao de PDF. Publica os nomes como globais do modulo para que os
+# helpers e constantes continuem funcionando exatamente como antes.
 
-_AZUL        = colors.HexColor("#1a3a5c")
-_CINZA_SEC   = colors.HexColor("#2d2d2d")
-_CINZA_ALT   = colors.HexColor("#f5f5f5")
-_VERDE       = colors.HexColor("#2d7a2d")
-_VERMELHO    = colors.HexColor("#a02020")
-_LARANJA     = colors.HexColor("#c47000")
-_BRANCO      = colors.white
-_CINZA_TEXT  = colors.HexColor("#555555")
-_CINZA_GRADE = colors.HexColor("#cccccc")
-_VERDE_CLARO = colors.HexColor("#d4edda")
-
-# Largura útil: A4 com margens 2 cm de cada lado
-_LU = A4[0] - 4 * cm   # ≈ 481.9 pt
+_CARREGADO = False
 
 
-# ── Estilos de parágrafo ──────────────────────────────────────────────────────
+def _carregar() -> None:
+    """Importa o reportlab e monta paleta/estilos na primeira chamada."""
+    global _CARREGADO
+    if _CARREGADO:
+        return
+    global A4, colors, cm, SimpleDocTemplate, Table, TableStyle, Paragraph
+    global Spacer, HRFlowable, ParagraphStyle, TA_CENTER, TA_RIGHT
+    global _AZUL, _CINZA_SEC, _CINZA_ALT, _VERDE, _VERMELHO, _LARANJA
+    global _BRANCO, _CINZA_TEXT, _CINZA_GRADE, _VERDE_CLARO, _LU
+    global _ST_NOME_LOJA, _ST_SUBTITULO, _ST_DATA_HDR, _ST_SECAO_TXT
+    global _ST_SUBSECAO, _ST_NOTA, _ST_RODAPE, _ST_SEM_DADOS
 
-_ST_NOME_LOJA = ParagraphStyle(
-    "nome_loja", fontName="Helvetica-Bold", fontSize=18,
-    alignment=TA_CENTER, textColor=_AZUL, spaceAfter=4,
-)
-_ST_SUBTITULO = ParagraphStyle(
-    "subtitulo", fontName="Helvetica", fontSize=12,
-    alignment=TA_CENTER, textColor=_CINZA_TEXT, spaceAfter=2,
-)
-_ST_DATA_HDR = ParagraphStyle(
-    "data_hdr", fontName="Helvetica", fontSize=11,
-    alignment=TA_CENTER, textColor=_CINZA_TEXT, spaceAfter=6,
-)
-_ST_SECAO_TXT = ParagraphStyle(
-    "secao_txt", fontName="Helvetica-Bold", fontSize=11,
-    textColor=_BRANCO, leading=16, leftIndent=6,
-)
-_ST_SUBSECAO = ParagraphStyle(
-    "subsecao", fontName="Helvetica-Bold", fontSize=10,
-    textColor=_CINZA_SEC, spaceBefore=6, spaceAfter=3,
-)
-_ST_NOTA = ParagraphStyle(
-    "nota", fontName="Helvetica-Oblique", fontSize=9,
-    textColor=_CINZA_TEXT, spaceAfter=4,
-)
-_ST_RODAPE = ParagraphStyle(
-    "rodape", fontName="Helvetica", fontSize=9,
-    alignment=TA_RIGHT, textColor=_CINZA_TEXT,
-)
-_ST_SEM_DADOS = ParagraphStyle(
-    "sem_dados", fontName="Helvetica-Oblique", fontSize=10,
-    textColor=_CINZA_TEXT, spaceAfter=6, leftIndent=6,
-)
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph,
+        Spacer, HRFlowable,
+    )
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+
+    # ── Paleta de cores ───────────────────────────────────────────────────────────
+
+    _AZUL        = colors.HexColor("#1a3a5c")
+    _CINZA_SEC   = colors.HexColor("#2d2d2d")
+    _CINZA_ALT   = colors.HexColor("#f5f5f5")
+    _VERDE       = colors.HexColor("#2d7a2d")
+    _VERMELHO    = colors.HexColor("#a02020")
+    _LARANJA     = colors.HexColor("#c47000")
+    _BRANCO      = colors.white
+    _CINZA_TEXT  = colors.HexColor("#555555")
+    _CINZA_GRADE = colors.HexColor("#cccccc")
+    _VERDE_CLARO = colors.HexColor("#d4edda")
+
+    # Largura útil: A4 com margens 2 cm de cada lado
+    _LU = A4[0] - 4 * cm   # ≈ 481.9 pt
+
+
+    # ── Estilos de parágrafo ──────────────────────────────────────────────────────
+
+    _ST_NOME_LOJA = ParagraphStyle(
+        "nome_loja", fontName="Helvetica-Bold", fontSize=18,
+        alignment=TA_CENTER, textColor=_AZUL, spaceAfter=4,
+    )
+    _ST_SUBTITULO = ParagraphStyle(
+        "subtitulo", fontName="Helvetica", fontSize=12,
+        alignment=TA_CENTER, textColor=_CINZA_TEXT, spaceAfter=2,
+    )
+    _ST_DATA_HDR = ParagraphStyle(
+        "data_hdr", fontName="Helvetica", fontSize=11,
+        alignment=TA_CENTER, textColor=_CINZA_TEXT, spaceAfter=6,
+    )
+    _ST_SECAO_TXT = ParagraphStyle(
+        "secao_txt", fontName="Helvetica-Bold", fontSize=11,
+        textColor=_BRANCO, leading=16, leftIndent=6,
+    )
+    _ST_SUBSECAO = ParagraphStyle(
+        "subsecao", fontName="Helvetica-Bold", fontSize=10,
+        textColor=_CINZA_SEC, spaceBefore=6, spaceAfter=3,
+    )
+    _ST_NOTA = ParagraphStyle(
+        "nota", fontName="Helvetica-Oblique", fontSize=9,
+        textColor=_CINZA_TEXT, spaceAfter=4,
+    )
+    _ST_RODAPE = ParagraphStyle(
+        "rodape", fontName="Helvetica", fontSize=9,
+        alignment=TA_RIGHT, textColor=_CINZA_TEXT,
+    )
+    _ST_SEM_DADOS = ParagraphStyle(
+        "sem_dados", fontName="Helvetica-Oblique", fontSize=10,
+        textColor=_CINZA_TEXT, spaceAfter=6, leftIndent=6,
+    )
+
+    _CARREGADO = True
+
 
 _PLAT_NOMES = {
     "iFood1": "iFood L1",
@@ -209,6 +236,7 @@ def _bloco_plataforma(story: list, nome_plat: str, d: dict,
 
 def gerar_pdf_diario(data_iso: str, dados: dict) -> str:
     """Gera o PDF do relatório diário. Retorna o caminho do arquivo temporário."""
+    _carregar()
     caminho = os.path.join(tempfile.gettempdir(), f"relatorio_{data_iso}.pdf")
 
     doc = SimpleDocTemplate(
@@ -385,6 +413,7 @@ def gerar_pdf_diario(data_iso: str, dados: dict) -> str:
 
 def gerar_pdf_periodo(data_ini: str, data_fim: str, dados: dict) -> str:
     """Gera o PDF do relatório de período. Retorna o caminho do arquivo temporário."""
+    _carregar()
     caminho = os.path.join(
         tempfile.gettempdir(),
         f"relatorio_{data_ini}_{data_fim}.pdf",
@@ -557,6 +586,7 @@ def gerar_pdf_periodo(data_ini: str, data_fim: str, dados: dict) -> str:
 def gerar_pdf_fluxo_caixa(titulo: str, ini_br: str, fim_br: str,
                            lancamentos: list) -> str:
     """Gera PDF do extrato de fluxo de caixa. Retorna o caminho do arquivo."""
+    _carregar()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     caminho = os.path.join(tempfile.gettempdir(), f"fluxo_caixa_{ts}.pdf")
     doc = SimpleDocTemplate(
@@ -656,6 +686,7 @@ def gerar_pdf_fluxo_caixa(titulo: str, ini_br: str, fim_br: str,
 
 def gerar_pdf_divergencias(ini_br: str, fim_br: str, registros: list) -> str:
     """Gera PDF do histórico de divergências de fechamento."""
+    _carregar()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     caminho = os.path.join(tempfile.gettempdir(), f"divergencias_{ts}.pdf")
     doc = SimpleDocTemplate(
@@ -713,6 +744,7 @@ def gerar_pdf_divergencias(ini_br: str, fim_br: str, registros: list) -> str:
 
 def gerar_pdf_holerite(nome: str, mes_ano: str, dados: dict) -> str:
     """Gera PDF do holerite de um funcionário."""
+    _carregar()
     ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
     nome_arq = nome.replace(" ", "_").lower()
     caminho  = os.path.join(tempfile.gettempdir(), f"holerite_{nome_arq}_{ts}.pdf")
@@ -853,6 +885,7 @@ def gerar_pdf_holerite(nome: str, mes_ano: str, dados: dict) -> str:
 
 def gerar_pdf_entregadores(data_br: str, dados: dict) -> str:
     """Gera PDF do painel de entregadores (dia + semana)."""
+    _carregar()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     caminho = os.path.join(tempfile.gettempdir(), f"entregadores_{ts}.pdf")
     doc = SimpleDocTemplate(
@@ -913,6 +946,7 @@ def gerar_pdf_entregadores(data_br: str, dados: dict) -> str:
 def gerar_pdf_estoque(ini_br: str, fim_br: str,
                       movimentacoes: list, resumo: dict) -> str:
     """Gera PDF do relatório de movimentações de estoque."""
+    _carregar()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     caminho = os.path.join(tempfile.gettempdir(), f"estoque_{ts}.pdf")
     doc = SimpleDocTemplate(

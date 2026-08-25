@@ -137,8 +137,10 @@ def view(page: ft.Page) -> ft.Control:
             linhas_b1 = []
             _dia_lista = []
 
+            _pag_lote = database.calcular_pagamento_entregadores_lote(data_iso)
             for ent in entregadores:
-                r = database.calcular_pagamento_entregador(ent["id"], data_iso)
+                r = _pag_lote.get(ent["id"], {"total_entregas": 0, "soma_taxas": 0.0, "diaria": 0.0,
+                     "corridas_extras": 0.0, "vales": 0.0, "total_liquido": 0.0})
 
                 # Verifica se pagamento já foi registrado hoje para este entregador
                 ja_pago = False

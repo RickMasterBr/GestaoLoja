@@ -70,6 +70,14 @@ def _encontrar_banco():
     # Passo 3: fallback seguro — usa banco local
     return LOCAL_PATH
 
+# ── MODO TESTE (temporário — não afeta o EXE de produção) ─────────
+# Se GESTAOLOJA_TESTE estiver setada, ignora o Drive por completo
+# e usa um banco isolado local, sem risco de mexer no banco da loja.
+_CAMINHO_TESTE = os.environ.get("GESTAOLOJA_TESTE")
+if _CAMINHO_TESTE:
+    def _encontrar_banco():
+        print(f"[database] MODO TESTE ativo. Banco isolado: {_CAMINHO_TESTE}")
+        return _CAMINHO_TESTE
 
 DB_PATH = _encontrar_banco()
 
@@ -226,16 +234,30 @@ def conectar() -> sqlite3.Connection:
     return conn
 
 
+def _criar_indices(conn):
+    """Índices de performance para as queries de relatório (idempotente)."""
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_pag_pedido      ON vendas_pagamentos(id_pedido)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_ped_data        ON vendas_pedidos(data)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_ped_data_oper   ON vendas_pedidos(data, id_operador)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_mov_data        ON movimentacoes_extras(data)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_esc_pessoa_data ON escalas_trabalho(id_pessoa, data, tipo)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_log_data        ON logs_auditoria(data_hora)")
+    conn.commit()
+
+
 def inicializar_banco():
     """Cria todas as tabelas (se não existirem) e popula dados iniciais."""
     conn = conectar()
     try:
         conn.execute("PRAGMA journal_mode=WAL")  # setado uma vez, persiste no arquivo
         _criar_tabelas(conn)
+        _criar_indices(conn)
         _migrar_colunas_plataformas(conn)
         _migrar_tipo_salario_entregador(conn)
         _migrar_colunas_pessoas(conn)
         _migrar_carga_horaria(conn)
+        _migrar_aparece_no_ponto(conn)
+        _migrar_horario_padrao(conn)
         _migrar_dados_pessoais(conn)
         _migrar_obs_fechamento(conn)
         _migrar_fornecedor_estoque(conn)
@@ -657,6 +679,35 @@ def _migrar_carga_horaria(conn: sqlite3.Connection):
         conn.execute(
             "ALTER TABLE cad_pessoas ADD COLUMN carga_horaria_diaria REAL NOT NULL DEFAULT 8.0"
         )
+
+
+def _migrar_aparece_no_ponto(conn: sqlite3.Connection):
+    """
+    Adiciona coluna aparece_no_ponto em cad_pessoas se não existir.
+    Idempotente.
+    """
+    colunas = {row["name"] for row in conn.execute("PRAGMA table_info(cad_pessoas)")}
+    if "aparece_no_ponto" not in colunas:
+        conn.execute(
+            "ALTER TABLE cad_pessoas ADD COLUMN aparece_no_ponto INTEGER NOT NULL DEFAULT 1"
+        )
+
+
+def _migrar_horario_padrao(conn: sqlite3.Connection):
+    """
+    Adiciona colunas de horário padrão de trabalho em cad_pessoas se não existirem.
+    Usadas para comparar com o horário registrado no Ponto e alertar divergências.
+    NULL = sem horário padrão definido (não gera alerta de divergência).
+    Idempotente.
+    """
+    colunas = {row["name"] for row in conn.execute("PRAGMA table_info(cad_pessoas)")}
+    novas = [
+        ("horario_entrada_padrao", "TEXT"),
+        ("horario_saida_padrao",   "TEXT"),
+    ]
+    for nome_col, definicao in novas:
+        if nome_col not in colunas:
+            conn.execute(f"ALTER TABLE cad_pessoas ADD COLUMN {nome_col} {definicao}")
 
 
 def _migrar_dados_pessoais(conn: sqlite3.Connection):
@@ -2318,6 +2369,26 @@ def escala_contar_dias(id_pessoa: int, data_inicio: str, data_fim: str,
         conn.close()
 
 
+def escala_contar_dias_periodo(data_inicio: str, data_fim: str) -> dict:
+    """
+    Retorna {(id_pessoa, tipo): quantidade} com a contagem de dias de escala de
+    TODAS as pessoas no período, em uma única query — substitui chamar
+    escala_contar_dias() em loop (que abre uma conexão por chamada).
+    """
+    conn = conectar()
+    try:
+        rows = conn.execute(
+            """SELECT id_pessoa, tipo, COUNT(*) AS qtd
+               FROM escalas_trabalho
+               WHERE data BETWEEN ? AND ?
+               GROUP BY id_pessoa, tipo""",
+            (data_inicio, data_fim)
+        ).fetchall()
+        return {(r["id_pessoa"], r["tipo"]): r["qtd"] for r in rows}
+    finally:
+        conn.close()
+
+
 def escala_excluir(data: str, id_pessoa: int) -> bool:
     """Remove o registro de escala de uma pessoa em uma data. Retorna True se excluído."""
     conn = conectar()
@@ -2756,6 +2827,71 @@ def calcular_pagamento_entregador(id_pessoa: int, data: str) -> dict:
             "vales":           vales,
             "total_liquido":   diaria + soma_taxas + corridas_extras - vales,
         }
+    finally:
+        conn.close()
+
+
+def calcular_pagamento_entregadores_lote(data: str) -> dict:
+    """
+    Mesmo cálculo de calcular_pagamento_entregador(), mas para TODAS as pessoas
+    em uma única data, com 4 queries agregadas em vez de 1 conexão + 4 queries
+    por pessoa. Retorna {id_pessoa: {mesmas chaves da função original}}.
+    """
+    conn = conectar()
+    try:
+        pessoas = {
+            r["id"]: {"diaria_valor": r["diaria_valor"], "tipo_salario": r["tipo_salario"]}
+            for r in conn.execute("SELECT id, diaria_valor, tipo_salario FROM cad_pessoas").fetchall()
+        }
+        entregas = {
+            r["id_operador"]: (r["qtd"], r["soma"])
+            for r in conn.execute(
+                """SELECT id_operador, COUNT(*) AS qtd,
+                          COALESCE(SUM(repasse_entregador), 0) AS soma
+                   FROM vendas_pedidos
+                   WHERE data = ? AND repasse_entregador > 0
+                   GROUP BY id_operador""", (data,)
+            ).fetchall()
+        }
+        extras = {
+            r["id_pessoa"]: r["total"]
+            for r in conn.execute(
+                """SELECT me.id_pessoa, COALESCE(SUM(me.valor), 0) AS total
+                   FROM movimentacoes_extras me
+                   JOIN cad_categorias_extra ce ON ce.id = me.id_categoria
+                   WHERE me.data = ? AND ce.descricao = 'Corrida Extra'
+                   GROUP BY me.id_pessoa""", (data,)
+            ).fetchall()
+        }
+        vales = {
+            r["id_pessoa"]: r["total"]
+            for r in conn.execute(
+                """SELECT me.id_pessoa, COALESCE(SUM(me.valor), 0) AS total
+                   FROM movimentacoes_extras me
+                   JOIN cad_categorias_extra ce ON ce.id = me.id_categoria
+                   WHERE me.data = ? AND ce.descricao = 'Vale'
+                   GROUP BY me.id_pessoa""", (data,)
+            ).fetchall()
+        }
+        resultado = {}
+        for id_pessoa, info in pessoas.items():
+            diaria_valor = info["diaria_valor"] or 0.0
+            tipo_salario = info["tipo_salario"] or ""
+            if tipo_salario == "ENTREGADOR" and diaria_valor == 0.0:
+                diaria_valor = 40.0
+            total_entregas, soma_taxas = entregas.get(id_pessoa, (0, 0.0))
+            diaria = diaria_valor if total_entregas > 0 else 0.0
+            corridas_extras = extras.get(id_pessoa, 0.0)
+            vales_valor = vales.get(id_pessoa, 0.0)
+            resultado[id_pessoa] = {
+                "total_entregas":  total_entregas,
+                "soma_taxas":      soma_taxas,
+                "diaria":          diaria,
+                "corridas_extras": corridas_extras,
+                "vales":           vales_valor,
+                "total_liquido":   diaria + soma_taxas + corridas_extras - vales_valor,
+            }
+        return resultado
     finally:
         conn.close()
 

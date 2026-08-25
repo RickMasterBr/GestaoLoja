@@ -14,6 +14,9 @@ from datetime import date
 
 import database
 
+# ── Instrumentação de performance (mesmo logger "perf" de database.py) ────
+_perf_logger = logging.getLogger("perf")
+
 
 def _encerrar_instancias_anteriores() -> None:
     """Encerra silenciosamente qualquer processo GestaoLoja.exe anterior ao atual."""
@@ -109,6 +112,10 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
     telas_perm       = [t for t in TELAS if _hierarquia.get(t["min_perfil"], 1) <= _nivel]
     _views           = [t["view"] for t in telas_perm]
     _idx_selecionado = {"v": 0}
+    # Controla a construção da view em segundo plano: "geracao" descarta
+    # resultados obsoletos quando uma navegação mais nova já assumiu a tela;
+    # "indice_ativo" evita disparar duas construções para o mesmo índice.
+    _carregamento    = {"geracao": 0, "indice_ativo": None}
 
     # ── Área de conteúdo (direita) ────────────────────────────────────────
     area_conteudo = ft.Container(
@@ -585,40 +592,82 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
     )
 
     def carregar_view(indice: int):
-        """Instancia a view selecionada e atualiza a área de conteúdo."""
+        """
+        Mostra um indicador de carregamento imediatamente e instancia a view
+        selecionada em uma thread separada, trocando area_conteudo.content
+        pelo resultado quando a construção terminar.
+        """
+        if _carregamento["indice_ativo"] == indice:
+            return  # já há uma construção em andamento para este mesmo índice
+
+        _t0 = time.perf_counter()
         try:
-            area_conteudo.content = _views[indice](page)
-        except Exception as exc:
-            import traceback
-            traceback.print_exc()
+            nome_tela = telas_perm[indice]["label"]
+        except (IndexError, KeyError):
+            nome_tela = f"índice {indice}"
 
-            def _tentar_novamente(e, _idx=indice):
-                carregar_view(_idx)
+        _carregamento["geracao"] += 1
+        minha_geracao = _carregamento["geracao"]
+        _carregamento["indice_ativo"] = indice
 
-            def _ir_pdv(e):
-                _idx_selecionado["v"] = 0
-                _build_menu()
-                carregar_view(0)
-                page.update()
-
-            area_conteudo.content = ft.Column(controls=[
-                ft.Text("Erro ao carregar tela:", size=16,
-                        weight=ft.FontWeight.BOLD, color=ft.Colors.RED_400),
-                ft.Text(str(exc), color=ft.Colors.RED_300, selectable=True),
-                ft.Row(spacing=12, controls=[
-                    ft.ElevatedButton(
-                        "Tentar novamente",
-                        icon=ft.Icons.REFRESH,
-                        on_click=_tentar_novamente,
-                    ),
-                    ft.OutlinedButton(
-                        "Ir para Dashboard",
-                        icon=ft.Icons.DASHBOARD,
-                        on_click=_ir_pdv,
-                    ),
-                ]),
-            ])
+        area_conteudo.content = ft.Column(
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[ft.ProgressRing(), ft.Text("Carregando...")],
+        )
         page.update()
+
+        def _construir():
+            try:
+                resultado = _views[indice](page)
+                exc = None
+            except Exception as _exc:
+                import traceback
+                traceback.print_exc()
+                resultado = None
+                exc = _exc
+
+            if _carregamento["indice_ativo"] == indice:
+                _carregamento["indice_ativo"] = None
+
+            if minha_geracao != _carregamento["geracao"]:
+                return  # uma navegação mais recente já assumiu a tela
+
+            if exc is not None:
+                def _tentar_novamente(e, _idx=indice):
+                    carregar_view(_idx)
+
+                def _ir_pdv(e):
+                    _idx_selecionado["v"] = 0
+                    _build_menu()
+                    carregar_view(0)
+                    page.update()
+
+                area_conteudo.content = ft.Column(controls=[
+                    ft.Text("Erro ao carregar tela:", size=16,
+                            weight=ft.FontWeight.BOLD, color=ft.Colors.RED_400),
+                    ft.Text(str(exc), color=ft.Colors.RED_300, selectable=True),
+                    ft.Row(spacing=12, controls=[
+                        ft.ElevatedButton(
+                            "Tentar novamente",
+                            icon=ft.Icons.REFRESH,
+                            on_click=_tentar_novamente,
+                        ),
+                        ft.OutlinedButton(
+                            "Ir para Dashboard",
+                            icon=ft.Icons.DASHBOARD,
+                            on_click=_ir_pdv,
+                        ),
+                    ]),
+                ])
+            else:
+                area_conteudo.content = resultado
+
+            page.update()
+            _ms = (time.perf_counter() - _t0) * 1000
+            _perf_logger.debug(f"{'main.carregar_view > ' + nome_tela:<55} {_ms:8.1f} ms")
+
+        page.run_thread(_construir)
 
     # ── Layout principal ──────────────────────────────────────────────────
     page.add(

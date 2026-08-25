@@ -3,11 +3,85 @@ views/escala_geral.py — Escala mensal e registro de ponto diário.
 Duas seções alternáveis: Escala (grade mensal) e Ponto (tabela diária).
 """
 
+import logging
+import time
+
 import flet as ft
 import calendar
-from datetime import date
+from datetime import date, datetime
 
 import database
+
+# ── Instrumentação de performance (mesmo logger "perf" de database.py) ────
+_perf_logger = logging.getLogger("perf")
+
+
+def _fmt_horas(decimal: float) -> str:
+    """Formata horas decimais como 'XhYYmin' (ex.: 1.1 -> '1h06min')."""
+    sinal = "-" if decimal < 0 else ""
+    decimal = abs(decimal)
+    h = int(decimal)
+    m = round((decimal - h) * 60)
+    if m == 60:
+        h += 1
+        m = 0
+    return f"{sinal}{h}h{m:02d}min"
+
+
+def _hora_valida(texto: str) -> bool:
+    """True se texto esta em HH:MM com HH 00-23 e MM 00-59."""
+    t = (texto or "").strip()
+    if len(t) != 5 or t[2] != ":":
+        return False
+    hh, mm = t[:2], t[3:]
+    if not (hh.isdigit() and mm.isdigit()):
+        return False
+    return 0 <= int(hh) <= 23 and 0 <= int(mm) <= 59
+
+
+def _diferenca_minutos(hora1: str, hora2: str) -> int:
+    """
+    Diferença absoluta em minutos entre dois horários "HH:MM" do mesmo dia
+    (mesma lógica de parsing de database.py:ponto_calcular_horas, adaptada
+    para comparar dois horários de relógio em vez de calcular duração).
+    """
+    fmt = "%H:%M"
+    t1 = datetime.strptime(hora1, fmt)
+    t2 = datetime.strptime(hora2, fmt)
+    return abs(int((t1 - t2).total_seconds() / 60))
+
+
+def _formatar_hora_input(e):
+    """Formata digitacao numerica em HH:MM automaticamente (ex.: 0830 -> 08:30)."""
+    tf = e.control
+    digitos = "".join(ch for ch in tf.value if ch.isdigit())[:4]
+    novo = digitos[:2] + ":" + digitos[2:] if len(digitos) >= 3 else digitos
+    if novo != tf.value:
+        tf.value = novo
+        tf.update()
+
+
+def _completar_hora_input(e):
+    """
+    Ao perder o foco, completa uma digitacao parcial em HH:MM
+    (ex.: "16" -> "16:00", "16:3" -> "16:30"). _formatar_hora_input() so
+    insere o ":" a partir do 3o digito — sem isso, parar de digitar em
+    1 ou 2 digitos deixava o campo preso em "16", sem nunca virar "16:00".
+    """
+    tf = e.control
+    digitos = "".join(ch for ch in tf.value if ch.isdigit())[:4]
+    if not digitos:
+        return
+    if len(digitos) <= 2:
+        hh, mm = digitos.zfill(2), "00"
+    elif len(digitos) == 3:
+        hh, mm = digitos[:2], digitos[2:].ljust(2, "0")
+    else:
+        hh, mm = digitos[:2], digitos[2:]
+    novo = f"{hh}:{mm}"
+    if novo != tf.value:
+        tf.value = novo
+        tf.update()
 
 
 # ── Constantes ─────────────────────────────────────────────────────────────────
@@ -30,8 +104,14 @@ _OPCOES_GRADE = [
 ]
 
 _NOME_COL = 165   # px — coluna de nome na grade
-_DIA_COL  =  90   # px — coluna de cada dia
+_DIA_COL  = 115   # px — coluna de cada dia (e do dropdown, calculado como _DIA_COL - 4)
 _CNT_COL  =  44   # px — colunas de contagem
+
+# Alturas explicitas para manter nomes_col e dias_col alinhadas linha a linha
+# (medidas com on_size_change no Flet real: cabecalho do dia = 31px,
+# celula com Dropdown = 48px — ambas maiores que o conteudo do lado dos nomes).
+_CAB_H    =  31   # px — altura da linha de cabecalho
+_LINHA_H  =  48   # px — altura de cada linha de pessoa (comporta o Dropdown)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -53,9 +133,20 @@ def _pessoas_ordenadas() -> list:
     )
 
 
+def _pessoas_ponto() -> list:
+    """
+    Mesma lista de _pessoas_ordenadas(), mas só quem tem aparece_no_ponto = 1.
+    Usado tanto pela seção Ponto quanto pela Escala mensal (individual e
+    Visão Geral) — quem tem aparece_no_ponto = 0 (ex.: entregadores) fica de
+    fora das duas telas, já que nenhuma delas se aplica a esse tipo de pessoa.
+    """
+    return [p for p in _pessoas_ordenadas() if p["aparece_no_ponto"]]
+
+
 # ── View principal ─────────────────────────────────────────────────────────────
 
 def view(page: ft.Page) -> ft.Control:
+    _t0_view = time.perf_counter()
     hoje = date.today()
 
     # ── Estado dos botões de alternância ───────────────────────────────────────
@@ -73,6 +164,8 @@ def view(page: ft.Page) -> ft.Control:
         style=_estilo_inativo,
     )
 
+    txt_perf = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
+
     # ══════════════════════════════════════════════════════════════════════════
     #  SEÇÃO 1 — ESCALA MENSAL
     # ══════════════════════════════════════════════════════════════════════════
@@ -89,7 +182,8 @@ def view(page: ft.Page) -> ft.Control:
         text_align=ft.TextAlign.CENTER,
     )
 
-    grade_col      = ft.Column(spacing=0)   # grade preenchida por _carregar_escala()
+    nomes_col      = ft.Column(spacing=0)   # coluna fixa de nomes — _carregar_escala()
+    dias_col       = ft.Column(spacing=0)   # coluna rolavel de dias — _carregar_escala()
     grade_geral_col = ft.Column(spacing=0)  # grade preenchida por _carregar_visao_geral()
     resumo_geral_col = ft.Column(spacing=8) # métricas de resumo da visão geral
 
@@ -102,10 +196,12 @@ def view(page: ft.Page) -> ft.Control:
     btn_vis = ft.ElevatedButton("Visão Geral", style=_est_sub_inativo)
 
     def _carregar_escala(e=None):
+        _t0 = time.perf_counter()
         try:
             mes = int(dd_mes.value or hoje.month)
             ano = int(tf_ano.value  or hoje.year)
         except ValueError:
+            _perf_logger.debug(f"{'escala_geral._carregar_escala > TOTAL (erro)':<55} {(time.perf_counter() - _t0)*1000:8.1f} ms")
             return
 
         num_dias = calendar.monthrange(ano, mes)[1]
@@ -125,13 +221,15 @@ def view(page: ft.Page) -> ft.Control:
             conn_esc.close()
         escalas: dict = {(r["data"], r["id_pessoa"]): r["tipo"] for r in rows_esc}
 
-        pessoas = _pessoas_ordenadas()
+        pessoas = _pessoas_ponto()
 
-        grade_col.controls.clear()
+        nomes_col.controls.clear()
+        dias_col.controls.clear()
 
         # ── Cabeçalho ──────────────────────────────────────────────────────
         cab = [ft.Container(
             width=_NOME_COL,
+            height=_CAB_H,
             content=ft.Text("Pessoa", size=12, weight=ft.FontWeight.BOLD,
                             color=ft.Colors.GREY_500),
         )]
@@ -158,8 +256,10 @@ def view(page: ft.Page) -> ft.Control:
                                 color=ft.Colors.GREY_500,
                                 text_align=ft.TextAlign.CENTER),
             ))
-        grade_col.controls.append(ft.Row(controls=cab, spacing=0))
-        grade_col.controls.append(ft.Divider(height=1))
+        nomes_col.controls.append(cab[0])
+        nomes_col.controls.append(ft.Divider(height=1))
+        dias_col.controls.append(ft.Row(controls=cab[1:], spacing=0, height=_CAB_H))
+        dias_col.controls.append(ft.Divider(height=1))
 
         # ── Linhas por pessoa ───────────────────────────────────────────────
         for pessoa in pessoas:
@@ -176,6 +276,7 @@ def view(page: ft.Page) -> ft.Control:
 
             cells = [ft.Container(
                 width=_NOME_COL,
+                height=_LINHA_H,
                 content=ft.Column(spacing=0, controls=[
                     ft.Text(pessoa["nome"], size=12),
                     ft.Text(pessoa["tipo"], size=10, color=ft.Colors.GREY_500),
@@ -221,15 +322,21 @@ def view(page: ft.Page) -> ft.Control:
                     ),
                 ))
 
-            grade_col.controls.append(ft.Row(controls=cells, spacing=0))
+            nomes_col.controls.append(cells[0])
+            dias_col.controls.append(ft.Row(controls=cells[1:], spacing=0, height=_LINHA_H))
 
+        _ms = (time.perf_counter() - _t0) * 1000
+        _perf_logger.debug(f"{'escala_geral._carregar_escala > TOTAL':<55} {_ms:8.1f} ms")
+        txt_perf.value = f"escala_geral._carregar_escala: {_ms:.0f}ms | {time.strftime('%H:%M:%S')}"
         page.update()
 
     def _carregar_visao_geral(e=None):
+        _t0 = time.perf_counter()
         try:
             mes = int(dd_mes.value or hoje.month)
             ano = int(tf_ano.value  or hoje.year)
         except ValueError:
+            _perf_logger.debug(f"{'escala_geral._carregar_visao_geral > TOTAL (erro)':<55} {(time.perf_counter() - _t0)*1000:8.1f} ms")
             return
 
         num_dias     = calendar.monthrange(ano, mes)[1]
@@ -263,7 +370,7 @@ def view(page: ft.Page) -> ft.Control:
         for r in rows_esc:
             escala_map.setdefault(r["id_pessoa"], {})[r["data"]] = r["tipo"]
 
-        pessoas = _pessoas_ordenadas()
+        pessoas = _pessoas_ponto()
 
         # ── Métricas de resumo ─────────────────────────────────────────
         # 1. Dias com pelo menos 1 TRABALHOU
@@ -319,7 +426,7 @@ def view(page: ft.Page) -> ft.Control:
                 _card_metrica("Dias c/ equipe",   str(total_dias_trab),            ft.Colors.BLUE_300),
                 _card_metrica("Média/dia",         f"{media_por_dia:.1f} pessoas",  ft.Colors.GREY_500),
                 _card_metrica("Mais faltas",       mais_faltas_nome,               ft.Colors.ORANGE_400),
-                _card_metrica("H. extras (ponto)", f"{total_horas_extras:.1f}h",   ft.Colors.GREEN_400),
+                _card_metrica("H. extras (ponto)", _fmt_horas(total_horas_extras), ft.Colors.GREEN_400),
             ]),
         ]
 
@@ -462,6 +569,9 @@ def view(page: ft.Page) -> ft.Control:
         rod.append(ft.Container(width=_VG_RES))
         grade_geral_col.controls.append(ft.Row(controls=rod, spacing=0))
 
+        _ms = (time.perf_counter() - _t0) * 1000
+        _perf_logger.debug(f"{'escala_geral._carregar_visao_geral > TOTAL':<55} {_ms:8.1f} ms")
+        txt_perf.value = f"escala_geral._carregar_visao_geral: {_ms:.0f}ms | {time.strftime('%H:%M:%S')}"
         page.update()
 
     # Cards da seção escala (visibilidade controlada pelo toggle)
@@ -490,10 +600,11 @@ def view(page: ft.Page) -> ft.Control:
     card_escala_grade = ft.Card(
         content=ft.Container(
             padding=ft.Padding.all(12),
-            content=ft.Row(
-                scroll=ft.ScrollMode.AUTO,
-                controls=[grade_col],
-            ),
+            content=ft.Row(controls=[
+                nomes_col,
+                ft.VerticalDivider(width=1),
+                ft.Row(expand=True, scroll=ft.ScrollMode.AUTO, controls=[dias_col]),
+            ]),
         ),
     )
 
@@ -560,10 +671,15 @@ def view(page: ft.Page) -> ft.Control:
 
     tabela_ponto_col = ft.Column(spacing=4)
 
+    # Rastreia para qual data o Ponto ja foi carregado, para nao repetir
+    # a consulta ao banco so por causa da troca de aba Escala <-> Ponto.
+    _ponto_carregado = {"data": None}
+
     def _carregar_ponto(e=None):
+        _t0 = time.perf_counter()
         data_iso = _iso(tf_data_ponto.value)
 
-        pessoas = _pessoas_ordenadas()
+        pessoas = _pessoas_ponto()
 
         ponto_map = {
             row["id_pessoa"]: row
@@ -637,7 +753,7 @@ def view(page: ft.Page) -> ft.Control:
             )
 
             def _salvar_ponto(e,
-                              _pid=pid,
+                              _pid=pid, _pessoa=pessoa,
                               _ent=tf_ent, _ini=tf_ini,
                               _fim=tf_fim, _sai=tf_sai,
                               _ico=icone):
@@ -657,15 +773,118 @@ def view(page: ft.Page) -> ft.Control:
                 ini   = _ini.value.strip()
                 fim   = _fim.value.strip()
                 sai   = _sai.value.strip()
-                if ent:
-                    database.ponto_registrar_entrada(d_iso, _pid, ent)
-                    _ico.name  = ft.Icons.CHECK_CIRCLE
-                    _ico.color = ft.Colors.GREEN_400
-                if ini or fim:
-                    database.ponto_registrar_intervalo(d_iso, _pid, ini, fim)
-                if sai:
-                    database.ponto_registrar_saida(d_iso, _pid, sai)
+
+                # Valida os campos preenchidos antes de gravar qualquer coisa.
+                invalidos = [
+                    rotulo for rotulo, valor in (
+                        ("Entrada",   ent),
+                        ("Iní. Int.", ini),
+                        ("Fim Int.",  fim),
+                        ("Saída",     sai),
+                    )
+                    if valor and not _hora_valida(valor)
+                ]
+                if invalidos:
+                    for campo, valor in ((_ent, ent), (_ini, ini),
+                                         (_fim, fim), (_sai, sai)):
+                        erro = bool(valor) and not _hora_valida(valor)
+                        campo.error_text = "HH:MM" if erro else None
+                    page.overlay.append(ft.SnackBar(
+                        content=ft.Text(
+                            "Horário inválido em: %s. Use HH:MM (00:00 a 23:59). "
+                            "Nada foi salvo." % ", ".join(invalidos)
+                        ),
+                        bgcolor=ft.Colors.RED_700,
+                        open=True,
+                    ))
+                    page.update()
+                    return
+
+                for campo in (_ent, _ini, _fim, _sai):
+                    campo.error_text = None
+
+                def _gravar():
+                    if ent:
+                        database.ponto_registrar_entrada(d_iso, _pid, ent)
+                        _ico.name  = ft.Icons.CHECK_CIRCLE
+                        _ico.color = ft.Colors.GREEN_400
+                    if ini or fim:
+                        database.ponto_registrar_intervalo(d_iso, _pid, ini, fim)
+                    if sai:
+                        database.ponto_registrar_saida(d_iso, _pid, sai)
+                    page.update()
+
+                # Alerta de divergência: só compara quando ha horario padrao
+                # cadastrado (nao-NULL) E um valor foi digitado para aquele campo.
+                padrao_ent = _pessoa["horario_entrada_padrao"]
+                padrao_sai = _pessoa["horario_saida_padrao"]
+                divergencias = []
+                if ent and padrao_ent and _diferenca_minutos(ent, padrao_ent) > 60:
+                    divergencias.append(("entrada", ent, padrao_ent))
+                if sai and padrao_sai and _diferenca_minutos(sai, padrao_sai) > 60:
+                    divergencias.append(("saída", sai, padrao_sai))
+
+                if not divergencias:
+                    _gravar()
+                    return
+
+                def _fechar_dialogo():
+                    dlg.open = False
+                    page.update()
+
+                def _ao_confirmar(ev):
+                    _fechar_dialogo()
+                    _gravar()
+
+                def _ao_cancelar(ev):
+                    _fechar_dialogo()
+
+                texto = "\n".join(
+                    "Horário de %s registrado (%s) muito diferente do padrão "
+                    "cadastrado (%s) para %s."
+                    % (tipo, valor, padrao, _pessoa["nome"])
+                    for tipo, valor, padrao in divergencias
+                )
+                dlg = ft.AlertDialog(
+                    modal=True,
+                    title=ft.Text("Confirmar horário"),
+                    content=ft.Text(texto + "\nConfirma o lançamento?"),
+                    actions=[
+                        ft.TextButton("Cancelar", on_click=_ao_cancelar),
+                        ft.ElevatedButton("Confirmar", on_click=_ao_confirmar),
+                    ],
+                    actions_alignment=ft.MainAxisAlignment.END,
+                )
+                page.overlay.append(dlg)
+                dlg.open = True
                 page.update()
+
+            def _on_change_hora_ponto(e,
+                                      _ent=tf_ent, _ini=tf_ini,
+                                      _fim=tf_fim, _sai=tf_sai,
+                                      _salvar=_salvar_ponto):
+                _formatar_hora_input(e)
+                valores = [_ent.value.strip(), _ini.value.strip(),
+                          _fim.value.strip(), _sai.value.strip()]
+                if all(valores) and all(_hora_valida(v) for v in valores):
+                    _salvar(e)
+
+            def _on_blur_hora_ponto(e,
+                                    _ent=tf_ent, _ini=tf_ini,
+                                    _fim=tf_fim, _sai=tf_sai,
+                                    _salvar=_salvar_ponto):
+                # Completa digitação parcial (ex.: "16" -> "16:00") ao sair do
+                # campo, já que _formatar_hora_input() só insere o ":" a
+                # partir do 3o dígito digitado.
+                _completar_hora_input(e)
+                valores = [_ent.value.strip(), _ini.value.strip(),
+                          _fim.value.strip(), _sai.value.strip()]
+                if all(valores) and all(_hora_valida(v) for v in valores):
+                    _salvar(e)
+
+            for _campo in (tf_ent, tf_ini, tf_fim, tf_sai):
+                _campo.on_change = _on_change_hora_ponto
+                _campo.on_blur   = _on_blur_hora_ponto
 
             tabela_ponto_col.controls.append(ft.Row(
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -719,10 +938,10 @@ def view(page: ft.Page) -> ft.Control:
 
                     he = calc["horas_extras"]
                     if he > 0:
-                        txt_he = f"+{he:.1f}h extras"
+                        txt_he = f"+{_fmt_horas(he)} extras"
                         cor_he = ft.Colors.GREEN_400
                     elif he < 0:
-                        txt_he = f"{he:.1f}h faltantes"
+                        txt_he = f"{_fmt_horas(he)} faltantes"
                         cor_he = ft.Colors.ORANGE_400
                     else:
                         txt_he = "Jornada cumprida"
@@ -734,7 +953,7 @@ def view(page: ft.Page) -> ft.Control:
                             spacing=16,
                             controls=[
                                 ft.Text(
-                                    f"Brutas: {calc['horas_brutas']:.1f}h",
+                                    f"Brutas: {_fmt_horas(calc['horas_brutas'])}",
                                     size=11, color=ft.Colors.GREY_500,
                                 ),
                                 ft.Text(
@@ -742,7 +961,7 @@ def view(page: ft.Page) -> ft.Control:
                                     size=11, color=ft.Colors.GREY_500,
                                 ),
                                 ft.Text(
-                                    f"Líquidas: {calc['horas_liquidas']:.1f}h",
+                                    f"Líquidas: {_fmt_horas(calc['horas_liquidas'])}",
                                     size=11, color=ft.Colors.GREY_500,
                                 ),
                                 ft.Text(
@@ -764,20 +983,24 @@ def view(page: ft.Page) -> ft.Control:
                     size=12, color=ft.Colors.GREY_500,
                 ),
                 ft.Text(
-                    f"Total líquido: {dia_total_liquidas:.1f}h",
+                    f"Total líquido: {_fmt_horas(dia_total_liquidas)}",
                     size=12, color=ft.Colors.GREY_500,
                 ),
             ]
             if dia_total_extras > 0:
                 rodape_controls.append(ft.Text(
-                    f"Extras do dia: +{dia_total_extras:.1f}h",
+                    f"Extras do dia: +{_fmt_horas(dia_total_extras)}",
                     size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400,
                 ))
             tabela_ponto_col.controls.append(ft.Row(
                 spacing=20, controls=rodape_controls,
             ))
 
+        _ms = (time.perf_counter() - _t0) * 1000
+        _perf_logger.debug(f"{'escala_geral._carregar_ponto > TOTAL':<55} {_ms:8.1f} ms")
+        txt_perf.value = f"escala_geral._carregar_ponto: {_ms:.0f}ms | {time.strftime('%H:%M:%S')}"
         page.update()
+        _ponto_carregado["data"] = data_iso
 
     # Cards da seção ponto (ocultos por padrão)
     card_ponto_controles = ft.Card(
@@ -817,6 +1040,7 @@ def view(page: ft.Page) -> ft.Control:
     # ── Alternância entre seções ───────────────────────────────────────────────
 
     def _mostrar_escala(e=None):
+        _t0 = time.perf_counter()
         card_escala_controles.visible   = True
         card_escala_grade.visible       = (_modo_escala["v"] == "individual")
         card_visao_geral_resumo.visible = (_modo_escala["v"] == "geral")
@@ -825,9 +1049,13 @@ def view(page: ft.Page) -> ft.Control:
         card_ponto_tabela.visible       = False
         btn_escala.style = _estilo_ativo
         btn_ponto.style  = _estilo_inativo
+        _ms = (time.perf_counter() - _t0) * 1000
+        _perf_logger.debug(f"{'escala_geral._mostrar_escala > TOTAL (cache)':<55} {_ms:8.1f} ms")
+        txt_perf.value = f"escala_geral._mostrar_escala (cache): {_ms:.0f}ms | {time.strftime('%H:%M:%S')}"
         page.update()
 
     def _mostrar_ponto(e=None):
+        _t0 = time.perf_counter()
         card_escala_controles.visible   = False
         card_escala_grade.visible       = False
         card_visao_geral_resumo.visible = False
@@ -836,6 +1064,13 @@ def view(page: ft.Page) -> ft.Control:
         card_ponto_tabela.visible       = True
         btn_escala.style = _estilo_inativo
         btn_ponto.style  = _estilo_ativo
+        _recarregou = _ponto_carregado["data"] != _iso(tf_data_ponto.value)
+        if _recarregou:
+            _carregar_ponto()
+        _ms = (time.perf_counter() - _t0) * 1000
+        _rotulo = "(recarregado)" if _recarregou else "(cache)"
+        _perf_logger.debug(f"{'escala_geral._mostrar_ponto > TOTAL ' + _rotulo:<55} {_ms:8.1f} ms")
+        txt_perf.value = f"escala_geral._mostrar_ponto {_rotulo}: {_ms:.0f}ms | {time.strftime('%H:%M:%S')}"
         page.update()
 
     btn_escala.on_click = _mostrar_escala
@@ -844,7 +1079,16 @@ def view(page: ft.Page) -> ft.Control:
     # Carrega a grade do mês atual ao abrir a tela
     _carregar_escala()
 
+    # Carrega tambem a tabela de Ponto do dia atual, mesmo padrao da Escala.
+    # Assim a secao Ponto ja aparece preenchida na 1a vez que o usuario clica
+    # nela, sem precisar apertar Carregar.
+    _carregar_ponto()
+
     # ── Layout ─────────────────────────────────────────────────────────────────
+
+    _ms_view = (time.perf_counter() - _t0_view) * 1000
+    _perf_logger.debug(f"{'escala_geral.view > TOTAL':<55} {_ms_view:8.1f} ms")
+    txt_perf.value = f"escala_geral.view: {_ms_view:.0f}ms | {time.strftime('%H:%M:%S')}"
 
     return ft.Column(
         expand=True,
@@ -860,6 +1104,7 @@ def view(page: ft.Page) -> ft.Control:
                     ft.VerticalDivider(width=16),
                     btn_escala,
                     btn_ponto,
+                    txt_perf,
                 ], spacing=12),
             )),
             # Seção Escala

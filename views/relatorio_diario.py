@@ -2,12 +2,18 @@
 views/relatorio_diario.py — Relatório diário de fechamento de caixa.
 """
 
+import logging
+import time
+
 import flet as ft
 from datetime import date
 
 import database
 from relatorios.pdf_gerador import gerar_pdf_diario, abrir_pdf
 from relatorios.excel_gerador import excel_relatorio_diario
+
+# ── Instrumentação de performance (mesmo logger "perf" de database.py) ────
+_perf_logger = logging.getLogger("perf")
 
 
 # ── Utilitários ───────────────────────────────────────────────────────────────
@@ -111,10 +117,12 @@ def view(page: ft.Page) -> ft.Control:
         text_align=ft.TextAlign.CENTER, hint_text="DD/MM/AAAA",
     )
     col_relatorio = ft.Column(spacing=16, expand=True)
+    txt_perf   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
     _dados_pdf: dict = {}
 
     # ─────────────────────────────────────────────────────────────────────
     def _gerar(e=None):
+        _t0_total = time.perf_counter()
         data_iso = _data_br_para_iso(tf_data.value or hoje_br)
         _dados_pdf.clear()
         _dados_pdf["nome_loja"] = database.config_obter("nome_loja", "Gestão Loja")
@@ -444,8 +452,10 @@ def view(page: ft.Page) -> ft.Control:
             entregadores = database.pessoa_listar(tipo="ENTREGADOR", apenas_ativos=False)
             linhas_e = []
             _dados_pdf["entregadores"] = []
+            _pag_lote = database.calcular_pagamento_entregadores_lote(data_iso)
             for ent in entregadores:
-                r = database.calcular_pagamento_entregador(ent["id"], data_iso)
+                r = _pag_lote.get(ent["id"], {"total_entregas": 0, "soma_taxas": 0.0, "diaria": 0.0,
+                     "corridas_extras": 0.0, "vales": 0.0, "total_liquido": 0.0})
                 if r["total_entregas"] == 0:
                     continue
                 _dados_pdf["entregadores"].append({
@@ -886,7 +896,11 @@ def view(page: ft.Page) -> ft.Control:
         )
         col_relatorio.controls.clear()
         col_relatorio.controls += [linha_resumo, bloco3, bloco4, bloco5, bloco6, bloco7]
+        txt_perf.value = f"Total: {(time.perf_counter() - _t0_total)*1000:.0f}ms | {time.strftime('%H:%M:%S')}"
+        _perf_logger.debug(f"{'relatorio_diario._gerar > queries+controles':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms acumulado")
         page.update()
+        _perf_logger.debug(f"{'relatorio_diario._gerar > page.update':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms acumulado")
+        _perf_logger.debug(f"{'relatorio_diario._gerar > TOTAL':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms")
 
     # ── Exportar PDF ──────────────────────────────────────────────────────
 
@@ -978,7 +992,7 @@ def view(page: ft.Page) -> ft.Control:
 
     _gerar()
 
-    topo = ft.Card(content=ft.Container(
+    topo = ft.Column(spacing=4, controls=[ft.Card(content=ft.Container(
         padding=ft.Padding.all(16),
         content=ft.Row(
             controls=[
@@ -990,7 +1004,7 @@ def view(page: ft.Page) -> ft.Control:
             ],
             spacing=16,
         ),
-    ))
+    )), txt_perf])
 
     return ft.Column(
         controls=[topo, col_relatorio],

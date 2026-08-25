@@ -6,6 +6,9 @@ import csv
 import os
 from datetime import date
 
+import logging
+import time
+
 import flet as ft
 
 import database
@@ -18,6 +21,9 @@ from relatorios.pdf_gerador import (
     gerar_pdf_divergencias,
     abrir_pdf,
 )
+
+# ── Instrumentação de performance (mesmo logger "perf" de database.py) ────
+_perf_logger = logging.getLogger("perf")
 
 
 # ── Utilitários ───────────────────────────────────────────────────────────────
@@ -133,9 +139,9 @@ def _construir_tabela(linhas_rows: list) -> ft.Row:
                 columns=colunas,
                 rows=linhas_rows,
                 column_spacing=14,
-                border=ft.border.all(1, ft.Colors.GREY_600),
+                border=ft.Border.all(1, ft.Colors.GREY_600),
                 border_radius=8,
-                horizontal_lines=ft.border.BorderSide(1, ft.Colors.GREY_600),
+                horizontal_lines=ft.BorderSide(1, ft.Colors.GREY_600),
             )
         ],
     )
@@ -210,8 +216,10 @@ def view(page: ft.Page) -> ft.Column:
 
     row_resumo_diario = ft.Row(spacing=12, wrap=True)
     col_conteudo_diario = ft.Column(spacing=8, expand=True)
+    txt_perf_diario   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
 
     def _gerar_diario(e=None):
+        _t0_total = time.perf_counter()
         iso = _data_br_para_iso(tf_data_diario.value)
         _state_diario["data"] = iso
         lancamentos = database.fluxo_caixa_listar_lancamentos(iso, iso)
@@ -244,7 +252,11 @@ def view(page: ft.Page) -> ft.Column:
             rows = [_data_row(r, s) for r, s in with_saldo]
             col_conteudo_diario.controls = [_construir_tabela(rows)]
 
+        txt_perf_diario.value = f"Total: {(time.perf_counter() - _t0_total)*1000:.0f}ms | {time.strftime('%H:%M:%S')}"
+        _perf_logger.debug(f"{'fluxo_caixa._gerar_diario > queries+controles':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms acumulado")
         page.update()
+        _perf_logger.debug(f"{'fluxo_caixa._gerar_diario > page.update':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms acumulado")
+        _perf_logger.debug(f"{'fluxo_caixa._gerar_diario > TOTAL':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms")
 
     btn_gerar_diario = ft.ElevatedButton(
         "Gerar",
@@ -342,7 +354,7 @@ def view(page: ft.Page) -> ft.Column:
 
     tf_data_diario.on_submit = _gerar_diario
 
-    topo_diario = ft.Card(content=ft.Container(
+    topo_diario = ft.Column(spacing=4, controls=[ft.Card(content=ft.Container(
         padding=ft.Padding.all(16),
         content=ft.Row(
             controls=[
@@ -377,7 +389,7 @@ def view(page: ft.Page) -> ft.Column:
             ],
             spacing=12,
         ),
-    ))
+    )), txt_perf_diario])
 
     aba_diario = ft.Column(
         controls=[
@@ -453,8 +465,10 @@ def view(page: ft.Page) -> ft.Column:
 
     row_resumo_periodo = ft.Row(spacing=12, wrap=True)
     col_conteudo_periodo = ft.Column(spacing=8, expand=True)
+    txt_perf_periodo   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
 
     def _gerar_periodo(e=None):
+        _t0_total = time.perf_counter()
         ini_iso = _data_br_para_iso(tf_ini.value)
         fim_iso = _data_br_para_iso(tf_fim.value)
         _state_periodo["ini"] = ini_iso
@@ -484,7 +498,9 @@ def view(page: ft.Page) -> ft.Column:
                     color=ft.Colors.GREY_500,
                 )
             ]
+            txt_perf_periodo.value = f"Total: {(time.perf_counter() - _t0_total)*1000:.0f}ms | {time.strftime('%H:%M:%S')}"
             page.update()
+            _perf_logger.debug(f"{'fluxo_caixa._gerar_periodo > TOTAL (sem lancamentos)':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms")
             return
 
         # Constrói rows com separadores de data
@@ -503,7 +519,11 @@ def view(page: ft.Page) -> ft.Column:
                 print(f"[ERRO] Linha {i} tem {len(row.cells)} células, esperado {N_COLUNAS}")
 
         col_conteudo_periodo.controls = [_construir_tabela(rows)]
+        txt_perf_periodo.value = f"Total: {(time.perf_counter() - _t0_total)*1000:.0f}ms | {time.strftime('%H:%M:%S')}"
+        _perf_logger.debug(f"{'fluxo_caixa._gerar_periodo > queries+controles':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms acumulado")
         page.update()
+        _perf_logger.debug(f"{'fluxo_caixa._gerar_periodo > page.update':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms acumulado")
+        _perf_logger.debug(f"{'fluxo_caixa._gerar_periodo > TOTAL':<55} {(time.perf_counter() - _t0_total)*1000:8.1f} ms")
 
     btn_gerar_periodo = ft.ElevatedButton(
         "Gerar",
@@ -603,7 +623,7 @@ def view(page: ft.Page) -> ft.Column:
             ))
         page.update()
 
-    topo_periodo = ft.Card(content=ft.Container(
+    topo_periodo = ft.Column(spacing=4, controls=[ft.Card(content=ft.Container(
         padding=ft.Padding.all(16),
         content=ft.Row(
             controls=[
@@ -640,7 +660,7 @@ def view(page: ft.Page) -> ft.Column:
             ],
             spacing=12,
         ),
-    ))
+    )), txt_perf_periodo])
 
     aba_periodo = ft.Column(
         controls=[
@@ -839,9 +859,9 @@ def view(page: ft.Page) -> ft.Column:
                     ],
                     rows=rows_dt,
                     column_spacing=14,
-                    border=ft.border.all(1, ft.Colors.GREY_600),
+                    border=ft.Border.all(1, ft.Colors.GREY_600),
                     border_radius=8,
-                    horizontal_lines=ft.border.BorderSide(1, ft.Colors.GREY_600),
+                    horizontal_lines=ft.BorderSide(1, ft.Colors.GREY_600),
                 )
             ],
         )

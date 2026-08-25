@@ -1,0 +1,23 @@
+Dicas de Flet (baseadas em erros reais deste projeto)
+1. Confira a versão instalada antes de confiar na memória da API.
+pip show flet primeiro. O Flet mudou bastante entre versões — código escrito com base em exemplos antigos quebra silenciosamente numa versão nova. Este projeto usa Flet 0.86.5. Quando a dúvida for genuína, não adivinhe: python -c "import flet as ft; print(hasattr(ft.Page, 'run_thread'))" ou inspect.getsource(...) no pacote instalado. Isso resolveu mais de uma dúvida real nesta sessão.
+
+2. ft.Colors e ft.Icons são capitalizados (ft.Colors.GREEN_400, ft.Icons.CHECK_CIRCLE), não ft.colors/ft.icons minúsculo. Se o agente estiver escrevendo minúsculo e dando erro de atributo, é isso.
+
+3. ft.BorderSide é direto, não ft.Border.BorderSide. Achei esse exato bug no código real do projeto (views/fluxo_caixa.py) — alguém escreveu ft.Border.BorderSide(...) e a tela quebrava com AttributeError, porque ft.Border só expõe .all(), .copy(), .only(), .symmetric(). O construtor de borda é ft.BorderSide(width, color) direto.
+
+4. scroll=ft.ScrollMode.AUTO num Row/Column só funciona se esse controle tiver largura/altura limitada. Sem expand=True (ou uma largura fixa), o controle simplesmente cresce para caber todo o conteúdo em vez de recortar e rolar — não aparece erro nenhum, só o scroll não funciona. Eu mesmo caí nisso: dividi uma grade em duas colunas lado a lado e o scroll horizontal sumiu, porque a Row rolável ficou sem expand=True dentro da Row externa. Corrigi adicionando expand=True nela.
+
+5. Duas árvores de controle separadas NÃO se alinham verticalmente sozinhas. Se dois Row/Column estão dentro do MESMO Row pai, o Flet ajusta a altura de todos pelo filho mais alto automaticamente — de graça. Mas se você separa em duas colunas paralelas (padrão "coluna congelada", tipo nome fixo + dados roláveis), essa sincronização some: cada linha vira uma altura "natural" diferente e desalinha. A correção é medir a altura real (item 7) e forçar height= igual nos dois lados.
+
+6. Nem todo controle usa on_change. ft.TextField usa on_change/on_blur; ft.Dropdown neste projeto usa on_select. Não assuma o mesmo nome de evento entre tipos de controle diferentes — confira o controle específico.
+
+7. Para medir tamanho real renderizado, use on_size_change em vez de chutar pixels. Ele dispara com (e.width, e.height) reais do motor Flet. Só não dispara retroativamente num controle que já estava montado sem mudar de tamanho — serve para medir em um teste dedicado, não para "ler o tamanho atual" de algo já na tela.
+
+8. Trabalho pesado em segundo plano: use page.run_thread(fn), não threading.Thread cru. O run_thread embrulha a função com o contexto da página/sessão, então chamadas a page.update() de dentro da thread continuam funcionando corretamente. Com threading.Thread puro isso pode falhar silenciosamente ou dar erro de contexto.
+
+9. page.update() fica caro proporcionalmente ao tamanho da árvore sendo trocada. Substituir uma tela com 1000+ controles por qualquer coisa (mesmo algo pequeno) tem um custo real e síncrono de desmontagem — não é bug, é o motor computando o diff. Se uma tela está "lenta ao sair dela", suspeite do tamanho da árvore anterior, não só da próxima.
+
+10. Empacotando com PyInstaller: um .spec customizado com datas=[] pode esquecer os arquivos de dados do próprio Flet (ex.: flet/controls/material/icons.json), e o EXE quebra na abertura antes mesmo da primeira tela. Vi isso acontecer neste projeto. Prefira flet pack (que tem hook próprio pra isso) ou confirme rodando o EXE de verdade — não só que o build terminou sem erro.
+
+Se ele estiver especificamente travado em algo, me diz o erro exato que aparece — com a mensagem eu consigo apontar a causa mais rápido do que com dica genérica.

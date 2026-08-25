@@ -3,13 +3,32 @@ relatorios/excel_gerador.py — Geração de planilhas Excel para exportação.
 Abre o arquivo diretamente no aplicativo padrão do Windows via os.startfile().
 """
 
+from __future__ import annotations
+
 import os
 import tempfile
 from datetime import datetime
 
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
+# ── Carga preguicosa do openpyxl ─────────────────────────────────────────────
+# O openpyxl custa ~290 ms para importar e este modulo e importado no boot do
+# app. _carregar() adia esse custo ate a primeira exportacao de Excel, e publica
+# os nomes como globais para que ExcelBuilder e os helpers nao mudem em nada.
+
+_CARREGADO = False
+
+
+def _carregar() -> None:
+    """Importa o openpyxl na primeira chamada."""
+    global _CARREGADO
+    if _CARREGADO:
+        return
+    global Workbook, Font, PatternFill, Alignment, Border, Side, get_column_letter
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    _CARREGADO = True
 
 
 # ── Paleta de cores ────────────────────────────────────────────────────────────
@@ -202,6 +221,7 @@ def _bloco_plataforma_excel(b: ExcelBuilder, nome_plat: str, d: dict,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def excel_relatorio_diario(data_br: str, dados: dict) -> str:
+    _carregar()
     b = ExcelBuilder("Relatório Diário")
     b.adicionar_titulo(
         f"Relatório Diário — {data_br}",
@@ -327,6 +347,7 @@ def excel_relatorio_diario(data_br: str, dados: dict) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def excel_relatorio_periodo(ini_br: str, fim_br: str, dados: dict) -> str:
+    _carregar()
     b = ExcelBuilder("Relatório Período")
     b.adicionar_titulo(
         f"Relatório de Período — {ini_br} a {fim_br}",
@@ -458,6 +479,7 @@ def excel_relatorio_periodo(ini_br: str, fim_br: str, dados: dict) -> str:
 
 def excel_fluxo_caixa(titulo: str, ini_br: str, fim_br: str,
                        lancamentos: list) -> str:
+    _carregar()
     b = ExcelBuilder("Fluxo de Caixa")
     subtitulo = ini_br if ini_br == fim_br else f"{ini_br} a {fim_br}"
     b.adicionar_titulo(f"Fluxo de Caixa — {titulo}", subtitulo=subtitulo)
@@ -513,6 +535,7 @@ def excel_fluxo_caixa(titulo: str, ini_br: str, fim_br: str,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def excel_divergencias(ini_br: str, fim_br: str, registros: list) -> str:
+    _carregar()
     b = ExcelBuilder("Divergências")
     b.adicionar_titulo(f"Histórico de Divergências — {ini_br} a {fim_br}")
 
@@ -553,6 +576,7 @@ def excel_divergencias(ini_br: str, fim_br: str, registros: list) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def excel_holerite(nome: str, mes_ano: str, dados: dict) -> str:
+    _carregar()
     b = ExcelBuilder("Holerite")
     b.adicionar_titulo(f"Holerite — {nome} — {mes_ano}")
 
@@ -647,6 +671,7 @@ def excel_holerite(nome: str, mes_ano: str, dados: dict) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def excel_entregadores(data_br: str, dados: dict) -> str:
+    _carregar()
     b = ExcelBuilder("Entregadores")
     b.adicionar_titulo(f"Painel Entregadores — {data_br}")
 
@@ -685,6 +710,7 @@ def excel_entregadores(data_br: str, dados: dict) -> str:
 
 def excel_estoque_movimentacoes(ini_br: str, fim_br: str,
                                  movimentacoes: list, resumo: dict) -> str:
+    _carregar()
     b = ExcelBuilder("Estoque Movimentações")
     b.adicionar_titulo(f"Estoque — Movimentações — {ini_br} a {fim_br}")
 

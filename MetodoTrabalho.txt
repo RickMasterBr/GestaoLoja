@@ -1,0 +1,44 @@
+Método de trabalho: diagnóstico, correção e teste honesto
+1. Leia o código real antes de mexer — nunca confie na memória ou na suposição
+Antes de editar qualquer coisa, grep/leia o trecho exato, confirme nomes de função, linhas, assinaturas. Várias vezes nesta sessão uma suposição rápida ("essa função deve fazer X") se provou errada assim que eu de fato abri o arquivo — por exemplo, assumir que TELAS[indice] seria o índice certo quando na verdade o código usava uma lista filtrada por perfil (telas_perm), não a lista bruta.
+
+2. Teste sempre no app rodando de verdade, nunca só a lógica isolada
+Testar uma função pura em isolamento prova que a lógica está certa, mas não prova que ela está conectada certo. O padrão usado aqui o tempo todo:
+
+Subir a tela real via ft.app(target=...) contra um banco de teste isolado (variável de ambiente dedicada).
+Simular o clique/on_change/on_blur real do usuário no widget real.
+Ler o resultado de volta do banco, não só do estado em memória do widget.
+Isso pegou bugs que um teste de unidade jamais pegaria — como um clique indo parar no botão errado porque havia dois "Carregar" na tela, ou uma edição que nunca foi de fato salva no arquivo por causa de um script que falhou no meio.
+
+3. Meça, não estime
+Quando dava para medir (tempo de execução, altura de um controle renderizado, se um índice existe no banco), eu media de verdade em vez de chutar um número plausível. Exemplo: em vez de adivinhar a altura em pixels de um Dropdown para alinhar duas colunas, usei o evento on_size_change do próprio Flet para pegar o valor real renderizado.
+
+4. Desconfie do seu próprio teste tanto quanto do código
+Boa parte dos "bugs" que apareceram no meio do caminho eram do meu script de teste, não do código do app — e eu sempre voltei a investigar a causa raiz da discrepância em vez de aceitar o primeiro resultado. Exemplos reais desta sessão:
+
+Um teste que fazia polling síncrono (time.sleep) travava o próprio loop de eventos que eu estava tentando observar — troquei para asyncio.sleep para não mentir sobre "a UI travou".
+Um valor que devia ter sido salvo no banco continuava vazio ao recarregar — rastreei até achar que um edit anterior nunca tinha sido escrito no disco por causa de uma falha silenciosa num script com múltiplas etapas.
+Quando o resultado não bate com o esperado, o primeiro suspeito é o teste, não uma conclusão apressada de "o código está certo" ou "o código está quebrado".
+
+5. Protocolo rígido para dados de produção
+Nunca escrevo em banco de produção sem esse fluxo, em ordem:
+
+Confirmar o caminho real do arquivo (nunca assumir; verificar que existe).
+Copiar backup e conferir que é byte-idêntico ao original (hash, não só tamanho).
+Rodar leitura (SELECT) e mostrar o resultado — parar aí e esperar confirmação explícita.
+Só depois de confirmação com IDs exatos, aplicar o UPDATE, sempre com trava de segurança no próprio script (ex.: assert "_teste" not in caminho quando deveria ser produção, ou o oposto).
+Reabrir com uma conexão nova, somente leitura, para confirmar o resultado — não confiar na mesma conexão que escreveu.
+Comparar a tabela inteira antes/depois (não só a linha esperada) para provar que nada mais foi alterado.
+6. Revise o diff antes de considerar terminado
+Depois de qualquer edição, git diff para ver exatamente o que mudou — nem mais, nem menos que o pedido. Isso pega escopo vazando (uma mudança que sem querer tocou em outra função) e confirma que uma correção não ficou pela metade.
+
+7. Relate com honestidade — inclusive os próprios erros
+Se um teste anterior estava errado, digo isso explicitamente em vez de simplesmente reportar o número novo como se nada tivesse acontecido. Se não consegui verificar visualmente algo (por exemplo, screenshot de uma UI que não renderirizava numa captura headless), digo que não verifiquei aquele ponto específico, em vez de deixar implícito que testei tudo. Reportar só o caminho feliz quando existe uma ressalva real é o tipo de coisa que quebra confiança depois.
+
+8. Escopo disciplinado
+Só mexo no que foi pedido. Quando encontro algo relacionado mas fora do escopo (um bug pré-existente, uma inconsistência de nome, uma otimização possível), eu relato em vez de corrigir por conta própria ou ignorar silenciosamente — deixo a decisão de expandir o escopo para quem pediu.
+
+9. Limpeza ao final
+Arquivos de teste temporários, linhas de log geradas só para diagnóstico, registros inseridos num banco de teste para reproduzir um cenário — tudo isso é removido/revertido ao final, para o próximo teste começar de um estado limpo e conhecido.
+
+Se quiser, posso adaptar isso num texto mais curto e genérico (sem as referências específicas deste projeto) para colar como prompt de sistema em outro chat — é só pedir.

@@ -28,6 +28,52 @@ def _snack(page: ft.Page, msg: str, cor=ft.Colors.GREEN_700):
     page.update()
 
 
+def _hora_valida(texto: str) -> bool:
+    """True se texto esta em HH:MM com HH 00-23 e MM 00-59.
+    (copiado de views/escala_geral.py — mesmo padrao de validacao)"""
+    t = (texto or "").strip()
+    if len(t) != 5 or t[2] != ":":
+        return False
+    hh, mm = t[:2], t[3:]
+    if not (hh.isdigit() and mm.isdigit()):
+        return False
+    return 0 <= int(hh) <= 23 and 0 <= int(mm) <= 59
+
+
+def _formatar_hora_input(e):
+    """Formata digitacao numerica em HH:MM automaticamente (ex.: 0830 -> 08:30).
+    (copiado de views/escala_geral.py — mesmo padrao de auto-formatacao)"""
+    tf = e.control
+    digitos = "".join(ch for ch in tf.value if ch.isdigit())[:4]
+    novo = digitos[:2] + ":" + digitos[2:] if len(digitos) >= 3 else digitos
+    if novo != tf.value:
+        tf.value = novo
+        tf.update()
+
+
+def _completar_hora_input(e):
+    """
+    Ao perder o foco, completa uma digitacao parcial em HH:MM
+    (ex.: "16" -> "16:00", "16:3" -> "16:30"). _formatar_hora_input() so
+    insere o ":" a partir do 3o digito, entao parar de digitar com 1 ou 2
+    digitos deixava o campo preso sem nunca formatar.
+    (copiado de views/escala_geral.py — mesmo padrao de auto-formatacao)"""
+    tf = e.control
+    digitos = "".join(ch for ch in tf.value if ch.isdigit())[:4]
+    if not digitos:
+        return
+    if len(digitos) <= 2:
+        hh, mm = digitos.zfill(2), "00"
+    elif len(digitos) == 3:
+        hh, mm = digitos[:2], digitos[2:].ljust(2, "0")
+    else:
+        hh, mm = digitos[:2], digitos[2:]
+    novo = f"{hh}:{mm}"
+    if novo != tf.value:
+        tf.value = novo
+        tf.update()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  VIEW PRINCIPAL
 # ══════════════════════════════════════════════════════════════════════════════
@@ -91,6 +137,17 @@ def view(page: ft.Page) -> ft.Control:
     tf_p_extra    = ft.TextField(label="Bônus Extra (R$)",   keyboard_type=ft.KeyboardType.NUMBER, width=160, value="50.00")
     tf_p_falta    = ft.TextField(label="Desconto Falta (R$)",keyboard_type=ft.KeyboardType.NUMBER, width=160, value="60.00")
     cb_p_ativo    = ft.Checkbox(label="Ativo", value=True)
+    cb_p_aparece_ponto = ft.Checkbox(label="Aparece no Ponto", value=True)
+    tf_p_hora_entrada_padrao = ft.TextField(
+        label="Entrada padrão", width=100, hint_text="HH:MM",
+        on_change=_formatar_hora_input,
+        on_blur=_completar_hora_input,
+    )
+    tf_p_hora_saida_padrao = ft.TextField(
+        label="Saída padrão", width=100, hint_text="HH:MM",
+        on_change=_formatar_hora_input,
+        on_blur=_completar_hora_input,
+    )
     txt_p_erro    = ft.Text("", color=ft.Colors.RED_400, size=12)
     lbl_p_titulo  = ft.Text("Nova Pessoa", size=14, weight=ft.FontWeight.BOLD)
 
@@ -205,6 +262,16 @@ def view(page: ft.Page) -> ft.Control:
                         tf_p_feriado.value = "60.00"
                         tf_p_extra.value   = "50.00"
                         tf_p_falta.value   = "60.00"
+                    try:
+                        cb_p_aparece_ponto.value = bool(r["aparece_no_ponto"])
+                    except (IndexError, KeyError):
+                        cb_p_aparece_ponto.value = True
+                    try:
+                        tf_p_hora_entrada_padrao.value = r["horario_entrada_padrao"] or ""
+                        tf_p_hora_saida_padrao.value   = r["horario_saida_padrao"]   or ""
+                    except (IndexError, KeyError):
+                        tf_p_hora_entrada_padrao.value = ""
+                        tf_p_hora_saida_padrao.value   = ""
                     ts = r["tipo_salario"] or ""
                     linha_p_salario.visible  = (ts == "FIXO")
                     linha_p_diaria.visible   = (ts in ("DIARIO", "ENTREGADOR"))
@@ -294,6 +361,9 @@ def view(page: ft.Page) -> ft.Control:
         tf_p_extra.value         = "50.00"
         tf_p_falta.value         = "60.00"
         cb_p_ativo.value         = True
+        cb_p_aparece_ponto.value = True
+        tf_p_hora_entrada_padrao.value = ""
+        tf_p_hora_saida_padrao.value   = ""
         linha_p_salario.visible  = True
         linha_p_diaria.visible   = False
         linha_p_holerite.visible = True
@@ -323,6 +393,31 @@ def view(page: ft.Page) -> ft.Control:
             page.update()
             return
 
+        # Horário padrão: aceita vazio OU HH:MM válido (mesma validação de
+        # views/escala_geral.py) — se inválido, bloqueia o salvamento.
+        hora_ent = tf_p_hora_entrada_padrao.value.strip()
+        hora_sai = tf_p_hora_saida_padrao.value.strip()
+        invalidos_horario = [
+            rotulo for rotulo, valor in (
+                ("Entrada padrão", hora_ent),
+                ("Saída padrão",   hora_sai),
+            )
+            if valor and not _hora_valida(valor)
+        ]
+        if invalidos_horario:
+            for campo, valor in ((tf_p_hora_entrada_padrao, hora_ent),
+                                 (tf_p_hora_saida_padrao,   hora_sai)):
+                erro = bool(valor) and not _hora_valida(valor)
+                campo.error_text = "HH:MM" if erro else None
+            txt_p_erro.value = (
+                "Horário inválido em: %s. Use HH:MM (00:00 a 23:59)."
+                % ", ".join(invalidos_horario)
+            )
+            page.update()
+            return
+        for campo in (tf_p_hora_entrada_padrao, tf_p_hora_saida_padrao):
+            campo.error_text = None
+
         ts      = dd_p_tiposal.value
         salario = _to_float(tf_p_salario.value) if ts == "FIXO"             else 0.0
         diaria  = _to_float(tf_p_diaria.value)  if ts in ("DIARIO","ENTREGADOR") else 0.0
@@ -345,6 +440,12 @@ def view(page: ft.Page) -> ft.Control:
                 diaria_valor=diaria,
                 status_ativo=cb_p_ativo.value,
             )
+            database.pessoa_atualizar(
+                pid,
+                aparece_no_ponto=int(cb_p_aparece_ponto.value),
+                horario_entrada_padrao=hora_ent or None,
+                horario_saida_padrao=hora_sai or None,
+            )
             if kwargs_hol:
                 database.pessoa_atualizar(pid, **kwargs_hol)
         else:
@@ -358,6 +459,9 @@ def view(page: ft.Page) -> ft.Control:
                 tipo_salario=ts,
                 diaria_valor=diaria,
                 status_ativo=int(cb_p_ativo.value),
+                aparece_no_ponto=int(cb_p_aparece_ponto.value),
+                horario_entrada_padrao=hora_ent or None,
+                horario_saida_padrao=hora_sai or None,
                 **kwargs_hol,
             )
 
@@ -547,6 +651,8 @@ def view(page: ft.Page) -> ft.Control:
                     linha_p_diaria,
                     linha_p_holerite,
                     cb_p_ativo,
+                    cb_p_aparece_ponto,
+                    ft.Row([tf_p_hora_entrada_padrao, tf_p_hora_saida_padrao], spacing=12),
                     secao_acesso,
                     txt_p_erro,
                     ft.Row([

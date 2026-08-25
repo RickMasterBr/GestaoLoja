@@ -21,7 +21,7 @@ def view(page: ft.Page, on_login_success) -> ft.Control:
         ft.Container(
             width=20, height=20, border_radius=10,
             bgcolor=None,
-            border=ft.border.all(2, ft.Colors.GREY_600),
+            border=ft.Border.all(2, ft.Colors.GREY_600),
         )
         for _ in range(4)
     ]
@@ -38,7 +38,7 @@ def view(page: ft.Page, on_login_success) -> ft.Control:
                 c.border  = None
             else:
                 c.bgcolor = None
-                c.border  = ft.border.all(2, ft.Colors.GREY_600)
+                c.border  = ft.Border.all(2, ft.Colors.GREY_600)
 
     # ── Textos da fase PIN ────────────────────────────────────────────────
     txt_ola     = ft.Text("", size=18, weight=ft.FontWeight.BOLD,
@@ -224,7 +224,7 @@ def view(page: ft.Page, on_login_success) -> ft.Control:
         padding=ft.Padding.all(32),
         border_radius=16,
         bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.WHITE),
-        border=ft.border.all(1, ft.Colors.with_opacity(0.10, ft.Colors.WHITE)),
+        border=ft.Border.all(1, ft.Colors.with_opacity(0.10, ft.Colors.WHITE)),
         content=ft.Column(
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=12,
