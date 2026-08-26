@@ -192,7 +192,7 @@ def view(page: ft.Page) -> ft.Control:
                             tf_data.value = f"{d}/{m}/{a}"
                         except Exception:
                             tf_data.value = hoje_br
-                        btn_registrar.text = "Salvar Alteração"
+                        btn_registrar.content = "Salvar Alteração"
                         txt_erro.value = ""
                         page.update()
                     return handler
@@ -266,7 +266,7 @@ def view(page: ft.Page) -> ft.Control:
         tf_data.value  = hoje_br
         txt_erro.value = ""
         _editando_id["v"]  = None
-        btn_registrar.text = "Registrar Fiado"
+        btn_registrar.content = "Registrar Fiado"
 
     def _registrar(e):
         txt_erro.value = ""

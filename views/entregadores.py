@@ -138,19 +138,24 @@ def view(page: ft.Page) -> ft.Control:
             _dia_lista = []
 
             _pag_lote = database.calcular_pagamento_entregadores_lote(data_iso)
+
+            # Quem já foi pago hoje, em uma única query (antes: 1 query por entregador)
+            ids_pagos_hoje = set()
+            if id_cat_pagamento:
+                ids_pagos_hoje = {
+                    row["id_pessoa"] for row in conn.execute(
+                        """SELECT DISTINCT id_pessoa FROM movimentacoes_extras
+                           WHERE data = ? AND id_categoria = ?""",
+                        (data_iso, id_cat_pagamento)
+                    ).fetchall()
+                }
+
             for ent in entregadores:
                 r = _pag_lote.get(ent["id"], {"total_entregas": 0, "soma_taxas": 0.0, "diaria": 0.0,
                      "corridas_extras": 0.0, "vales": 0.0, "total_liquido": 0.0})
 
                 # Verifica se pagamento já foi registrado hoje para este entregador
-                ja_pago = False
-                if id_cat_pagamento:
-                    row_chk = conn.execute(
-                        """SELECT COUNT(*) FROM movimentacoes_extras
-                           WHERE data = ? AND id_pessoa = ? AND id_categoria = ?""",
-                        (data_iso, ent["id"], id_cat_pagamento)
-                    ).fetchone()
-                    ja_pago = row_chk[0] > 0
+                ja_pago = ent["id"] in ids_pagos_hoje
 
                 if ja_pago:
                     _btn_pago = ft.TextButton(
@@ -378,28 +383,17 @@ def view(page: ft.Page) -> ft.Control:
             # ══════════════════════════════════════════════════════════════
             #  BLOCO 2 — Acumulado da Semana (7 dias até a data selecionada)
             # ══════════════════════════════════════════════════════════════
+            _sem_lote = database.calcular_pagamento_entregadores_lote_periodo(ini_iso, data_iso)
+
             linhas_b2 = []
             _semana_lista = []
             for ent in entregadores:
-                row_entr = conn.execute(
-                    """SELECT COUNT(*) AS qtd,
-                              COALESCE(SUM(repasse_entregador), 0) AS soma_taxas
-                       FROM vendas_pedidos
-                       WHERE data BETWEEN ? AND ?
-                         AND id_operador = ? AND repasse_entregador > 0""",
-                    (ini_iso, data_iso, ent["id"])
-                ).fetchone()
+                rs = _sem_lote.get(ent["id"], {"total_entregas": 0, "soma_taxas": 0.0,
+                     "dias_com_entrega": 0, "corridas_extras": 0.0, "vales": 0.0})
 
-                qtd_sem      = row_entr["qtd"]
-                soma_taxas_s = row_entr["soma_taxas"]
-
-                dias_com_entrega = conn.execute(
-                    """SELECT COUNT(DISTINCT data) AS dias
-                       FROM vendas_pedidos
-                       WHERE data BETWEEN ? AND ?
-                         AND id_operador = ? AND repasse_entregador > 0""",
-                    (ini_iso, data_iso, ent["id"])
-                ).fetchone()["dias"]
+                qtd_sem           = rs["total_entregas"]
+                soma_taxas_s      = rs["soma_taxas"]
+                dias_com_entrega  = rs["dias_com_entrega"]
 
                 try:
                     diaria_val = ent["diaria_valor"] or 0.0
@@ -411,26 +405,8 @@ def view(page: ft.Page) -> ft.Control:
 
                 diarias_s = dias_com_entrega * diaria_val
 
-                row_extras = conn.execute(
-                    """SELECT COALESCE(SUM(me.valor), 0) AS total
-                       FROM movimentacoes_extras me
-                       JOIN cad_categorias_extra ce ON ce.id = me.id_categoria
-                       WHERE me.data BETWEEN ? AND ?
-                         AND me.id_pessoa = ? AND ce.descricao = 'Corrida Extra'""",
-                    (ini_iso, data_iso, ent["id"])
-                ).fetchone()
-
-                row_vales = conn.execute(
-                    """SELECT COALESCE(SUM(me.valor), 0) AS total
-                       FROM movimentacoes_extras me
-                       JOIN cad_categorias_extra ce ON ce.id = me.id_categoria
-                       WHERE me.data BETWEEN ? AND ?
-                         AND me.id_pessoa = ? AND ce.descricao = 'Vale'""",
-                    (ini_iso, data_iso, ent["id"])
-                ).fetchone()
-
-                extras_s = row_extras["total"] if row_extras else 0.0
-                vales_s  = row_vales["total"]  if row_vales  else 0.0
+                extras_s = rs["corridas_extras"]
+                vales_s  = rs["vales"]
                 total_s  = diarias_s + soma_taxas_s + extras_s - vales_s
 
                 linhas_b2.append(ft.DataRow(cells=[
@@ -521,6 +497,8 @@ def view(page: ft.Page) -> ft.Control:
             # ══════════════════════════════════════════════════════════════
             #  BLOCO 4 — Detalhamento Diário por Entregador (semana)
             # ══════════════════════════════════════════════════════════════
+            _detalhe_lote = database.detalhamento_diario_entregadores_lote(ini_iso, data_iso)
+
             _detalhe_semanal = []
             for ent in entregadores:
                 try:
@@ -531,21 +509,7 @@ def view(page: ft.Page) -> ft.Control:
                 except (IndexError, KeyError):
                     dv = 40.0
 
-                rows_por_dia = conn.execute("""
-                    SELECT
-                        p.data,
-                        COUNT(*) AS entregas,
-                        COALESCE(SUM(p.repasse_entregador), 0) AS soma_repasses,
-                        COALESCE(SUM(p.taxa_entrega), 0) AS soma_taxas_clientes
-                    FROM vendas_pedidos p
-                    LEFT JOIN cad_canais c ON c.nome = p.canal
-                    WHERE p.data BETWEEN ? AND ?
-                      AND p.id_operador = ?
-                      AND p.repasse_entregador > 0
-                      AND COALESCE(c.entregador_plataforma, 0) = 0
-                    GROUP BY p.data
-                    ORDER BY p.data
-                """, (ini_iso, data_iso, ent["id"])).fetchall()
+                rows_por_dia = _detalhe_lote.get(ent["id"], [])
 
                 if not rows_por_dia:
                     continue
@@ -556,8 +520,8 @@ def view(page: ft.Page) -> ft.Control:
                         {
                             "data":           r["data"],
                             "entregas":       r["entregas"],
-                            "repasses":       r["soma_repasses"],
-                            "taxas_clientes": r["soma_taxas_clientes"],
+                            "repasses":       r["repasses"],
+                            "taxas_clientes": r["taxas_clientes"],
                             "diaria":         dv if r["entregas"] > 0 else 0.0,
                         }
                         for r in rows_por_dia

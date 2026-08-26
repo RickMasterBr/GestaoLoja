@@ -392,12 +392,12 @@ def view(page: ft.Page) -> ft.Control:
     def _toggle_modo_selecao(e):
         _modo_selecao["ativo"] = not _modo_selecao["ativo"]
         if _modo_selecao["ativo"]:
-            btn_modo_selecao.text    = "Cancelar Seleção"
+            btn_modo_selecao.content = "Cancelar Seleção"
             tf_nova_data.visible     = True
             btn_aplicar_lote.visible = True
             btn_cancelar_selecao.visible = False
         else:
-            btn_modo_selecao.text    = "Selecionar Pedidos"
+            btn_modo_selecao.content = "Selecionar Pedidos"
             tf_nova_data.visible     = False
             btn_aplicar_lote.visible = False
             btn_cancelar_selecao.visible = False
@@ -713,7 +713,7 @@ def view(page: ft.Page) -> ft.Control:
 
         # ── Feedback visual imediato ──────────────────────────────────────
         btn_salvar.disabled = True
-        btn_salvar.text     = "Salvando..."
+        btn_salvar.content  = "Salvando..."
         btn_salvar.icon     = ft.Icons.HOURGLASS_EMPTY
         page.update()
         logging.debug(f"_salvar spinner visivel — {(time.perf_counter() - _t0)*1000:.0f}ms desde clique")
@@ -722,7 +722,7 @@ def view(page: ft.Page) -> ft.Control:
 
         def _restaurar_botao():
             btn_salvar.disabled = False
-            btn_salvar.text     = "Salvar Pedido"
+            btn_salvar.content  = "Salvar Pedido"
             btn_salvar.icon     = ft.Icons.SAVE
 
         # ── Validações ────────────────────────────────────────────────────

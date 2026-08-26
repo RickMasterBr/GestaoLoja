@@ -8,6 +8,128 @@ from datetime import date, timedelta
 import database
 
 
+# ── Helpers de data ───────────────────────────────────────────────────────────
+
+def _br_iso(s: str) -> str:
+    try:
+        d, m, a = s.strip().split("/")
+        return f"{a}-{m.zfill(2)}-{d.zfill(2)}"
+    except Exception:
+        return ""
+
+
+def _iso_br(s: str) -> str:
+    try:
+        return f"{s[8:10]}/{s[5:7]}/{s[:4]}"
+    except Exception:
+        return s
+
+
+# ── Diálogos de confirmação ───────────────────────────────────────────────────
+
+def _fechar(dlg, page):
+    dlg.open = False
+    page.update()
+
+
+def _dialogo_quitar(page, titulo: str, subtitulo: str,
+                    valor_default: float, on_confirmar) -> None:
+    """
+    Confirmação de quitação com data, valor e método editáveis.
+    Chama on_confirmar(data_iso, valor, metodo) só depois de validar.
+
+    O valor é editável para cobrir desconto/juros: ele altera apenas o
+    lançamento no caixa — a parcela/boleto é marcada como quitada de todo jeito.
+    """
+    tf_data = ft.TextField(
+        label="Data do pagamento", width=170,
+        value=date.today().strftime("%d/%m/%Y"), hint_text="DD/MM/AAAA",
+    )
+    tf_valor = ft.TextField(
+        label="Valor pago (R$)", width=170,
+        value=f"{valor_default:.2f}",
+        keyboard_type=ft.KeyboardType.NUMBER,
+    )
+    dd_metodo = ft.Dropdown(
+        label="Método", width=180, value="Dinheiro",
+        options=[ft.dropdown.Option(m["nome"])
+                 for m in database.metodo_pag_listar()],
+    )
+    txt_erro = ft.Text("", color=ft.Colors.RED_400, size=12)
+
+    def _confirmar(e):
+        data_iso = _br_iso(tf_data.value or "")
+        if not data_iso:
+            txt_erro.value = "Informe a data no formato DD/MM/AAAA."
+            page.update()
+            return
+        try:
+            valor = float((tf_valor.value or "0").replace(",", "."))
+            assert valor > 0
+        except Exception:
+            txt_erro.value = "Informe um valor válido."
+            page.update()
+            return
+        _fechar(dlg, page)
+        on_confirmar(data_iso, valor, dd_metodo.value)
+
+    dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text(titulo),
+        content=ft.Column(tight=True, width=560, spacing=12, controls=[
+            ft.Text(subtitulo, size=13, color=ft.Colors.GREY_400),
+            ft.Row([tf_data, tf_valor, dd_metodo], spacing=10, wrap=True),
+            ft.Text(
+                "A quitação gera uma saída no Fluxo de Caixa "
+                f"(categoria '{database.CATEGORIA_PAGAMENTO_FORNECEDOR}').",
+                size=11, italic=True, color=ft.Colors.GREY_500,
+            ),
+            txt_erro,
+        ]),
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: _fechar(dlg, page)),
+            ft.ElevatedButton(
+                "Confirmar Pagamento", icon=ft.Icons.PAYMENTS,
+                on_click=_confirmar,
+                style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_700,
+                                     color=ft.Colors.WHITE),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg)
+    dlg.open = True
+    page.update()
+
+
+def _dialogo_excluir_boleto(page, descricao: str, valor: float,
+                            on_confirmar) -> None:
+    """Confirmação antes de excluir um boleto (mesmo padrão do estorno)."""
+    dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Confirmar Exclusão"),
+        content=ft.Text(
+            f"Deseja excluir o boleto \"{descricao}\" "
+            f"(R$ {valor:.2f})?\n\n"
+            f"Todas as parcelas vinculadas serão removidas. "
+            f"Esta ação não pode ser desfeita."
+        ),
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: _fechar(dlg, page)),
+            ft.ElevatedButton(
+                "Confirmar Exclusão", icon=ft.Icons.DELETE_OUTLINE,
+                on_click=lambda e: (_fechar(dlg, page), on_confirmar()),
+                style=ft.ButtonStyle(bgcolor=ft.Colors.RED_700,
+                                     color=ft.Colors.WHITE),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg)
+    dlg.open = True
+    page.update()
+
+
 def view(page: ft.Page) -> ft.Control:
 
     # ── Estado ────────────────────────────────────────────────────────────────
@@ -34,6 +156,143 @@ def view(page: ft.Page) -> ft.Control:
     )
 
     tabela_col = ft.Column(spacing=0)
+
+    # ── Contas a pagar (visão consolidada de vencimentos) ─────────────────────
+    row_aging      = ft.Row(spacing=12, wrap=True)
+    col_vencimentos = ft.Column(spacing=0)
+    dd_janela = ft.Dropdown(
+        label="Janela", width=170, value="30",
+        options=[
+            ft.dropdown.Option("7",  "Próximos 7 dias"),
+            ft.dropdown.Option("15", "Próximos 15 dias"),
+            ft.dropdown.Option("30", "Próximos 30 dias"),
+            ft.dropdown.Option("90", "Próximos 90 dias"),
+        ],
+        on_select=lambda e: (_carregar_vencimentos(), page.update()),
+    )
+
+    _FAIXAS = [
+        ("VENCIDO", "Vencido",        ft.Colors.RED_400),
+        ("HOJE",    "Vence hoje",     ft.Colors.ORANGE_400),
+        ("ATE_7",   "Até 7 dias",     ft.Colors.YELLOW_700),
+        ("ATE_30",  "Mais adiante",   ft.Colors.GREY_500),
+    ]
+
+    def _notificar_quitacao(ok: bool, valor: float):
+        """Feedback do resultado da quitação (False = já estava quitado)."""
+        if ok:
+            texto, cor = (f"Pagamento de R$ {valor:.2f} registrado no caixa.",
+                          ft.Colors.GREEN_700)
+        else:
+            texto, cor = ("Nada a quitar — já estava pago. "
+                          "Nenhum lançamento gerado.", ft.Colors.ORANGE_700)
+        page.overlay.append(ft.SnackBar(content=ft.Text(texto),
+                                        bgcolor=cor, open=True))
+
+    def _carregar_vencimentos():
+        # Atualiza o status de vencidos de forma central, para todos os
+        # fornecedores — antes só acontecia ao abrir o diálogo de um deles.
+        database.boleto_atualizar_status_vencidos()
+
+        try:
+            dias = int(dd_janela.value or 30)
+        except ValueError:
+            dias = 30
+        parcelas = database.boletos_parcelas_em_aberto(dias_frente=dias)
+
+        # Cards de aging
+        row_aging.controls.clear()
+        for chave, rotulo, cor in _FAIXAS:
+            do_grupo = [p for p in parcelas if p["faixa"] == chave]
+            total    = sum(p["valor"] for p in do_grupo)
+            row_aging.controls.append(ft.Container(
+                padding=ft.Padding.all(12),
+                border_radius=8,
+                width=180,
+                content=ft.Column(spacing=2, tight=True, controls=[
+                    ft.Text(rotulo, size=11, color=ft.Colors.GREY_500),
+                    ft.Text(f"R$ {total:.2f}", size=17,
+                            weight=ft.FontWeight.BOLD, color=cor),
+                    ft.Text(f"{len(do_grupo)} parcela(s)", size=11,
+                            color=ft.Colors.GREY_500),
+                ]),
+            ))
+
+        col_vencimentos.controls.clear()
+        if not parcelas:
+            col_vencimentos.controls.append(ft.Text(
+                "Nenhuma parcela em aberto nessa janela.",
+                italic=True, color=ft.Colors.GREY_500,
+            ))
+            return
+
+        linhas = []
+        for p in parcelas:
+            cor_faixa = next(c for k, _r, c in _FAIXAS if k == p["faixa"])
+            dias_txt = (
+                f"{abs(p['dias_para_vencer'])}d atrás"
+                if p["dias_para_vencer"] < 0 else
+                "hoje" if p["dias_para_vencer"] == 0 else
+                f"em {p['dias_para_vencer']}d"
+            )
+            parc_txt = (f"{p['num_parcela']}/{p['num_parcelas']}"
+                        if p["num_parcelas"] > 1 else "única")
+
+            def _quitar(ev, _pid=p["id"], _nome=p["nome_fornecedor"],
+                        _desc=p["descricao"], _val=p["valor"],
+                        _pnum=p["num_parcela"]):
+                def _executar(data_iso, valor, metodo):
+                    ok = database.boleto_quitar_parcela(
+                        _pid, data_iso, metodo=metodo, valor_pago=valor,
+                    )
+                    _notificar_quitacao(ok, valor)
+                    _carregar_vencimentos()
+                    page.update()
+
+                _dialogo_quitar(
+                    page,
+                    f"Quitar Parcela {_pnum}",
+                    f"{_nome} — {_desc}\nParcela {_pnum}: R$ {_val:.2f}",
+                    _val,
+                    _executar,
+                )
+
+            linhas.append(ft.DataRow(cells=[
+                ft.DataCell(ft.Text(_iso_br(p["vencimento"]), size=12,
+                                    color=cor_faixa,
+                                    weight=ft.FontWeight.BOLD)),
+                ft.DataCell(ft.Text(dias_txt, size=12, color=cor_faixa)),
+                ft.DataCell(ft.Text(p["nome_fornecedor"], size=12)),
+                ft.DataCell(ft.Text(p["descricao"], size=12)),
+                ft.DataCell(ft.Text(parc_txt, size=12,
+                                    color=ft.Colors.GREY_500)),
+                ft.DataCell(ft.Text(f"R$ {p['valor']:.2f}", size=12,
+                                    color=ft.Colors.TEAL_300)),
+                ft.DataCell(ft.TextButton(
+                    "Quitar", icon=ft.Icons.PAYMENTS, on_click=_quitar,
+                    style=ft.ButtonStyle(color=ft.Colors.GREEN_400),
+                )),
+            ]))
+
+        col_vencimentos.controls.append(ft.Row(
+            scroll=ft.ScrollMode.AUTO,
+            controls=[ft.DataTable(
+                columns=[
+                    ft.DataColumn(ft.Text("Vencimento", size=12)),
+                    ft.DataColumn(ft.Text("Prazo",      size=12)),
+                    ft.DataColumn(ft.Text("Fornecedor", size=12)),
+                    ft.DataColumn(ft.Text("Descrição",  size=12)),
+                    ft.DataColumn(ft.Text("Parcela",    size=12)),
+                    ft.DataColumn(ft.Text("Valor",      size=12), numeric=True),
+                    ft.DataColumn(ft.Text("Ação",       size=12)),
+                ],
+                rows=linhas,
+                column_spacing=14,
+                horizontal_lines=ft.BorderSide(
+                    1, ft.Colors.with_opacity(0.15, ft.Colors.BLACK)
+                ),
+            )],
+        ))
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -191,19 +450,6 @@ def view(page: ft.Page) -> ft.Control:
 
     # ── Boletos ───────────────────────────────────────────────────────────────
 
-    def _br_para_iso(s: str) -> str:
-        try:
-            d, m, a = s.strip().split("/")
-            return f"{a}-{m.zfill(2)}-{d.zfill(2)}"
-        except Exception:
-            return ""
-
-    def _iso_para_br(s: str) -> str:
-        try:
-            return f"{s[8:10]}/{s[5:7]}/{s[:4]}"
-        except Exception:
-            return s
-
     def _abrir_boletos(id_forn: int, nome_forn: str):
         def _recarregar_dialog():
             database.boleto_atualizar_status_vencidos()
@@ -223,17 +469,54 @@ def view(page: ft.Page) -> ft.Control:
                     prox_venc = next(
                         (p["vencimento"] for p in parcelas if not p["pago"]), None
                     )
-                    prox_txt = f"Próx. venc: {_iso_para_br(prox_venc)}" if prox_venc else ""
+                    prox_txt = f"Próx. venc: {_iso_br(prox_venc)}" if prox_venc else ""
 
-                    def _quitar_boleto(ev, _bid=b["id"]):
-                        database.boleto_quitar(_bid)
-                        _recarregar_dialog()
-                        page.update()
+                    # Total ainda em aberto: é o que será pago e lançado no caixa
+                    _aberto = sum(p["valor"] for p in parcelas if not p["pago"])
 
-                    def _excluir_boleto(ev, _bid=b["id"]):
-                        database.boleto_excluir(_bid)
-                        _recarregar_dialog()
-                        page.update()
+                    def _quitar_boleto(ev, _bid=b["id"], _bdesc=b["descricao"],
+                                       _aberto=_aberto, _nparc=len(parcelas)):
+                        def _executar(data_iso, valor, metodo):
+                            ok = database.boleto_quitar(
+                                _bid, data_pago=data_iso,
+                                metodo=metodo, valor_pago=valor,
+                            )
+                            _notificar_quitacao(ok, valor)
+                            _recarregar_dialog()
+                            _carregar_vencimentos()
+                            page.update()
+
+                        _dialogo_quitar(
+                            page,
+                            "Quitar Boleto",
+                            f"{nome_forn} — {_bdesc}\n"
+                            f"{_nparc} parcela(s), R$ {_aberto:.2f} em aberto.",
+                            _aberto,
+                            _executar,
+                        )
+
+                    def _excluir_boleto(ev, _bid=b["id"], _bdesc=b["descricao"],
+                                        _bval=b["valor_total"]):
+                        def _executar():
+                            database.boleto_excluir(_bid)
+                            database.log_registrar(
+                                acao="EXCLUIR_BOLETO",
+                                tabela="cad_boletos",
+                                id_registro=_bid,
+                                descricao=f"Boleto excluído — {nome_forn}: "
+                                          f"{_bdesc} | R$ {_bval:.2f}",
+                                valor_antes=f"descricao={_bdesc}, valor_total={_bval}",
+                                usuario=database.sessao_obter().get("nome"),
+                            )
+                            page.overlay.append(ft.SnackBar(
+                                content=ft.Text(f"Boleto \"{_bdesc}\" excluído."),
+                                bgcolor=ft.Colors.ORANGE_700, open=True,
+                            ))
+                            _recarregar_dialog()
+                            _carregar_vencimentos()
+                            page.update()
+
+                        _dialogo_excluir_boleto(page, _bdesc, _bval, _executar)
 
                     def _ver_parcelas(ev, _bid=b["id"], _bdesc=b["descricao"]):
                         parcs = database.boleto_parcelas_listar(_bid)
@@ -241,18 +524,33 @@ def view(page: ft.Page) -> ft.Control:
                         for p in parcs:
                             cor_p = ft.Colors.GREEN_400 if p["pago"] else ft.Colors.ORANGE_300
 
-                            def _quitar_parcela(ev2, _pid=p["id"]):
-                                database.boleto_quitar_parcela(
-                                    _pid, date.today().isoformat()
+                            def _quitar_parcela(ev2, _pid=p["id"],
+                                                _pnum=p["num_parcela"],
+                                                _pval=p["valor"]):
+                                def _executar(data_iso, valor, metodo):
+                                    ok = database.boleto_quitar_parcela(
+                                        _pid, data_iso,
+                                        metodo=metodo, valor_pago=valor,
+                                    )
+                                    _notificar_quitacao(ok, valor)
+                                    _recarregar_dialog()
+                                    _carregar_vencimentos()
+                                    dlg_p.open = False
+                                    page.update()
+
+                                _dialogo_quitar(
+                                    page,
+                                    f"Quitar Parcela {_pnum}",
+                                    f"{nome_forn} — {_bdesc}\n"
+                                    f"Parcela {_pnum}: R$ {_pval:.2f}",
+                                    _pval,
+                                    _executar,
                                 )
-                                _recarregar_dialog()
-                                dlg_p.open = False
-                                page.update()
 
                             linhas_p.append(ft.Row(controls=[
                                 ft.Text(f"Parcela {p['num_parcela']}", width=80, size=12),
                                 ft.Text(f"R$ {p['valor']:.2f}", width=90, size=12),
-                                ft.Text(_iso_para_br(p["vencimento"]), width=90, size=12),
+                                ft.Text(_iso_br(p["vencimento"]), width=90, size=12),
                                 ft.Text(
                                     "Pago" if p["pago"] else "Em aberto",
                                     width=80, size=12, color=cor_p,
@@ -311,7 +609,7 @@ def view(page: ft.Page) -> ft.Control:
                             ft.Text(f"R$ {b['valor_total']:.2f}", size=13,
                                     color=ft.Colors.TEAL_300, width=100),
                             ft.Text(
-                                f"Emissão: {_iso_para_br(b['data_emissao'])}",
+                                f"Emissão: {_iso_br(b['data_emissao'])}",
                                 size=11, color=ft.Colors.GREY_500, width=130,
                             ),
                             *acoes,
@@ -376,7 +674,7 @@ def view(page: ft.Page) -> ft.Control:
             desc  = tf_b_desc.value.strip()
             valor_s = tf_b_valor.value.strip().replace(",", ".")
             tipo  = dd_b_tipo.value
-            emissao_iso = _br_para_iso(tf_b_emissao.value)
+            emissao_iso = _br_iso(tf_b_emissao.value)
 
             if not desc:
                 txt_b_erro.value = "Informe a descrição."
@@ -401,7 +699,7 @@ def view(page: ft.Page) -> ft.Control:
                     {"num_parcela": 1, "valor": valor, "vencimento": emissao_iso}
                 ])
             elif tipo == "BOLETO":
-                venc_iso = _br_para_iso(tf_b_venc1.value)
+                venc_iso = _br_iso(tf_b_venc1.value)
                 if not venc_iso:
                     txt_b_erro.value = "Informe o vencimento."
                     page.update(); return
@@ -419,7 +717,7 @@ def view(page: ft.Page) -> ft.Control:
                 except Exception:
                     txt_b_erro.value = "Informe o número de parcelas."
                     page.update(); return
-                venc_iso = _br_para_iso(tf_b_venc1.value)
+                venc_iso = _br_iso(tf_b_venc1.value)
                 if not venc_iso:
                     txt_b_erro.value = "Informe o 1º vencimento."
                     page.update(); return
@@ -563,10 +861,38 @@ def view(page: ft.Page) -> ft.Control:
         ]),
     ))
 
+    bloco_vencimentos = ft.Card(content=ft.Container(
+        padding=ft.Padding.all(16),
+        content=ft.Column(spacing=10, controls=[
+            ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Text("Contas a Pagar — Vencimentos", size=15,
+                            weight=ft.FontWeight.BOLD),
+                    ft.Row(spacing=8, controls=[
+                        dd_janela,
+                        ft.IconButton(
+                            icon=ft.Icons.REFRESH,
+                            tooltip="Atualizar vencimentos",
+                            on_click=lambda e: (_carregar_vencimentos(),
+                                                page.update()),
+                        ),
+                    ]),
+                ],
+            ),
+            ft.Divider(height=1),
+            row_aging,
+            ft.Divider(height=1),
+            col_vencimentos,
+        ]),
+    ))
+
     _carregar()
+    _carregar_vencimentos()
 
     return ft.Column(
-        controls=[bloco_form, bloco_tabela],
+        controls=[bloco_vencimentos, bloco_form, bloco_tabela],
         scroll=ft.ScrollMode.AUTO,
         expand=True,
         spacing=16,

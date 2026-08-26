@@ -81,6 +81,13 @@ def _card_resumo(titulo: str, valor, cor: str, moeda: bool = True) -> ft.Contain
     )
 
 
+# Valor sentinela do dropdown de categoria (não filtra nada)
+_CAT_TODAS = "__TODAS__"
+
+# Colunas do extrato: Hora, Tipo, Categoria, Descrição, Método, Entrada, Saída, Saldo
+_N_COLUNAS = 8
+
+
 def _linha_separador_data(data_iso: str) -> ft.DataRow:
     try:
         d = date.fromisoformat(data_iso)
@@ -101,12 +108,7 @@ def _linha_separador_data(data_iso: str) -> ft.DataRow:
                 color=ft.Colors.BLUE_200,
                 size=13,
             )),
-            ft.DataCell(ft.Text("")),
-            ft.DataCell(ft.Text("")),
-            ft.DataCell(ft.Text("")),
-            ft.DataCell(ft.Text("")),
-            ft.DataCell(ft.Text("")),
-            ft.DataCell(ft.Text("")),
+            *[ft.DataCell(ft.Text("")) for _ in range(_N_COLUNAS - 1)],
         ],
         color=ft.Colors.with_opacity(0.06, ft.Colors.BLUE),
     )
@@ -126,6 +128,7 @@ def _construir_tabela(linhas_rows: list) -> ft.Row:
     colunas = [
         ft.DataColumn(ft.Text("Hora",      size=12)),
         ft.DataColumn(ft.Text("Tipo",      size=12)),
+        ft.DataColumn(ft.Text("Categoria", size=12)),
         ft.DataColumn(ft.Text("Descrição", size=12)),
         ft.DataColumn(ft.Text("Método",    size=12)),
         ft.DataColumn(ft.Text("Entrada",   size=12), numeric=True),
@@ -153,6 +156,10 @@ def _data_row(row: dict, saldo: float) -> ft.DataRow:
     return ft.DataRow(cells=[
         ft.DataCell(ft.Text(row.get("hora") or "", size=12)),
         ft.DataCell(_tipo_chip(row.get("tipo") or "")),
+        ft.DataCell(ft.Text(
+            row.get("categoria") or "—", size=12,
+            color=ft.Colors.GREY_500 if not row.get("categoria") else None,
+        )),
         ft.DataCell(ft.Text(row.get("descricao") or "", size=12)),
         ft.DataCell(ft.Text(row.get("metodo") or "", size=12)),
         ft.DataCell(ft.Text(
@@ -169,6 +176,92 @@ def _data_row(row: dict, saldo: float) -> ft.DataRow:
             color=ft.Colors.BLUE_300 if saldo >= 0 else ft.Colors.RED_300,
         )),
     ])
+
+
+def _filtrar_por_categoria(lancamentos: list, categoria) -> list:
+    """Filtra os lançamentos pela categoria escolhida. _CAT_TODAS não filtra."""
+    if not categoria or categoria == _CAT_TODAS:
+        return list(lancamentos)
+    return [r for r in lancamentos if (r["categoria"] or "") == categoria]
+
+
+def _opcoes_categoria() -> list:
+    """
+    Opções do dropdown: 'Todas' + categorias reais (cad_categorias_extra) +
+    as categorias implícitas de venda, uma por canal ('Venda — <canal>').
+    """
+    opcoes = [ft.dropdown.Option(key=_CAT_TODAS, text="Todas as categorias")]
+    for c in database.categoria_extra_listar():
+        opcoes.append(ft.dropdown.Option(key=c["descricao"], text=c["descricao"]))
+    for c in database.canal_listar():
+        rotulo = f"Venda — {c['nome']}"
+        opcoes.append(ft.dropdown.Option(key=rotulo, text=rotulo))
+    return opcoes
+
+
+def _resumo_por_categoria(lancamentos: list) -> ft.Control:
+    """
+    Tabela compacta categoria × (entradas, saídas, saldo), ordenada pelo maior
+    movimento absoluto. Usa a mesma lista já filtrada que alimenta o extrato.
+    """
+    if not lancamentos:
+        return ft.Text("—", size=12, color=ft.Colors.GREY_500)
+
+    # Acesso por [] (não .get): esta função recebe tanto sqlite3.Row quanto dict,
+    # e sqlite3.Row não tem .get().
+    agregado: dict = {}
+    for r in lancamentos:
+        chave = r["categoria"] or "(sem categoria)"
+        acc = agregado.setdefault(chave, {"entrada": 0.0, "saida": 0.0, "n": 0})
+        acc["entrada"] += r["entrada"] or 0.0
+        acc["saida"]   += r["saida"]   or 0.0
+        acc["n"]       += 1
+
+    ordenado = sorted(
+        agregado.items(),
+        key=lambda kv: -(kv[1]["entrada"] + kv[1]["saida"]),
+    )
+
+    linhas = []
+    for nome, acc in ordenado:
+        saldo = acc["entrada"] - acc["saida"]
+        linhas.append(ft.DataRow(cells=[
+            ft.DataCell(ft.Text(nome, size=12)),
+            ft.DataCell(ft.Text(str(acc["n"]), size=12, color=ft.Colors.GREY_500)),
+            ft.DataCell(ft.Text(
+                _fmt_moeda(acc["entrada"]) if acc["entrada"] else "",
+                size=12, color=ft.Colors.GREEN_400,
+            )),
+            ft.DataCell(ft.Text(
+                _fmt_moeda(acc["saida"]) if acc["saida"] else "",
+                size=12, color=ft.Colors.RED_400,
+            )),
+            ft.DataCell(ft.Text(
+                _fmt_moeda(saldo), size=12,
+                weight=ft.FontWeight.BOLD,
+                color=ft.Colors.BLUE_300 if saldo >= 0 else ft.Colors.RED_300,
+            )),
+        ]))
+
+    return ft.Row(
+        scroll=ft.ScrollMode.AUTO,
+        controls=[
+            ft.DataTable(
+                columns=[
+                    ft.DataColumn(ft.Text("Categoria", size=12)),
+                    ft.DataColumn(ft.Text("Qtd",       size=12), numeric=True),
+                    ft.DataColumn(ft.Text("Entradas",  size=12), numeric=True),
+                    ft.DataColumn(ft.Text("Saídas",    size=12), numeric=True),
+                    ft.DataColumn(ft.Text("Saldo",     size=12), numeric=True),
+                ],
+                rows=linhas,
+                column_spacing=14,
+                border=ft.Border.all(1, ft.Colors.GREY_600),
+                border_radius=8,
+                horizontal_lines=ft.BorderSide(1, ft.Colors.GREY_600),
+            )
+        ],
+    )
 
 
 # ── View principal ────────────────────────────────────────────────────────────
@@ -216,13 +309,26 @@ def view(page: ft.Page) -> ft.Column:
 
     row_resumo_diario = ft.Row(spacing=12, wrap=True)
     col_conteudo_diario = ft.Column(spacing=8, expand=True)
+    col_categorias_diario = ft.Column(spacing=8)
     txt_perf_diario   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
+
+    dd_cat_diario = ft.Dropdown(
+        label="Categoria",
+        width=250,
+        value=_CAT_TODAS,
+        options=_opcoes_categoria(),
+        on_select=lambda e: _gerar_diario(),
+    )
 
     def _gerar_diario(e=None):
         _t0_total = time.perf_counter()
         iso = _data_br_para_iso(tf_data_diario.value)
         _state_diario["data"] = iso
-        lancamentos = database.fluxo_caixa_listar_lancamentos(iso, iso)
+        todos = database.fluxo_caixa_listar_lancamentos(iso, iso)
+
+        # Filtro de categoria: o extrato, os cards e o saldo acumulado passam a
+        # refletir apenas o recorte selecionado (não o dia inteiro).
+        lancamentos = _filtrar_por_categoria(todos, dd_cat_diario.value)
         _state_diario["lancamentos"] = [dict(r) for r in lancamentos]
 
         total_e = sum((r["entrada"] or 0.0) for r in lancamentos)
@@ -238,12 +344,17 @@ def view(page: ft.Page) -> ft.Column:
                          ft.Colors.GREY_500, moeda=False),
         ]
 
+        col_categorias_diario.controls = [
+            ft.Text("Resumo por Categoria", size=14, weight=ft.FontWeight.BOLD),
+            _resumo_por_categoria(lancamentos),
+        ]
+
         with_saldo = _calcular_saldo_acumulado(lancamentos)
 
         if not with_saldo:
             col_conteudo_diario.controls = [
                 ft.Text(
-                    "Sem lançamentos para a data selecionada.",
+                    "Sem lançamentos para a data/categoria selecionada.",
                     italic=True,
                     color=ft.Colors.GREY_500,
                 )
@@ -277,7 +388,7 @@ def view(page: ft.Page) -> ft.Column:
         caminho = os.path.join("exports", nome)
         with open(caminho, "w", newline="", encoding="utf-8-sig") as f:
             w = csv.writer(f)
-            w.writerow(["Data", "Hora", "Tipo", "Descrição", "Método",
+            w.writerow(["Data", "Hora", "Tipo", "Categoria", "Descrição", "Método",
                         "Entrada", "Saída", "Saldo"])
             saldo = 0.0
             for r in _state_diario["lancamentos"]:
@@ -286,6 +397,7 @@ def view(page: ft.Page) -> ft.Column:
                     r.get("data", ""),
                     r.get("hora", "") or "",
                     r.get("tipo", ""),
+                    r.get("categoria", "") or "",
                     r.get("descricao", "") or "",
                     r.get("metodo", "") or "",
                     f"{r.get('entrada') or 0.0:.2f}",
@@ -360,6 +472,7 @@ def view(page: ft.Page) -> ft.Column:
             controls=[
                 tf_data_diario,
                 btn_cal_diario,
+                dd_cat_diario,
                 btn_gerar_diario,
                 btn_exportar_diario,
                 ft.ElevatedButton(
@@ -397,6 +510,10 @@ def view(page: ft.Page) -> ft.Column:
             ft.Container(
                 content=row_resumo_diario,
                 padding=ft.Padding(top=8, bottom=8),
+            ),
+            ft.Container(
+                content=col_categorias_diario,
+                padding=ft.Padding(bottom=8),
             ),
             col_conteudo_diario,
         ],
@@ -465,7 +582,16 @@ def view(page: ft.Page) -> ft.Column:
 
     row_resumo_periodo = ft.Row(spacing=12, wrap=True)
     col_conteudo_periodo = ft.Column(spacing=8, expand=True)
+    col_categorias_periodo = ft.Column(spacing=8)
     txt_perf_periodo   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
+
+    dd_cat_periodo = ft.Dropdown(
+        label="Categoria",
+        width=250,
+        value=_CAT_TODAS,
+        options=_opcoes_categoria(),
+        on_select=lambda e: _gerar_periodo(),
+    )
 
     def _gerar_periodo(e=None):
         _t0_total = time.perf_counter()
@@ -474,7 +600,8 @@ def view(page: ft.Page) -> ft.Column:
         _state_periodo["ini"] = ini_iso
         _state_periodo["fim"] = fim_iso
 
-        lancamentos = database.fluxo_caixa_listar_lancamentos(ini_iso, fim_iso)
+        todos = database.fluxo_caixa_listar_lancamentos(ini_iso, fim_iso)
+        lancamentos = _filtrar_por_categoria(todos, dd_cat_periodo.value)
         _state_periodo["lancamentos"] = [dict(r) for r in lancamentos]
 
         total_e = sum((r["entrada"] or 0.0) for r in lancamentos)
@@ -490,10 +617,15 @@ def view(page: ft.Page) -> ft.Column:
                          ft.Colors.GREY_500, moeda=False),
         ]
 
+        col_categorias_periodo.controls = [
+            ft.Text("Resumo por Categoria", size=14, weight=ft.FontWeight.BOLD),
+            _resumo_por_categoria(lancamentos),
+        ]
+
         if not lancamentos:
             col_conteudo_periodo.controls = [
                 ft.Text(
-                    "Sem lançamentos no período selecionado.",
+                    "Sem lançamentos no período/categoria selecionado.",
                     italic=True,
                     color=ft.Colors.GREY_500,
                 )
@@ -513,10 +645,9 @@ def view(page: ft.Page) -> ft.Column:
                 rows.append(_linha_separador_data(data_atual))
             rows.append(_data_row(row, saldo))
 
-        N_COLUNAS = 7
         for i, row in enumerate(rows):
-            if len(row.cells) != N_COLUNAS:
-                print(f"[ERRO] Linha {i} tem {len(row.cells)} células, esperado {N_COLUNAS}")
+            if len(row.cells) != _N_COLUNAS:
+                print(f"[ERRO] Linha {i} tem {len(row.cells)} células, esperado {_N_COLUNAS}")
 
         col_conteudo_periodo.controls = [_construir_tabela(rows)]
         txt_perf_periodo.value = f"Total: {(time.perf_counter() - _t0_total)*1000:.0f}ms | {time.strftime('%H:%M:%S')}"
@@ -546,7 +677,7 @@ def view(page: ft.Page) -> ft.Column:
         caminho = os.path.join("exports", nome)
         with open(caminho, "w", newline="", encoding="utf-8-sig") as f:
             w = csv.writer(f)
-            w.writerow(["Data", "Hora", "Tipo", "Descrição", "Método",
+            w.writerow(["Data", "Hora", "Tipo", "Categoria", "Descrição", "Método",
                         "Entrada", "Saída", "Saldo"])
             saldo = 0.0
             for r in _state_periodo["lancamentos"]:
@@ -555,6 +686,7 @@ def view(page: ft.Page) -> ft.Column:
                     r.get("data", ""),
                     r.get("hora", "") or "",
                     r.get("tipo", ""),
+                    r.get("categoria", "") or "",
                     r.get("descricao", "") or "",
                     r.get("metodo", "") or "",
                     f"{r.get('entrada') or 0.0:.2f}",
@@ -631,6 +763,7 @@ def view(page: ft.Page) -> ft.Column:
                 btn_cal_ini,
                 tf_fim,
                 btn_cal_fim,
+                dd_cat_periodo,
                 btn_gerar_periodo,
                 btn_exportar_periodo,
                 ft.ElevatedButton(
@@ -668,6 +801,10 @@ def view(page: ft.Page) -> ft.Column:
             ft.Container(
                 content=row_resumo_periodo,
                 padding=ft.Padding(top=8, bottom=8),
+            ),
+            ft.Container(
+                content=col_categorias_periodo,
+                padding=ft.Padding(bottom=8),
             ),
             col_conteudo_periodo,
         ],

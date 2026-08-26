@@ -21,6 +21,11 @@ _perf_handler.setFormatter(logging.Formatter(
 ))
 _perf_logger.addHandler(_perf_handler)
 
+# ── Categorias de uso interno (criadas em _popular_dados_iniciais) ────────────
+# Referenciadas por nome no código; manter em sincronia com o banco.
+CATEGORIA_PAGAMENTO_FORNECEDOR = "Pagamento Fornecedor"
+CATEGORIA_FORNECEDOR_INFORMAL  = "Compra Fornecedor Informal"
+
 
 def _t(label: str):
     """Retorna um context manager que loga o tempo de execução do bloco."""
@@ -970,6 +975,27 @@ def _popular_dados_iniciais(conn: sqlite3.Connection):
            )"""
     )
 
+    # Categoria usada ao quitar boletos/parcelas de fornecedor (gera saída no caixa)
+    conn.execute(
+        """INSERT OR IGNORE INTO cad_categorias_extra (descricao, fluxo, usa_funcionario)
+           SELECT ?, 'SAIDA', 0
+           WHERE NOT EXISTS (
+               SELECT 1 FROM cad_categorias_extra WHERE descricao = ?
+           )""",
+        (CATEGORIA_PAGAMENTO_FORNECEDOR, CATEGORIA_PAGAMENTO_FORNECEDOR),
+    )
+
+    # Categoria genérica para "nota avulsa" de fornecedor informal (sacolão etc.),
+    # evitando que cada fornecedor informal vire uma categoria própria.
+    conn.execute(
+        """INSERT OR IGNORE INTO cad_categorias_extra (descricao, fluxo, usa_funcionario)
+           SELECT ?, 'SAIDA', 0
+           WHERE NOT EXISTS (
+               SELECT 1 FROM cad_categorias_extra WHERE descricao = ?
+           )""",
+        (CATEGORIA_FORNECEDOR_INFORMAL, CATEGORIA_FORNECEDOR_INFORMAL),
+    )
+
     # Plataformas de delivery com todas as configurações operacionais
     if _vazia("cad_plataformas"):
         conn.executemany(
@@ -1187,11 +1213,81 @@ def boleto_parcelas_listar(id_boleto: int) -> list:
         conn.close()
 
 
-def boleto_quitar(id_boleto: int, data_pago: str = None) -> bool:
+def _categoria_id(conn, descricao: str) -> int | None:
+    """
+    Id de uma categoria pela descrição, usando a conexão recebida.
+    Cria a categoria (SAIDA) se não existir — defensivo para bancos antigos.
+    """
+    row = conn.execute(
+        "SELECT id FROM cad_categorias_extra WHERE descricao = ?", (descricao,)
+    ).fetchone()
+    if row:
+        return row["id"]
+    cur = conn.execute(
+        """INSERT INTO cad_categorias_extra (descricao, fluxo, usa_funcionario)
+           VALUES (?, 'SAIDA', 0)""",
+        (descricao,),
+    )
+    return cur.lastrowid
+
+
+def _registrar_saida_boleto(conn, id_boleto: int, valor: float,
+                            data_pago: str, metodo: str = None) -> int | None:
+    """
+    Insere a movimentação de saída no caixa referente ao pagamento de um boleto,
+    usando a MESMA conexão/transação da quitação (atômico: ou grava os dois, ou
+    nenhum). Retorna o id da movimentação, ou None se não houver valor a lançar.
+    """
+    if not valor or valor <= 0:
+        return None
+
+    b = conn.execute(
+        """SELECT b.descricao, b.metodo_avista, f.nome AS nome_fornecedor
+           FROM cad_boletos b
+           JOIN cad_fornecedores f ON f.id = b.id_fornecedor
+           WHERE b.id = ?""",
+        (id_boleto,),
+    ).fetchone()
+    if not b:
+        return None
+
+    id_cat = _categoria_id(conn, CATEGORIA_PAGAMENTO_FORNECEDOR)
+    obs = f"Boleto #{id_boleto} — {b['nome_fornecedor']}: {b['descricao']}"
+
+    cur = conn.execute(
+        """INSERT INTO movimentacoes_extras
+           (data, id_pessoa, id_categoria, fluxo, metodo, valor, obs)
+           VALUES (?, NULL, ?, 'SAIDA', ?, ?, ?)""",
+        (data_pago, id_cat, metodo or b["metodo_avista"], valor, obs),
+    )
+    return cur.lastrowid
+
+
+def boleto_quitar(id_boleto: int, data_pago: str = None,
+                  metodo: str = None, valor_pago: float = None,
+                  registrar_caixa: bool = True) -> bool:
+    """
+    Quita todas as parcelas em aberto de um boleto e lança a saída no caixa.
+
+    O valor lançado é a soma das parcelas EM ABERTO (não o valor_total do
+    boleto), para não cobrar de novo o que já foi pago parcela a parcela.
+    `valor_pago` sobrescreve esse total quando o usuário ajusta o valor na
+    confirmação (desconto/juros) — a quitação em si não muda.
+    Retorna False se não havia nada em aberto (evita lançamento duplicado).
+    """
     from datetime import date as _date
     dp = data_pago or _date.today().isoformat()
     conn = conectar()
     try:
+        em_aberto = conn.execute(
+            """SELECT COALESCE(SUM(valor), 0) AS total, COUNT(*) AS qtd
+               FROM cad_boletos_parcelas
+               WHERE id_boleto = ? AND pago = 0""",
+            (id_boleto,),
+        ).fetchone()
+        if em_aberto["qtd"] == 0:
+            return False   # já estava totalmente quitado — nada a lançar
+
         conn.execute(
             "UPDATE cad_boletos SET status = 'PAGO' WHERE id = ?",
             (id_boleto,),
@@ -1202,35 +1298,50 @@ def boleto_quitar(id_boleto: int, data_pago: str = None) -> bool:
                WHERE id_boleto = ? AND pago = 0""",
             (dp, id_boleto),
         )
+        if registrar_caixa:
+            valor = valor_pago if valor_pago is not None else em_aberto["total"]
+            _registrar_saida_boleto(conn, id_boleto, valor, dp, metodo)
         conn.commit()
         return True
     finally:
         conn.close()
 
 
-def boleto_quitar_parcela(id_parcela: int, data_pago: str) -> bool:
+def boleto_quitar_parcela(id_parcela: int, data_pago: str,
+                          metodo: str = None, valor_pago: float = None,
+                          registrar_caixa: bool = True) -> bool:
+    """
+    Quita uma parcela específica e lança a saída correspondente no caixa.
+    Retorna False se a parcela não existe ou já estava paga (evita duplicar
+    o lançamento em caso de clique repetido).
+    """
     conn = conectar()
     try:
+        p = conn.execute(
+            "SELECT id_boleto, valor, pago FROM cad_boletos_parcelas WHERE id = ?",
+            (id_parcela,),
+        ).fetchone()
+        if not p or p["pago"]:
+            return False   # inexistente ou já paga — não lança de novo
+
+        id_boleto = p["id_boleto"]
         conn.execute(
             "UPDATE cad_boletos_parcelas SET pago = 1, data_pago = ? WHERE id = ?",
             (data_pago, id_parcela),
         )
-        # Verifica se todas as parcelas do boleto estão pagas
-        row = conn.execute(
-            """SELECT id_boleto FROM cad_boletos_parcelas WHERE id = ?""",
-            (id_parcela,),
-        ).fetchone()
-        if row:
-            id_boleto = row["id_boleto"]
-            em_aberto = conn.execute(
-                "SELECT COUNT(*) FROM cad_boletos_parcelas WHERE id_boleto = ? AND pago = 0",
+        # Se era a última em aberto, o boleto inteiro passa a PAGO
+        restantes = conn.execute(
+            "SELECT COUNT(*) FROM cad_boletos_parcelas WHERE id_boleto = ? AND pago = 0",
+            (id_boleto,),
+        ).fetchone()[0]
+        if restantes == 0:
+            conn.execute(
+                "UPDATE cad_boletos SET status = 'PAGO' WHERE id = ?",
                 (id_boleto,),
-            ).fetchone()[0]
-            if em_aberto == 0:
-                conn.execute(
-                    "UPDATE cad_boletos SET status = 'PAGO' WHERE id = ?",
-                    (id_boleto,),
-                )
+            )
+        if registrar_caixa:
+            valor = valor_pago if valor_pago is not None else p["valor"]
+            _registrar_saida_boleto(conn, id_boleto, valor, data_pago, metodo)
         conn.commit()
         return True
     finally:
@@ -1265,6 +1376,56 @@ def boletos_vencidos_hoje() -> list:
                ORDER BY bp.vencimento, f.nome""",
             (hoje,),
         ).fetchall()
+    finally:
+        conn.close()
+
+
+def boletos_parcelas_em_aberto(dias_frente: int = 30) -> list:
+    """
+    Parcelas em aberto de TODOS os fornecedores, para a visão consolidada de
+    contas a pagar (aging). Traz de vencidas até `dias_frente` dias à frente.
+
+    Cada linha ganha:
+      - dias_para_vencer: negativo = já venceu, 0 = vence hoje, positivo = a vencer
+      - faixa: 'VENCIDO' | 'HOJE' | 'ATE_7' | 'ATE_30' (ordem crescente de urgência
+        invertida — VENCIDO primeiro)
+    """
+    from datetime import date as _date, timedelta as _td
+    hoje    = _date.today()
+    limite  = (hoje + _td(days=dias_frente)).isoformat()
+    conn = conectar()
+    try:
+        rows = conn.execute(
+            """SELECT bp.id, bp.id_boleto, bp.num_parcela, bp.valor, bp.vencimento,
+                      b.id_fornecedor, b.descricao, b.tipo_pagamento, b.num_parcelas,
+                      f.nome AS nome_fornecedor
+               FROM cad_boletos_parcelas bp
+               JOIN cad_boletos b      ON b.id = bp.id_boleto
+               JOIN cad_fornecedores f ON f.id = b.id_fornecedor
+               WHERE bp.pago = 0
+                 AND bp.vencimento <= ?
+               ORDER BY bp.vencimento, f.nome, bp.num_parcela""",
+            (limite,),
+        ).fetchall()
+
+        resultado = []
+        for r in rows:
+            d = dict(r)
+            try:
+                dias = (_date.fromisoformat(r["vencimento"]) - hoje).days
+            except Exception:
+                dias = 0
+            d["dias_para_vencer"] = dias
+            if dias < 0:
+                d["faixa"] = "VENCIDO"
+            elif dias == 0:
+                d["faixa"] = "HOJE"
+            elif dias <= 7:
+                d["faixa"] = "ATE_7"
+            else:
+                d["faixa"] = "ATE_30"
+            resultado.append(d)
+        return resultado
     finally:
         conn.close()
 
@@ -2896,6 +3057,99 @@ def calcular_pagamento_entregadores_lote(data: str) -> dict:
         conn.close()
 
 
+def calcular_pagamento_entregadores_lote_periodo(data_inicio: str, data_fim: str) -> dict:
+    """
+    Agregados de entregas/dias com entrega/corridas extras/vales de TODAS as
+    pessoas num período, em 3 queries agregadas (GROUP BY) — substitui chamar
+    4 queries por pessoa em loop. Retorna {id_pessoa: {"total_entregas",
+    "soma_taxas", "dias_com_entrega", "corridas_extras", "vales"}}.
+    """
+    conn = conectar()
+    try:
+        entregas = {
+            r["id_operador"]: (r["qtd"], r["soma"], r["dias"])
+            for r in conn.execute(
+                """SELECT id_operador, COUNT(*) AS qtd,
+                          COALESCE(SUM(repasse_entregador), 0) AS soma,
+                          COUNT(DISTINCT data) AS dias
+                   FROM vendas_pedidos
+                   WHERE data BETWEEN ? AND ? AND repasse_entregador > 0
+                   GROUP BY id_operador""", (data_inicio, data_fim)
+            ).fetchall()
+        }
+        extras = {
+            r["id_pessoa"]: r["total"]
+            for r in conn.execute(
+                """SELECT me.id_pessoa, COALESCE(SUM(me.valor), 0) AS total
+                   FROM movimentacoes_extras me
+                   JOIN cad_categorias_extra ce ON ce.id = me.id_categoria
+                   WHERE me.data BETWEEN ? AND ? AND ce.descricao = 'Corrida Extra'
+                   GROUP BY me.id_pessoa""", (data_inicio, data_fim)
+            ).fetchall()
+        }
+        vales = {
+            r["id_pessoa"]: r["total"]
+            for r in conn.execute(
+                """SELECT me.id_pessoa, COALESCE(SUM(me.valor), 0) AS total
+                   FROM movimentacoes_extras me
+                   JOIN cad_categorias_extra ce ON ce.id = me.id_categoria
+                   WHERE me.data BETWEEN ? AND ? AND ce.descricao = 'Vale'
+                   GROUP BY me.id_pessoa""", (data_inicio, data_fim)
+            ).fetchall()
+        }
+        resultado = {}
+        for id_pessoa in set(entregas) | set(extras) | set(vales):
+            qtd, soma, dias = entregas.get(id_pessoa, (0, 0.0, 0))
+            resultado[id_pessoa] = {
+                "total_entregas":   qtd,
+                "soma_taxas":       soma,
+                "dias_com_entrega": dias,
+                "corridas_extras":  extras.get(id_pessoa, 0.0),
+                "vales":            vales.get(id_pessoa, 0.0),
+            }
+        return resultado
+    finally:
+        conn.close()
+
+
+def detalhamento_diario_entregadores_lote(data_inicio: str, data_fim: str) -> dict:
+    """
+    Detalhamento diário (entregas/repasses/taxas de cliente) de TODAS as
+    pessoas num período, já filtrando apenas canais com entregador próprio
+    (mesmo filtro usado para exibição diária), em uma única query agregada —
+    substitui uma query por pessoa em loop. Retorna
+    {id_pessoa: [{"data", "entregas", "repasses", "taxas_clientes"}, ...]}
+    ordenado por data.
+    """
+    conn = conectar()
+    try:
+        rows = conn.execute(
+            """SELECT p.id_operador, p.data,
+                      COUNT(*) AS entregas,
+                      COALESCE(SUM(p.repasse_entregador), 0) AS soma_repasses,
+                      COALESCE(SUM(p.taxa_entrega), 0) AS soma_taxas_clientes
+               FROM vendas_pedidos p
+               LEFT JOIN cad_canais c ON c.nome = p.canal
+               WHERE p.data BETWEEN ? AND ?
+                 AND p.repasse_entregador > 0
+                 AND COALESCE(c.entregador_plataforma, 0) = 0
+               GROUP BY p.id_operador, p.data
+               ORDER BY p.id_operador, p.data""",
+            (data_inicio, data_fim)
+        ).fetchall()
+        resultado = {}
+        for r in rows:
+            resultado.setdefault(r["id_operador"], []).append({
+                "data":           r["data"],
+                "entregas":       r["entregas"],
+                "repasses":       r["soma_repasses"],
+                "taxas_clientes": r["soma_taxas_clientes"],
+            })
+        return resultado
+    finally:
+        conn.close()
+
+
 # ══════════════════════════════════════════════
 #  CRUD — fiados
 # ══════════════════════════════════════════════
@@ -3048,7 +3302,14 @@ def fluxo_caixa_listar_lancamentos(data_inicio: str, data_fim: str) -> list:
     Inclui: troco inicial, vendas (pedidos), extras (exceto Pagamento) e
     movimentações de categoria Pagamento.
     Colunas: data, hora, seq, ref_id, tipo, descricao,
-             entrada, saida, metodo, canal, nome_pessoa
+             entrada, saida, metodo, canal, nome_pessoa,
+             categoria, id_categoria
+
+    `categoria` é o rótulo usado para agrupar/filtrar no Fluxo de Caixa:
+      - EXTRA/PAGAMENTO: a descrição real de cad_categorias_extra (com id_categoria).
+      - VENDA: categoria implícita 'Venda — <canal>' (id_categoria NULL, pois
+        vendas não têm vínculo com cad_categorias_extra).
+      - TROCO_INICIAL: NULL nas duas colunas (não tem categoria).
     """
     conn = conectar()
     try:
@@ -3069,7 +3330,9 @@ def fluxo_caixa_listar_lancamentos(data_inicio: str, data_fim: str) -> list:
                 0.0               AS saida,
                 'Dinheiro'        AS metodo,
                 NULL              AS canal,
-                NULL              AS nome_pessoa
+                NULL              AS nome_pessoa,
+                NULL              AS categoria,
+                NULL              AS id_categoria
             FROM fluxo_caixa_diario fcd
             WHERE fcd.data BETWEEN ? AND ?
 
@@ -3090,7 +3353,9 @@ def fluxo_caixa_listar_lancamentos(data_inicio: str, data_fim: str) -> list:
                 0.0                         AS saida,
                 NULL                        AS metodo,
                 p.canal                     AS canal,
-                NULL                        AS nome_pessoa
+                NULL                        AS nome_pessoa,
+                'Venda — ' || p.canal       AS categoria,
+                NULL                        AS id_categoria
             FROM vendas_pedidos p
             LEFT JOIN pag_count pc ON pc.id_pedido = p.id
             WHERE p.data BETWEEN ? AND ?
@@ -3108,7 +3373,9 @@ def fluxo_caixa_listar_lancamentos(data_inicio: str, data_fim: str) -> list:
                 CASE WHEN me.fluxo = 'SAIDA'   THEN me.valor ELSE 0.0 END AS saida,
                 me.metodo  AS metodo,
                 NULL       AS canal,
-                cp.nome    AS nome_pessoa
+                cp.nome    AS nome_pessoa,
+                ce.descricao   AS categoria,
+                me.id_categoria AS id_categoria
             FROM movimentacoes_extras me
             LEFT JOIN cad_categorias_extra ce ON ce.id = me.id_categoria
             LEFT JOIN cad_pessoas cp ON cp.id = me.id_pessoa
@@ -3128,7 +3395,9 @@ def fluxo_caixa_listar_lancamentos(data_inicio: str, data_fim: str) -> list:
                 CASE WHEN me.fluxo = 'SAIDA'   THEN me.valor ELSE 0.0 END AS saida,
                 me.metodo  AS metodo,
                 NULL       AS canal,
-                cp.nome    AS nome_pessoa
+                cp.nome    AS nome_pessoa,
+                ce.descricao   AS categoria,
+                me.id_categoria AS id_categoria
             FROM movimentacoes_extras me
             LEFT JOIN cad_categorias_extra ce ON ce.id = me.id_categoria
             LEFT JOIN cad_pessoas cp ON cp.id = me.id_pessoa

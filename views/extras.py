@@ -38,8 +38,60 @@ _CAT_CONFIG = {
     "Reentrega":     (True,  "ENTREGADOR", False, "NEUTRO"),
     "Fiado":         (False, None,         True,  None),
     "Pagamento":     (True,  "INTERNO",    True,  None),
+    # Nota avulsa de fornecedor informal (sacolão etc.): sem pessoa, com método
+    database.CATEGORIA_FORNECEDOR_INFORMAL: (False, None, True, None),
 }
 _CFG_DEFAULT = (True, "ALL", True, None)   # Outros / categorias não mapeadas
+
+# Categorias que exibem o campo "Fornecedor" (nota avulsa)
+_CATS_FORNECEDOR = {database.CATEGORIA_FORNECEDOR_INFORMAL}
+
+# O nome do fornecedor informal mora no próprio campo `obs` de
+# movimentacoes_extras, com este prefixo — evita coluna nova no schema.
+_PREFIXO_FORN = "Fornecedor: "
+_FORN_OUTRO   = "__OUTRO__"
+
+
+def _extrair_fornecedor(obs: str) -> tuple:
+    """'Fornecedor: X | resto' → ('X', 'resto'). Sem prefixo → ('', obs)."""
+    if not obs or not obs.startswith(_PREFIXO_FORN):
+        return "", (obs or "")
+    corpo = obs[len(_PREFIXO_FORN):]
+    if " | " in corpo:
+        nome, resto = corpo.split(" | ", 1)
+        return nome.strip(), resto.strip()
+    return corpo.strip(), ""
+
+
+def _montar_obs(fornecedor: str, obs: str):
+    """('X', 'resto') → 'Fornecedor: X | resto'. Sem fornecedor, devolve obs."""
+    fornecedor = (fornecedor or "").strip()
+    obs        = (obs or "").strip()
+    if not fornecedor:
+        return obs or None
+    return f"{_PREFIXO_FORN}{fornecedor} | {obs}" if obs else f"{_PREFIXO_FORN}{fornecedor}"
+
+
+# Nota de desconto acrescentada ao obs de "Consumo" — mesmo padrão de
+# extrair/remontar do fornecedor acima, para não duplicar ao reeditar.
+_SUFIXO_CONSUMO = "(desconto 20% aplicado no holerite)"
+
+
+def _extrair_obs_consumo(obs: str) -> str:
+    """Remove o sufixo de desconto do Consumo, se presente. Sem sufixo → obs."""
+    obs = (obs or "").strip()
+    if obs == _SUFIXO_CONSUMO:
+        return ""
+    sufixo_com_espaco = f" {_SUFIXO_CONSUMO}"
+    if obs.endswith(sufixo_com_espaco):
+        return obs[: -len(sufixo_com_espaco)].strip()
+    return obs
+
+
+def _montar_obs_consumo(obs: str) -> str:
+    """Acrescenta o sufixo de desconto ao texto-base do Consumo (idempotente)."""
+    obs = (obs or "").strip()
+    return f"{obs} {_SUFIXO_CONSUMO}" if obs else _SUFIXO_CONSUMO
 
 
 # ── View principal ────────────────────────────────────────────────────────────
@@ -153,6 +205,61 @@ def view(page: ft.Page) -> ft.Control:
     )
     linha_metodo = ft.Row([dd_metodo], visible=False)
 
+    # ── Fornecedor (nota avulsa) ──────────────────────────────────────────
+    # Aceita um fornecedor já cadastrado OU um nome digitado livremente,
+    # sem obrigar cadastro em cad_fornecedores.
+    tf_fornecedor_livre = ft.TextField(
+        label="Nome do fornecedor",
+        expand=True,
+        visible=False,
+    )
+
+    def _on_fornecedor_select(e=None):
+        tf_fornecedor_livre.visible = (dd_fornecedor.value == _FORN_OUTRO)
+        page.update()
+
+    dd_fornecedor = ft.Dropdown(
+        label="Fornecedor",
+        options=[
+            *[ft.dropdown.Option(key=f["nome"], text=f["nome"])
+              for f in database.fornecedor_listar(apenas_ativos=True)],
+            ft.dropdown.Option(key=_FORN_OUTRO, text="— Outro (digitar) —"),
+        ],
+        expand=True,
+        on_select=_on_fornecedor_select,
+    )
+    linha_fornecedor = ft.Column(
+        spacing=8,
+        visible=False,
+        controls=[
+            ft.Row([dd_fornecedor]),
+            ft.Row([tf_fornecedor_livre]),
+        ],
+    )
+
+    def _fornecedor_atual() -> str:
+        """Nome efetivo do fornecedor conforme o modo escolhido no dropdown."""
+        if dd_fornecedor.value == _FORN_OUTRO:
+            return (tf_fornecedor_livre.value or "").strip()
+        return (dd_fornecedor.value or "").strip()
+
+    def _set_fornecedor(nome: str):
+        """Preenche o dropdown/campo livre a partir de um nome já salvo."""
+        nome = (nome or "").strip()
+        cadastrados = {o.key for o in dd_fornecedor.options}
+        if nome and nome in cadastrados:
+            dd_fornecedor.value        = nome
+            tf_fornecedor_livre.value  = ""
+            tf_fornecedor_livre.visible = False
+        elif nome:
+            dd_fornecedor.value        = _FORN_OUTRO
+            tf_fornecedor_livre.value  = nome
+            tf_fornecedor_livre.visible = True
+        else:
+            dd_fornecedor.value        = None
+            tf_fornecedor_livre.value  = ""
+            tf_fornecedor_livre.visible = False
+
     tf_valor = ft.TextField(
         label="Valor (R$) *",
         keyboard_type=ft.KeyboardType.NUMBER,
@@ -209,9 +316,17 @@ def view(page: ft.Page) -> ft.Control:
                 dd_metodo.value      = m["metodo"] or None
                 linha_metodo.visible = mostra_metodo
                 tf_valor.value       = f"{m['valor']:.2f}"
-                tf_obs.value         = m["obs"] or ""
+                # Separa o fornecedor (nota avulsa) e/ou o sufixo de desconto
+                # do Consumo do restante da observação, para não duplicar ao
+                # salvar de novo.
+                _forn, _resto        = _extrair_fornecedor(m["obs"] or "")
+                linha_fornecedor.visible = nome in _CATS_FORNECEDOR
+                _set_fornecedor(_forn)
+                if nome == "Consumo":
+                    _resto = _extrair_obs_consumo(_resto)
+                tf_obs.value         = _resto
                 txt_erro.value       = ""
-                btn_salvar.text      = "Salvar Alteração"
+                btn_salvar.content   = "Salvar Alteração"
                 lbl_titulo_form.value = "Editando Movimentação"
                 page.update()
             return handler
@@ -338,6 +453,7 @@ def view(page: ft.Page) -> ft.Control:
         if not dd_categoria.value:
             linha_pessoa.visible = False
             linha_metodo.visible = False
+            linha_fornecedor.visible = False
             _estado["fluxo"]        = ""
             _estado["pessoa_obrig"] = False
             _estado["cat_nome"]     = ""
@@ -366,6 +482,11 @@ def view(page: ft.Page) -> ft.Control:
         dd_metodo.value      = None
         linha_metodo.visible = mostra_metodo
 
+        # Campo de fornecedor só nas categorias de nota avulsa
+        linha_fornecedor.visible = nome in _CATS_FORNECEDOR
+        if not linha_fornecedor.visible:
+            _set_fornecedor("")
+
         txt_erro.value = ""
         page.update()
 
@@ -390,11 +511,13 @@ def view(page: ft.Page) -> ft.Control:
         txt_erro.value       = ""
         linha_pessoa.visible = False
         linha_metodo.visible = False
+        linha_fornecedor.visible = False
+        _set_fornecedor("")
         _estado["fluxo"]        = ""
         _estado["pessoa_obrig"] = False
         _estado["cat_nome"]     = ""
         _editando_id["v"]        = None
-        btn_salvar.text          = "Salvar"
+        btn_salvar.content       = "Salvar"
         lbl_titulo_form.value    = "Nova Movimentação"
         tf_data.value = data_atual
 
@@ -429,8 +552,16 @@ def view(page: ft.Page) -> ft.Control:
 
         obs = tf_obs.value.strip() or None
         if cat_nome == "Consumo":
-            sufixo = "(desconto 20% aplicado no holerite)"
-            obs    = f"{obs} {sufixo}" if obs else sufixo
+            obs = _montar_obs_consumo(obs)
+
+        # Nota avulsa: o fornecedor vai embutido em obs, com prefixo
+        if cat_nome in _CATS_FORNECEDOR:
+            fornecedor = _fornecedor_atual()
+            if not fornecedor:
+                txt_erro.value = "Informe o fornecedor."
+                page.update()
+                return
+            obs = _montar_obs(fornecedor, obs or "")
 
         if _editando_id["v"] is not None:
             database.mov_extra_atualizar(
@@ -492,6 +623,7 @@ def view(page: ft.Page) -> ft.Control:
                         on_click=lambda e: (_atualizar_tabela(), page.update()),
                     )], spacing=8),
                     dd_categoria,
+                    linha_fornecedor,
                     linha_pessoa,
                     linha_metodo,
                     tf_valor,

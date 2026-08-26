@@ -7,7 +7,7 @@ import csv
 import logging
 import os
 import time
-from datetime import date
+from datetime import date, timedelta
 
 import flet as ft
 
@@ -38,6 +38,62 @@ MESES = [
 _NOME_MES = {n: nome for n, nome in MESES}
 
 _COR_FDS = ft.Colors.with_opacity(0.07, ft.Colors.BLUE)
+
+# Períodos menores que o mês, só para funcionários DIARIO ("salário flexível").
+# Cada um fica sempre contido no mês/ano selecionado (nunca cruza para o mês
+# seguinte/anterior) — evita ter que lidar com range cruzando mês na grade de
+# escala (Bloco 1, que continua sempre mensal) e nas datas de exportação.
+PERIODOS_DIARIO = [
+    ("MENSAL", "Mês inteiro"),
+    ("SEM1",   "Semana 1 (1-7)"),
+    ("SEM2",   "Semana 2 (8-14)"),
+    ("SEM3",   "Semana 3 (15-21)"),
+    ("SEM4",   "Semana 4/5 (22-fim)"),
+    ("QUINZ1", "Quinzena 1 (1-15)"),
+    ("QUINZ2", "Quinzena 2 (16-fim)"),
+]
+_DEFS_PERIODO = {
+    "SEM1":   lambda ud: (1, min(7, ud),   "Semana 1 (01-07)"),
+    "SEM2":   lambda ud: (8, min(14, ud),  "Semana 2 (08-14)"),
+    "SEM3":   lambda ud: (15, min(21, ud), "Semana 3 (15-21)"),
+    "SEM4":   lambda ud: (22, ud,          f"Semana 4/5 (22-{ud:02d})"),
+    "QUINZ1": lambda ud: (1, 15,           "Quinzena 1 (01-15)"),
+    "QUINZ2": lambda ud: (16, ud,          f"Quinzena 2 (16-{ud:02d})"),
+}
+
+
+def _range_periodo(periodo: str, ano: int, mes: int) -> tuple:
+    """
+    Calcula (data_ini_iso, data_fim_iso, mes_ano_txt, mes_ano_export) para o
+    período dentro do mês/ano informado.
+
+    "MENSAL" (ou qualquer chave desconhecida) retorna EXATAMENTE o que o
+    código calculava antes desta função existir — mês inteiro, mesmas duas
+    strings de texto — para não mudar nada no caminho mais usado (Mensal).
+
+    mes_ano_txt: texto humano usado na observação do pagamento registrado.
+    mes_ano_export: string curta usada em nome de arquivo (CSV) e título dos
+    relatórios (PDF/Excel) — mesmo papel que "mes_ano" tinha antes.
+    """
+    ultimo_dia = calendar.monthrange(ano, mes)[1]
+
+    def _iso(d):
+        return f"{ano:04d}-{mes:02d}-{d:02d}"
+
+    if periodo not in _DEFS_PERIODO:
+        return (
+            _iso(1), _iso(ultimo_dia),
+            f"{_NOME_MES[mes]} {ano}",
+            f"{mes:02d}/{ano}",
+        )
+
+    d_ini, d_fim, rotulo = _DEFS_PERIODO[periodo](ultimo_dia)
+    rotulo_curto = rotulo.split(" (")[0].replace(" ", "")
+    return (
+        _iso(d_ini), _iso(d_fim),
+        f"{rotulo} — {_NOME_MES[mes]}/{ano}",
+        f"{rotulo_curto}-{mes:02d}/{ano}",
+    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -154,6 +210,18 @@ def view(page: ft.Page) -> ft.Control:
         on_submit=_ao_mudar_filtro,
     )
 
+    # Só habilitado para funcionários DIARIO — _carregar() ajusta
+    # disabled/value a cada carga conforme o tipo_salario do selecionado.
+    dd_periodo = ft.Dropdown(
+        label="Período",
+        width=190,
+        value="MENSAL",
+        options=[
+            ft.dropdown.Option(key=k, text=t) for k, t in PERIODOS_DIARIO
+        ],
+        on_select=_ao_mudar_filtro,
+    )
+
     # ── DatePicker para seleção rápida de mês ─────────────────────────────
     def _on_date_picked(e):
         if e.control.value:
@@ -196,10 +264,16 @@ def view(page: ft.Page) -> ft.Control:
         if not func:
             return
 
-        ultimo_dia   = calendar.monthrange(ano, mes)[1]
-        data_ini_iso = f"{ano:04d}-{mes:02d}-01"
-        data_fim_iso = f"{ano:04d}-{mes:02d}-{ultimo_dia:02d}"
-        mes_ano_txt  = f"{_NOME_MES[mes]} {ano}"
+        # Período menor que o mês só faz sentido pra DIARIO (salário_base de
+        # FIXO é um valor mensal fixo — "quinzena" pagaria o mês inteiro).
+        tipo_sal_chk = func["tipo_salario"] or "FIXO"
+        dd_periodo.disabled = (tipo_sal_chk != "DIARIO")
+        if dd_periodo.disabled:
+            dd_periodo.value = "MENSAL"
+        periodo_sel = dd_periodo.value or "MENSAL"
+
+        data_ini_iso, data_fim_iso, mes_ano_txt, mes_ano_export = \
+            _range_periodo(periodo_sel, ano, mes)
 
         # Escala existente no período
         escalas    = database.escala_listar_por_pessoa(id_func, data_ini_iso, data_fim_iso)
@@ -352,7 +426,14 @@ def view(page: ft.Page) -> ft.Control:
             ).fetchone()
             id_cat_pagamento = row_cat_pag["id"] if row_cat_pag else None
 
-            # Verifica se salário do mês já foi registrado
+            # Verifica se salário do período já foi registrado.
+            # LIMITAÇÃO CONHECIDA: só olha se existe QUALQUER pagamento com
+            # data dentro do range atual — não sabe qual período exato aquele
+            # pagamento cobriu. Se o mesmo funcionário for pago ora Mensal,
+            # ora por Quinzena/Semana no mesmo mês, isso pode marcar um
+            # período como "já pago" incorretamente (ou vice-versa). Aceito
+            # como risco conhecido — não misturar periodicidade pro mesmo
+            # funcionário no mesmo mês.
             ja_pago = False
             if id_cat_pagamento:
                 row_chk = conn.execute(
@@ -395,7 +476,7 @@ def view(page: ft.Page) -> ft.Control:
 
         _holerite_dados.update({
             "funcionario":    func["nome"],
-            "mes_ano":        f"{mes:02d}/{ano}",
+            "mes_ano":        mes_ano_export,
             "desc_base":      desc_base,
             "base":           base,
             "dias_trabalhou": dias_trabalhou,
@@ -507,7 +588,7 @@ def view(page: ft.Page) -> ft.Control:
                 _carregar()   # recarrega (já chama page.update)
 
             btn_registrar = ft.ElevatedButton(
-                "Registrar Pagamento do Mês",
+                "Registrar Pagamento do Período",
                 icon=ft.Icons.PAYMENTS,
                 on_click=_registrar_pagamento_mes,
                 style=ft.ButtonStyle(
@@ -644,16 +725,20 @@ def view(page: ft.Page) -> ft.Control:
                 ],
             )
 
-            # Tabela de detalhamento por dia (todos os dias do mês no estilo tradicional)
+            # Tabela de detalhamento por dia (todos os dias do período no estilo tradicional)
             ponto_map = {det["data"]: det for det in resumo_pt["detalhes"]}
             linhas_ponto = []
             ponto_export_list = []
 
-            for d_num in range(1, ultimo_dia + 1):
-                data_iso = f"{ano:04d}-{mes:02d}-{d_num:02d}"
-                data_obj = date(ano, mes, d_num)
+            data_obj_ini    = date.fromisoformat(data_ini_iso)
+            data_obj_fim    = date.fromisoformat(data_fim_iso)
+            n_dias_periodo  = (data_obj_fim - data_obj_ini).days + 1
+
+            for _offset in range(n_dias_periodo):
+                data_obj = data_obj_ini + timedelta(days=_offset)
+                data_iso = data_obj.isoformat()
                 dia_sem_abr = DIA_SEMANA[data_obj.weekday()]
-                data_br = f"{d_num:02d}/{mes:02d} ({dia_sem_abr})"
+                data_br = f"{data_obj.day:02d}/{data_obj.month:02d} ({dia_sem_abr})"
 
                 det = ponto_map.get(data_iso)
                 tipo_esc = escala_map.get(data_iso)
@@ -773,7 +858,7 @@ def view(page: ft.Page) -> ft.Control:
             )
 
         bloco2 = _card(
-            "Holerite do Mês",
+            "Holerite do Período",
             *linhas_hol,
             ft.Row(spacing=12, controls=[
                 ft.ElevatedButton(
@@ -1015,7 +1100,7 @@ def view(page: ft.Page) -> ft.Control:
         spacing=16,
         controls=[
             ft.Row(
-                controls=[dd_funcionario, dd_mes, tf_ano, btn_calendario, btn_carregar, txt_perf],
+                controls=[dd_funcionario, dd_mes, tf_ano, dd_periodo, btn_calendario, btn_carregar, txt_perf],
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=8,
                 wrap=True,
