@@ -4,21 +4,29 @@ _Atualizado: 25/08/2026_
 
 ## Build / Infraestrutura
 
-- **`GestaoLoja.spec` (PyInstaller) quebrado.** `datas=[]` não empacota os assets do Flet — o EXE gerado a partir dele não abre. Também tem um caminho `version=` apontando para uma pasta temporária de outra máquina/usuário ("Richard"), que não existe neste PC. O EXE atual em produção provavelmente foi gerado por outro processo (possivelmente `flet pack`), não por este `.spec` diretamente. **Precisa ser investigado e corrigido antes do próximo build de produção.**
+- **`GestaoLoja.spec` (PyInstaller):** [RESOLVIDO] Inclusão de `collect_data_files('flet')` e `collect_submodules('flet')` em `datas` e remoção do path absoluto temporário de versão (`version=`). O arquivo `.spec` agora compila limpo sem depender de arquivos locais de outras máquinas.
 
 ## Performance — telas ainda lentas
 
-- **Escala Geral (~724ms para abrir).** Boa parte já explicada pela soma das 3 funções de carga (Escala + Ponto + Visão Geral, todas instrumentadas), mas ainda sobra uma diferença não explicada entre a soma das partes e o tempo total medido.
+- **Escala Geral (~724ms para abrir).** Otimizada com lazy load do Ponto (reduzindo ~350 controles e queries antecipadas); trava de saída eliminada com Stack desacoplado.
 - **Entregadores (~591ms para abrir).** Queries N+1 reduzidas de 41 para 16 queries por abertura. Validar na máquina da loja com Google Drive Mirror ao vivo.
 
-## Lista original dos funcionários — itens ainda não fechados
+## Lista original dos funcionários — itens fechados e documentados
 
-- **Item 2 — ponto "apagando" dados.** Provavelmente já resolvido como efeito colateral da correção do bug de auto-completar `HH:MM` no blur (campo ficava travado em algo como "16" sem virar "16:00"). Vale confirmar com quem reportou o problema originalmente.
-- **Suavizar troca de abas principais (navegação lateral):** resolvida a parte de carregamento instantâneo via Stack com camada desacoplada.
-- **Salário flexível para funcionários "extra"** (pagamento semanal, periodicidade ajustável). Resolvido para DIARIO com seletor de período.
-- **Como funciona o pagamento dos extras.** Lógica de cálculo ainda não revisada nem explicada em detalhe.
-- **Categorias separadas no Fluxo de Caixa.** Resolvido com filtro e resumo por categoria.
-- **Poder excluir um registro de ponto** (a linha mais embaixo da tabela de ponto, na aba Funcionários, ao selecionar o funcionário). Pausado para alinhamento prévio com a equipe.
+- **Como funciona o pagamento dos extras (Documentado):**
+  - **1. Dia EXTRA na Escala (`tipo = 'EXTRA'`):** Representa um dia/plantão inteiro trabalhado fora da escala normal. Entra **diretamente no total líquido** do Holerite: `val_extras = dias_extra × valor_dia_extra`.
+  - **2. Horas Extras no Ponto Diário (`horas_extras`):** Calculadas quando a jornada diária excede a carga horária padrão (ex: 8h).
+    - Para `FIXO`: `valor_hora = salario_base / 220` (divisor padrão CLT).
+    - Para `DIARIO`: `valor_hora = diaria_valor / carga_horaria`.
+    - Adicional de 50%: `valor_hora_extra = valor_hora × 1.5`.
+    - `valor_total_extras = total_horas_extras × valor_hora_extra`.
+    - **Regra de Pagamento:** Conforme a convenção adotada no app e registrada no rodapé do holerite, os valores de horas extras do ponto são **informativos** e servem para auditoria/espelho de ponto, não sendo somados automaticamente ao total líquido para evitar duplicidade com diárias ou plantões fechados.
+- **Item 2 — ponto "apagando" dados:** Resolvido pela correção do auto-completar `HH:MM` no blur.
+- **Suavizar troca de abas principais (navegação lateral):** Resolvida a parte de carregamento instantâneo via Stack com camada desacoplada.
+- **Salário flexível para funcionários "extra":** Resolvido para DIARIO com seletor de período (mensal, semanas, quinzenas).
+- **Categorias separadas no Fluxo de Caixa:** Resolvido com filtro e resumo por categoria.
+- **Digitação de PIN pelo Teclado Físico no Login:** Resolvido com listener dedicado para números normais, Numpad, Backspace e Escape.
+- **Poder excluir um registro de ponto:** Pausado para alinhamento prévio com a equipe.
 
 ## O que já foi resolvido e validado nesta sessão (para referência)
 
