@@ -539,58 +539,96 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
         ),
     )
 
-    # ── Menu lateral customizado ──────────────────────────────────────────
-    menu_col = ft.Column(spacing=2, scroll=ft.ScrollMode.AUTO, expand=False)
+    # ── Menu lateral retrátil e customizado ─────────────────────────────
+    _menu_expandido = {"v": database.config_obter("menu_expandido", "0") == "1"}
+    menu_col = ft.Column(spacing=3, scroll=ft.ScrollMode.AUTO, expand=True)
+
+    def _toggle_menu(_e=None):
+        _menu_expandido["v"] = not _menu_expandido["v"]
+        try:
+            database.config_definir("menu_expandido", "1" if _menu_expandido["v"] else "0")
+        except Exception:
+            pass
+        _atualizar_estrutura_menu()
+
+    btn_toggle_menu = ft.IconButton(
+        icon=ft.Icons.MENU,
+        icon_size=18,
+        tooltip="Expandir menu" if not _menu_expandido["v"] else "Recolher menu",
+        on_click=_toggle_menu,
+    )
+
+    menu_header = ft.Container(
+        padding=ft.Padding(left=4, right=4, top=2, bottom=2),
+        content=btn_toggle_menu,
+    )
 
     def _build_menu():
+        expandido = _menu_expandido["v"]
         menu_col.controls.clear()
+
+        # Botão de alternância no topo da barra lateral
+        if expandido:
+            btn_toggle_menu.icon = ft.Icons.KEYBOARD_DOUBLE_ARROW_LEFT
+            btn_toggle_menu.tooltip = "Recolher menu"
+            menu_header.content = ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                controls=[
+                    ft.Text("Menu", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_400),
+                    btn_toggle_menu,
+                ],
+            )
+        else:
+            btn_toggle_menu.icon = ft.Icons.MENU
+            btn_toggle_menu.tooltip = "Expandir menu"
+            menu_header.content = ft.Row(
+                alignment=ft.MainAxisAlignment.CENTER,
+                controls=[btn_toggle_menu],
+            )
+
         for i, t in enumerate(telas_perm):
             selecionado = (i == _idx_selecionado["v"])
+            cor_destaque = ft.Colors.INDIGO_300 if selecionado else ft.Colors.GREY_400
+            bg_cor = ft.Colors.with_opacity(0.18, ft.Colors.INDIGO_400) if selecionado else ft.Colors.TRANSPARENT
+
+            if expandido:
+                item_content = ft.Row(
+                    spacing=10,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Icon(t["icon"], size=18, color=cor_destaque),
+                        ft.Text(
+                            t["label"],
+                            size=12,
+                            color=ft.Colors.INDIGO_200 if selecionado else ft.Colors.GREY_300,
+                            weight=ft.FontWeight.BOLD if selecionado else ft.FontWeight.NORMAL,
+                            no_wrap=True,
+                        ),
+                    ],
+                )
+                padding = ft.Padding(left=10, right=10, top=7, bottom=7)
+            else:
+                item_content = ft.Container(
+                    alignment=ft.Alignment(0, 0),
+                    content=ft.Icon(t["icon"], size=20, color=cor_destaque),
+                )
+                padding = ft.Padding(left=4, right=4, top=7, bottom=7)
+
             menu_col.controls.append(
                 ft.Container(
-                    width=110,
                     border_radius=8,
                     ink=True,
                     tooltip=t["label"],
-                    bgcolor=(
-                        ft.Colors.with_opacity(0.18, ft.Colors.INDIGO_400)
-                        if selecionado
-                        else ft.Colors.TRANSPARENT
-                    ),
-                    padding=ft.Padding(left=6, right=6, top=10, bottom=10),
+                    bgcolor=bg_cor,
+                    padding=padding,
                     on_click=_make_nav_handler(i),
-                    content=ft.Column(
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=2,
-                        controls=[
-                            ft.Icon(
-                                t["icon"],
-                                size=20,
-                                color=(
-                                    ft.Colors.INDIGO_300
-                                    if selecionado
-                                    else ft.Colors.GREY_400
-                                ),
-                            ),
-                            ft.Text(
-                                t["label"],
-                                size=10,
-                                text_align=ft.TextAlign.CENTER,
-                                color=(
-                                    ft.Colors.INDIGO_200
-                                    if selecionado
-                                    else ft.Colors.GREY_400
-                                ),
-                                weight=(
-                                    ft.FontWeight.BOLD
-                                    if selecionado
-                                    else ft.FontWeight.NORMAL
-                                ),
-                            ),
-                        ],
-                    ),
+                    content=item_content,
                 )
             )
+
+    def _atualizar_estrutura_menu():
+        menu_wrapper.width = 180 if _menu_expandido["v"] else 58
+        _build_menu()
         page.update()
 
     def _make_nav_handler(idx):
@@ -601,11 +639,40 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
         return handler
 
     menu_wrapper = ft.Container(
-        width=110,
+        width=180 if _menu_expandido["v"] else 58,
         expand=False,
-        padding=ft.Padding(top=8, bottom=8, left=4, right=4),
-        content=menu_col,
+        padding=ft.Padding(top=4, bottom=8, left=4, right=4),
+        content=ft.Column(
+            spacing=4,
+            expand=True,
+            controls=[
+                menu_header,
+                ft.Divider(height=1, color=ft.Colors.with_opacity(0.12, ft.Colors.WHITE)),
+                menu_col,
+            ],
+        ),
     )
+
+    def navegar_para(destino):
+        """
+        Navega para uma tela por índice (int) ou por rótulo (str, case-insensitive).
+        Ex: page.navegar("PDV"), page.navegar("Fluxo de Caixa"), page.navegar("Fornecedores").
+        """
+        if isinstance(destino, int):
+            idx = destino
+        else:
+            destino_norm = str(destino).strip().lower()
+            idx = None
+            for i, t in enumerate(telas_perm):
+                if t["label"].strip().lower() == destino_norm:
+                    idx = i
+                    break
+        if idx is not None and 0 <= idx < len(telas_perm):
+            _idx_selecionado["v"] = idx
+            _build_menu()
+            carregar_view(idx)
+
+    page.navegar = navegar_para
 
     def carregar_view(indice: int):
         """
