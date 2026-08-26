@@ -249,10 +249,13 @@ def view(page: ft.Page) -> ft.Control:
     def _obter_equipe_interna():
         """Retorna apenas colaboradores internos ativos que batem ponto (exclui entregadores)."""
         todas = database.pessoa_listar(apenas_ativos=True)
-        return [
-            p for p in sorted(todas, key=lambda x: (0 if x["tipo"] == "INTERNO" else 1, x["nome"]))
-            if p.get("tipo") != "ENTREGADOR" and p.get("aparece_no_ponto", 1)
-        ]
+        resultado = []
+        for p in todas:
+            tipo = p["tipo"] if "tipo" in p.keys() else ""
+            aparece = bool(p["aparece_no_ponto"]) if "aparece_no_ponto" in p.keys() else True
+            if tipo != "ENTREGADOR" and aparece:
+                resultado.append(p)
+        return sorted(resultado, key=lambda x: (0 if x["tipo"] == "INTERNO" else 1, x["nome"]))
 
     modal_presenca_col = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO)
 
