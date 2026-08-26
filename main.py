@@ -117,10 +117,26 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
     # "indice_ativo" evita disparar duas construções para o mesmo índice.
     _carregamento    = {"geracao": 0, "indice_ativo": None}
 
-    # ── Área de conteúdo (direita) ────────────────────────────────────────
+    # ── Área de conteúdo (direita com Stack para transição instantânea) ───
+    camada_view = ft.Container(expand=True)
+    camada_loading = ft.Container(
+        expand=True,
+        alignment=ft.Alignment(0, 0),
+        content=ft.Column(
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[ft.ProgressRing(), ft.Text("Carregando...")],
+            tight=True,
+        ),
+        visible=False,
+    )
     area_conteudo = ft.Container(
         expand=True,
         padding=ft.Padding.all(24),
+        content=ft.Stack(
+            expand=True,
+            controls=[camada_view, camada_loading],
+        ),
     )
 
     # ── Barra de status ────────────────────────────────────────────────────
@@ -593,9 +609,9 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
 
     def carregar_view(indice: int):
         """
-        Mostra um indicador de carregamento imediatamente e instancia a view
-        selecionada em uma thread separada, trocando area_conteudo.content
-        pelo resultado quando a construção terminar.
+        Mostra um indicador de carregamento imediatamente sobrepondo a camada_loading
+        e instancia a view selecionada em uma thread separada, trocando camada_view.content
+        pelo resultado quando a construção terminar sem travar a UI na saída da tela anterior.
         """
         if _carregamento["indice_ativo"] == indice:
             return  # já há uma construção em andamento para este mesmo índice
@@ -610,11 +626,9 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
         minha_geracao = _carregamento["geracao"]
         _carregamento["indice_ativo"] = indice
 
-        area_conteudo.content = ft.Column(
-            alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[ft.ProgressRing(), ft.Text("Carregando...")],
-        )
+        # Ativa o indicador de carregamento instantaneamente na camada superior
+        # sem destruir os controles da tela anterior ainda (elimina a trava de saída)
+        camada_loading.visible = True
         page.update()
 
         def _construir():
@@ -633,6 +647,8 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
             if minha_geracao != _carregamento["geracao"]:
                 return  # uma navegação mais recente já assumiu a tela
 
+            camada_loading.visible = False
+
             if exc is not None:
                 def _tentar_novamente(e, _idx=indice):
                     carregar_view(_idx)
@@ -643,7 +659,7 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
                     carregar_view(0)
                     page.update()
 
-                area_conteudo.content = ft.Column(controls=[
+                camada_view.content = ft.Column(controls=[
                     ft.Text("Erro ao carregar tela:", size=16,
                             weight=ft.FontWeight.BOLD, color=ft.Colors.RED_400),
                     ft.Text(str(exc), color=ft.Colors.RED_300, selectable=True),
@@ -661,7 +677,7 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
                     ]),
                 ])
             else:
-                area_conteudo.content = resultado
+                camada_view.content = resultado
 
             page.update()
             _ms = (time.perf_counter() - _t0) * 1000

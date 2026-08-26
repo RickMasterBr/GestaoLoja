@@ -1076,13 +1076,9 @@ def view(page: ft.Page) -> ft.Control:
     btn_escala.on_click = _mostrar_escala
     btn_ponto.on_click  = _mostrar_ponto
 
-    # Carrega a grade do mês atual ao abrir a tela
+    # Carrega a grade do mês atual ao abrir a tela (Ponto é carregado sob demanda
+    # apenas se o usuário clicar no botão "Ponto", poupando ~350 controles na árvore)
     _carregar_escala()
-
-    # Carrega tambem a tabela de Ponto do dia atual, mesmo padrao da Escala.
-    # Assim a secao Ponto ja aparece preenchida na 1a vez que o usuario clica
-    # nela, sem precisar apertar Carregar.
-    _carregar_ponto()
 
     # ── Layout ─────────────────────────────────────────────────────────────────
 
