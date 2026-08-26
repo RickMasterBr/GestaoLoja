@@ -43,7 +43,7 @@ def view(page: ft.Page, on_login_success) -> ft.Control:
     # ── Textos da fase PIN ────────────────────────────────────────────────
     txt_ola     = ft.Text("", size=18, weight=ft.FontWeight.BOLD,
                           text_align=ft.TextAlign.CENTER)
-    txt_instruc = ft.Text("Digite seu PIN:", size=13, color=ft.Colors.GREY_500,
+    txt_instruc = ft.Text("Digite seu PIN (use o teclado ou a tela):", size=13, color=ft.Colors.GREY_500,
                           text_align=ft.TextAlign.CENTER)
     txt_erro    = ft.Text("", color=ft.Colors.RED_400, size=13,
                           text_align=ft.TextAlign.CENTER, visible=False)
@@ -52,6 +52,7 @@ def view(page: ft.Page, on_login_success) -> ft.Control:
     def _verificar():
         pin_str = "".join(_pin_atual)
         if database.usuario_autenticar(_sel["id"], pin_str):
+            page.on_keyboard_event = None
             database.sessao_iniciar(_sel["id"], _sel["nome"], _sel["perfil"])
             on_login_success(_sel["perfil"])
         else:
@@ -68,25 +69,53 @@ def view(page: ft.Page, on_login_success) -> ft.Control:
 
             threading.Timer(2.0, _limpar_erro).start()
 
-    # ── Teclado numérico ──────────────────────────────────────────────────
-    def _digitar(d: str):
-        def handler(e):
-            if len(_pin_atual) >= 4:
-                return
-            _pin_atual.append(d)
-            _atualizar_display()
-            txt_erro.visible = False
-            page.update()
-            if len(_pin_atual) == 4:
-                _verificar()
-        return handler
+    # ── Entrada de PIN (teclado físico ou botões) ──────────────────────────
+    def _inserir_digito(d: str):
+        if len(_pin_atual) >= 4:
+            return
+        _pin_atual.append(d)
+        _atualizar_display()
+        txt_erro.visible = False
+        page.update()
+        if len(_pin_atual) == 4:
+            _verificar()
 
-    def _apagar(e):
+    def _apagar_digito():
         if _pin_atual:
             _pin_atual.pop()
             _atualizar_display()
             txt_erro.visible = False
             page.update()
+
+    def _digitar(d: str):
+        return lambda e: _inserir_digito(d)
+
+    def _apagar(e):
+        _apagar_digito()
+
+    def _ao_teclado(e: ft.KeyboardEvent):
+        if not fase_pin.visible:
+            return
+        k = e.key
+        if not k:
+            return
+
+        digito = None
+        if k.startswith("Numpad ") and k[7:] in "0123456789":
+            digito = k[7:]
+        elif k.startswith("Numpad") and k[6:] in "0123456789":
+            digito = k[6:]
+        elif k in "0123456789":
+            digito = k
+
+        if digito is not None:
+            _inserir_digito(digito)
+        elif k == "Backspace":
+            _apagar_digito()
+        elif k == "Escape":
+            _voltar(None)
+
+    page.on_keyboard_event = _ao_teclado
 
     def _btn_n(label: str) -> ft.ElevatedButton:
         return ft.ElevatedButton(
@@ -194,6 +223,7 @@ def view(page: ft.Page, on_login_success) -> ft.Control:
         )
     else:
         def _entrar_sem_auth(e):
+            page.on_keyboard_event = None
             database.sessao_iniciar(0, "Administrador", "ADMIN")
             on_login_success("ADMIN")
 
