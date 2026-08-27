@@ -1,11 +1,18 @@
 """
-views/extras.py — Movimentações: Vale, Sangria, Consumo, Corrida Extra,
-                  Reentrega, Fiado, Pagamento, Outros.
+views/extras.py — Movimentações de Caixa (Entradas, Saídas, Neutros e Quitação de Boletos)
+
+Reestruturação completa da Fase 3:
+- Seletor de fluxo superior [SAÍDA] / [ENTRADA] / [PAGAR BOLETO].
+- Subtipos canônicos filtrados por ativo=1 e permissão de perfil (sessao_tem_acesso).
+- Campos dinâmicos: Funcionário/Entregador (usa_funcionario=1), Fornecedor (usa_fornecedor=1), Método de Pagamento.
+- Quitação rápida de boletos e duplicatas integrada na operação de caixa.
+- Gravação estrita do fluxo da categoria (categoria['fluxo']) preservando NEUTRO.
+- Formatação de valor 150 -> 150,00 (centavos por último).
+- Rastreabilidade bidirecional e estorno atômico.
 """
 
 import flet as ft
-from datetime import date
-
+from datetime import date, datetime
 import database
 
 
@@ -26,59 +33,19 @@ def _data_br_para_iso(data_br: str) -> str:
         return date.today().isoformat()
 
 
-# Configuração por nome de categoria:
-# (mostra_pessoa, tipo_pessoa, mostra_metodo, fluxo_override)
-# tipo_pessoa: "INTERNO" | "ENTREGADOR" | "ALL" | None
-_CAT_CONFIG = {
-    "Vale":          (True,  "INTERNO",    True,  None),
-    "Adiantamento":  (True,  "INTERNO",    True,  None),
-    "Sangria":       (False, None,         False, None),
-    "Consumo":       (True,  "INTERNO",    False, None),
-    "Corrida Extra": (True,  "ENTREGADOR", False, "NEUTRO"),
-    "Reentrega":     (True,  "ENTREGADOR", False, "NEUTRO"),
-    "Fiado":         (False, None,         True,  None),
-    "Pagamento":     (True,  "INTERNO",    True,  None),
-    # Nota avulsa de fornecedor informal (sacolão etc.): sem pessoa, com método
-    database.CATEGORIA_FORNECEDOR_INFORMAL: (False, None, True, None),
-}
-_CFG_DEFAULT = (True, "ALL", True, None)   # Outros / categorias não mapeadas
-
-# Categorias que exibem o campo "Fornecedor" (nota avulsa)
-_CATS_FORNECEDOR = {database.CATEGORIA_FORNECEDOR_INFORMAL}
-
-# O nome do fornecedor informal mora no próprio campo `obs` de
-# movimentacoes_extras, com este prefixo — evita coluna nova no schema.
-_PREFIXO_FORN = "Fornecedor: "
-_FORN_OUTRO   = "__OUTRO__"
+def _data_iso_para_br(data_iso: str) -> str:
+    try:
+        a, m, d = data_iso.strip().split("-")
+        return f"{d}/{m}/{a}"
+    except Exception:
+        return date.today().strftime("%d/%m/%Y")
 
 
-def _extrair_fornecedor(obs: str) -> tuple:
-    """'Fornecedor: X | resto' → ('X', 'resto'). Sem prefixo → ('', obs)."""
-    if not obs or not obs.startswith(_PREFIXO_FORN):
-        return "", (obs or "")
-    corpo = obs[len(_PREFIXO_FORN):]
-    if " | " in corpo:
-        nome, resto = corpo.split(" | ", 1)
-        return nome.strip(), resto.strip()
-    return corpo.strip(), ""
-
-
-def _montar_obs(fornecedor: str, obs: str):
-    """('X', 'resto') → 'Fornecedor: X | resto'. Sem fornecedor, devolve obs."""
-    fornecedor = (fornecedor or "").strip()
-    obs        = (obs or "").strip()
-    if not fornecedor:
-        return obs or None
-    return f"{_PREFIXO_FORN}{fornecedor} | {obs}" if obs else f"{_PREFIXO_FORN}{fornecedor}"
-
-
-# Nota de desconto acrescentada ao obs de "Consumo" — mesmo padrão de
-# extrair/remontar do fornecedor acima, para não duplicar ao reeditar.
 _SUFIXO_CONSUMO = "(desconto 20% aplicado no holerite)"
 
 
 def _extrair_obs_consumo(obs: str) -> str:
-    """Remove o sufixo de desconto do Consumo, se presente. Sem sufixo → obs."""
+    """Remove o sufixo de desconto do Consumo, se presente."""
     obs = (obs or "").strip()
     if obs == _SUFIXO_CONSUMO:
         return ""
@@ -94,14 +61,12 @@ def _montar_obs_consumo(obs: str) -> str:
     return f"{obs} {_SUFIXO_CONSUMO}" if obs else _SUFIXO_CONSUMO
 
 
-# ── View principal ────────────────────────────────────────────────────────────
-
-def _fechar(e, dlg, page):
+def _fechar_dlg(dlg, page):
     dlg.open = False
     page.update()
 
 
-def _confirmar_exclusao(page, descricao: str, on_confirmar) -> None:
+def _confirmar_exclusao(page: ft.Page, descricao: str, on_confirmar) -> None:
     """Abre um AlertDialog pedindo confirmação antes de excluir."""
     dlg = ft.AlertDialog(
         modal=True,
@@ -110,11 +75,10 @@ def _confirmar_exclusao(page, descricao: str, on_confirmar) -> None:
             f"Deseja excluir {descricao}? Esta ação não pode ser desfeita."
         ),
         actions=[
-            ft.TextButton("Cancelar",
-                          on_click=lambda e: _fechar(e, dlg, page)),
+            ft.TextButton("Cancelar", on_click=lambda e: _fechar_dlg(dlg, page)),
             ft.ElevatedButton(
                 "Excluir",
-                on_click=lambda e: (_fechar(e, dlg, page), on_confirmar()),
+                on_click=lambda e: (_fechar_dlg(dlg, page), on_confirmar()),
                 style=ft.ButtonStyle(
                     bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE,
                 ),
@@ -127,37 +91,204 @@ def _confirmar_exclusao(page, descricao: str, on_confirmar) -> None:
     page.update()
 
 
+# ── Modal de Cadastro Rápido de Fornecedor ────────────────────────────────────
+
+def _dialogo_novo_fornecedor(page: ft.Page, on_salvo, tipo_sugerido: str = "PRODUTO"):
+    """Modal rápido para cadastrar um novo fornecedor sem sair do caixa."""
+    tf_nome = ft.TextField(label="Nome do Fornecedor / Razão Social *", autofocus=True, expand=True)
+    tf_telefone = ft.TextField(label="Telefone / WhatsApp", width=200)
+    dd_tipo = ft.Dropdown(
+        label="Tipo *",
+        width=180,
+        value=tipo_sugerido,
+        options=[
+            ft.dropdown.Option("PRODUTO", "Produto / Insumos"),
+            ft.dropdown.Option("SERVICO", "Prestador de Serviço"),
+            ft.dropdown.Option("OUTRO", "Outro"),
+        ],
+    )
+    txt_erro_forn = ft.Text("", color=ft.Colors.RED_400, size=12)
+
+    def _salvar_forn(e):
+        nome = (tf_nome.value or "").strip()
+        if not nome:
+            txt_erro_forn.value = "Informe o nome do fornecedor."
+            page.update()
+            return
+        try:
+            id_novo = database.fornecedor_inserir(
+                nome=nome,
+                telefone=tf_telefone.value.strip() or None,
+            )
+            # Atualiza o tipo se diferente de PRODUTO
+            tipo_sel = dd_tipo.value or "PRODUTO"
+            if tipo_sel != "PRODUTO":
+                database.fornecedor_atualizar(id_novo, tipo=tipo_sel)
+
+            _fechar_dlg(dlg, page)
+            on_salvo(id_novo, nome)
+        except Exception as ex:
+            txt_erro_forn.value = f"Erro ao salvar: {ex}"
+            page.update()
+
+    dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Cadastrar Novo Fornecedor"),
+        content=ft.Column(
+            tight=True,
+            width=500,
+            spacing=12,
+            controls=[
+                ft.Text("Preencha os dados básicos do fornecedor:", size=13, color=ft.Colors.GREY_400),
+                tf_nome,
+                ft.Row([tf_telefone, dd_tipo], spacing=10),
+                txt_erro_forn,
+            ],
+        ),
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: _fechar_dlg(dlg, page)),
+            ft.ElevatedButton(
+                "Salvar Fornecedor",
+                on_click=_salvar_forn,
+                style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_700, color=ft.Colors.WHITE),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg)
+    dlg.open = True
+    page.update()
+
+
+# ── Modal de Quitação de Parcela de Boleto ─────────────────────────────────────
+
+def _dialogo_quitar_parcela(page: ft.Page, parcela: dict, on_sucesso) -> None:
+    """Modal para confirmação de pagamento de parcela de boleto/conta."""
+    hoje_str = date.today().strftime("%d/%m/%Y")
+    tf_data_pag = ft.TextField(
+        label="Data do Pagamento",
+        value=hoje_str,
+        width=150,
+        text_align=ft.TextAlign.CENTER,
+    )
+    tf_valor_pag = ft.TextField(
+        label="Valor Pago (R$) *",
+        value=f"{parcela['valor']:.2f}".replace(".", ","),
+        width=170,
+        keyboard_type=ft.KeyboardType.NUMBER,
+    )
+    metodos = database.metodo_pag_listar()
+    dd_metodo_pag = ft.Dropdown(
+        label="Método de Pagamento",
+        width=200,
+        value="Dinheiro",
+        options=[ft.dropdown.Option(m["nome"]) for m in metodos],
+    )
+    txt_erro_pag = ft.Text("", color=ft.Colors.RED_400, size=12)
+
+    def _confirmar(e):
+        data_iso = _data_br_para_iso(tf_data_pag.value)
+        val = _to_float(tf_valor_pag.value)
+        if val <= 0:
+            txt_erro_pag.value = "Informe um valor válido."
+            page.update()
+            return
+        metodo = dd_metodo_pag.value or "Dinheiro"
+
+        try:
+            ok = database.boleto_quitar_parcela(
+                id_parcela=parcela["id"],
+                data_pago=data_iso,
+                metodo=metodo,
+                valor_pago=val,
+                registrar_caixa=True,
+            )
+            if ok:
+                _fechar_dlg(dlg, page)
+                on_sucesso(f"Parcela #{parcela['id']} ({parcela['nome_fornecedor']}) quitada com sucesso!")
+            else:
+                txt_erro_pag.value = "Esta parcela já consta como paga ou não existe mais."
+                page.update()
+        except Exception as ex:
+            txt_erro_pag.value = f"Erro ao quitar: {ex}"
+            page.update()
+
+    dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text(f"Quitar Boleto — {parcela['nome_fornecedor']}"),
+        content=ft.Column(
+            tight=True,
+            width=560,
+            spacing=12,
+            controls=[
+                ft.Text(
+                    f"Descrição: {parcela['descricao']} | Parcela {parcela['num_parcela']}/{parcela['num_parcelas']} "
+                    f"(Vencimento: {_data_iso_para_br(parcela['vencimento'])})",
+                    size=13,
+                    color=ft.Colors.GREY_300,
+                ),
+                ft.Row([tf_data_pag, tf_valor_pag, dd_metodo_pag], spacing=10, wrap=True),
+                ft.Text(
+                    "Esta ação lançará automaticamente uma saída no caixa vinculada à categoria 'Compra Fornecedor / Insumos'.",
+                    size=11,
+                    italic=True,
+                    color=ft.Colors.GREY_500,
+                ),
+                txt_erro_pag,
+            ],
+        ),
+        actions=[
+            ft.TextButton("Cancelar", on_click=lambda e: _fechar_dlg(dlg, page)),
+            ft.ElevatedButton(
+                "Confirmar Quitação",
+                on_click=_confirmar,
+                style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_700, color=ft.Colors.WHITE),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg)
+    dlg.open = True
+    page.update()
+
+
+# ── View Principal ────────────────────────────────────────────────────────────
+
 def view(page: ft.Page) -> ft.Control:
     hoje_br = date.today().strftime("%d/%m/%Y")
 
-    # ── Dados de referência ───────────────────────────────────────────────
-    categorias_db   = database.categoria_extra_listar()
-    metodos_db      = database.metodo_pag_listar()
-    funcionarios_db = database.pessoa_listar(tipo="INTERNO",    apenas_ativos=True)
-    entregadores_db = database.pessoa_listar(tipo="ENTREGADOR", apenas_ativos=True)
-    pessoas_db      = database.pessoa_listar(apenas_ativos=True)
+    # ── 1. Dados e Permissões da Sessão ───────────────────────────────────────
+    categorias_todas = database.categoria_extra_listar()
+    metodos_db       = database.metodo_pag_listar()
+    funcionarios_db  = database.pessoa_listar(tipo="INTERNO",    apenas_ativos=True)
+    entregadores_db  = database.pessoa_listar(tipo="ENTREGADOR", apenas_ativos=True)
+    pessoas_todas    = database.pessoa_listar(apenas_ativos=True)
+    fornecedores_db  = database.fornecedor_listar(apenas_ativos=True)
 
-    cat_map = {r["id"]: dict(r) for r in categorias_db}
+    # Filtra apenas categorias ativas E com permissão mínima da sessão
+    categorias_validas = [
+        c for c in categorias_todas
+        if c["ativo"] == 1 and database.sessao_tem_acesso(c["min_perfil"])
+    ]
+    cat_map = {r["id"]: dict(r) for r in categorias_validas}
 
-    def _opts_pessoa(tipo):
-        if tipo == "ENTREGADOR":
-            src = entregadores_db
-            return [ft.dropdown.Option(key=str(r["id"]), text=r["nome"]) for r in src]
-        # "INTERNO" e "ALL": lista todos, com sufixo para entregadores
-        src = sorted(pessoas_db, key=lambda r: r["nome"])
-        return [
-            ft.dropdown.Option(
-                key=str(r["id"]),
-                text=r["nome"] if r["tipo"] == "INTERNO" else f"{r['nome']} (entregador)",
-            )
-            for r in src
-        ]
+    # Separação de categorias por agrupamento de fluxo
+    # Saídas operacionais (inclui neutros como consumo/corridas/reentregas)
+    cats_saida = [c for c in categorias_validas if c["fluxo"] in ("SAIDA", "NEUTRO")]
+    cats_entrada = [c for c in categorias_validas if c["fluxo"] == "ENTRADA"]
 
-    # ── Campo Data + calendário ───────────────────────────────────────────
+    # ── 2. Estado da Tela ─────────────────────────────────────────────────────
+    _estado = {
+        "fluxo_ui": "SAIDA",     # 'SAIDA' | 'ENTRADA' | 'BOLETO'
+        "cat_selecionada": None, # dict da categoria ativa
+        "editando_id": None,     # ID da movimentação em edição
+    }
+
+    # ── 3. Controles do Topo (Data e Seletor de Fluxo) ────────────────────────
     tf_data = ft.TextField(
         label="Data",
         value=hoje_br,
-        width=140,
+        width=135,
         text_align=ft.TextAlign.CENTER,
         hint_text="DD/MM/AAAA",
     )
@@ -165,100 +296,130 @@ def view(page: ft.Page) -> ft.Control:
     def _on_date_picked(e):
         if e.control.value:
             tf_data.value = e.control.value.strftime("%d/%m/%Y")
-            _atualizar_tabela()
+            _atualizar_tudo()
             page.update()
 
     date_picker = ft.DatePicker(on_change=_on_date_picked)
     page.overlay.append(date_picker)
 
-    def _abrir_calendario(e):
-        date_picker.open = True
-        page.update()
-
     btn_calendario = ft.IconButton(
         icon=ft.Icons.CALENDAR_MONTH,
         tooltip="Selecionar data",
-        on_click=_abrir_calendario,
+        on_click=lambda e: (setattr(date_picker, "open", True), page.update()),
     )
 
-    # ── Controles do formulário ───────────────────────────────────────────
-    dd_categoria = ft.Dropdown(
-        label="Categoria *",
-        options=[
-            ft.dropdown.Option(key=str(r["id"]), text=r["descricao"])
-            for r in categorias_db
-        ],
+    btn_refresh = ft.IconButton(
+        icon=ft.Icons.REFRESH,
+        tooltip="Atualizar dados",
+        on_click=lambda e: (_atualizar_tudo(), page.update()),
+    )
+
+    # Botões do Seletor de Fluxo Superior
+    btn_aba_saida = ft.ElevatedButton(
+        "Saídas / Despesas",
+        icon=ft.Icons.ARROW_UPWARD,
+        style=ft.ButtonStyle(
+            bgcolor=ft.Colors.RED_800,
+            color=ft.Colors.WHITE,
+        ),
+    )
+    btn_aba_entrada = ft.ElevatedButton(
+        "Entradas / Troco",
+        icon=ft.Icons.ARROW_DOWNWARD,
+        style=ft.ButtonStyle(
+            bgcolor=ft.Colors.GREY_800,
+            color=ft.Colors.GREY_300,
+        ),
+    )
+    btn_aba_boletos = ft.ElevatedButton(
+        "Pagar Boletos",
+        icon=ft.Icons.RECEIPT_LONG,
+        style=ft.ButtonStyle(
+            bgcolor=ft.Colors.GREY_800,
+            color=ft.Colors.GREY_300,
+        ),
+    )
+
+    # ── 4. Controles do Formulário de Lançamento ──────────────────────────────
+    lbl_titulo_form = ft.Text("Nova Saída de Caixa", size=18, weight=ft.FontWeight.BOLD)
+
+    dd_subtipo = ft.Dropdown(
+        label="Subtipo / Categoria *",
         expand=True,
     )
 
+    def _opts_pessoa(tipo_filtro):
+        if tipo_filtro == "ENTREGADOR":
+            src = entregadores_db
+            return [ft.dropdown.Option(key=str(r["id"]), text=r["nome"]) for r in src]
+        elif tipo_filtro == "INTERNO":
+            src = funcionarios_db
+            return [ft.dropdown.Option(key=str(r["id"]), text=r["nome"]) for r in src]
+        src = sorted(pessoas_todas, key=lambda r: r["nome"])
+        return [
+            ft.dropdown.Option(
+                key=str(r["id"]),
+                text=r["nome"] if r["tipo"] == "INTERNO" else f"{r['nome']} ({r['tipo'].lower()})",
+            )
+            for r in src
+        ]
+
     dd_pessoa = ft.Dropdown(
-        label="Funcionário *",
-        options=_opts_pessoa(None),
+        label="Pessoa / Funcionário *",
         expand=True,
     )
     linha_pessoa = ft.Row([dd_pessoa], visible=False)
 
-    dd_metodo = ft.Dropdown(
-        label="Método de Pagamento",
-        options=[ft.dropdown.Option(r["nome"]) for r in metodos_db],
-        expand=True,
-    )
-    linha_metodo = ft.Row([dd_metodo], visible=False)
+    def _carregar_opcoes_fornecedor(subtipo_codigo=""):
+        # Para manutenção, prestadores de serviço sobem para o topo
+        forns_ordenados = list(fornecedores_db)
+        if subtipo_codigo == "manutencao":
+            forns_ordenados.sort(key=lambda f: (0 if (f["tipo"] or "").upper() == "SERVICO" else 1, f["nome"]))
+        else:
+            forns_ordenados.sort(key=lambda f: f["nome"])
 
-    # ── Fornecedor (nota avulsa) ──────────────────────────────────────────
-    # Aceita um fornecedor já cadastrado OU um nome digitado livremente,
-    # sem obrigar cadastro em cad_fornecedores.
-    tf_fornecedor_livre = ft.TextField(
-        label="Nome do fornecedor",
-        expand=True,
-        visible=False,
-    )
-
-    def _on_fornecedor_select(e=None):
-        tf_fornecedor_livre.visible = (dd_fornecedor.value == _FORN_OUTRO)
-        page.update()
+        opts = []
+        for f in forns_ordenados:
+            badge = f" [{f['tipo']}]" if f.get("tipo") else ""
+            opts.append(ft.dropdown.Option(key=str(f["id"]), text=f"{f['nome']}{badge}"))
+        return opts
 
     dd_fornecedor = ft.Dropdown(
-        label="Fornecedor",
-        options=[
-            *[ft.dropdown.Option(key=f["nome"], text=f["nome"])
-              for f in database.fornecedor_listar(apenas_ativos=True)],
-            ft.dropdown.Option(key=_FORN_OUTRO, text="— Outro (digitar) —"),
-        ],
+        label="Fornecedor / Prestador *",
         expand=True,
-        on_select=_on_fornecedor_select,
-    )
-    linha_fornecedor = ft.Column(
-        spacing=8,
-        visible=False,
-        controls=[
-            ft.Row([dd_fornecedor]),
-            ft.Row([tf_fornecedor_livre]),
-        ],
     )
 
-    def _fornecedor_atual() -> str:
-        """Nome efetivo do fornecedor conforme o modo escolhido no dropdown."""
-        if dd_fornecedor.value == _FORN_OUTRO:
-            return (tf_fornecedor_livre.value or "").strip()
-        return (dd_fornecedor.value or "").strip()
+    def _ao_cadastrar_novo_fornecedor(id_novo, nome_novo):
+        nonlocal fornecedores_db
+        fornecedores_db = database.fornecedor_listar(apenas_ativos=True)
+        dd_fornecedor.options = _carregar_opcoes_fornecedor(_estado["cat_selecionada"].get("codigo") if _estado["cat_selecionada"] else "")
+        dd_fornecedor.value = str(id_novo)
+        page.overlay.append(ft.SnackBar(
+            content=ft.Text(f"Fornecedor '{nome_novo}' cadastrado e selecionado!"),
+            bgcolor=ft.Colors.GREEN_700,
+            open=True,
+        ))
+        page.update()
 
-    def _set_fornecedor(nome: str):
-        """Preenche o dropdown/campo livre a partir de um nome já salvo."""
-        nome = (nome or "").strip()
-        cadastrados = {o.key for o in dd_fornecedor.options}
-        if nome and nome in cadastrados:
-            dd_fornecedor.value        = nome
-            tf_fornecedor_livre.value  = ""
-            tf_fornecedor_livre.visible = False
-        elif nome:
-            dd_fornecedor.value        = _FORN_OUTRO
-            tf_fornecedor_livre.value  = nome
-            tf_fornecedor_livre.visible = True
-        else:
-            dd_fornecedor.value        = None
-            tf_fornecedor_livre.value  = ""
-            tf_fornecedor_livre.visible = False
+    def _abrir_novo_fornecedor(e):
+        cod = _estado["cat_selecionada"].get("codigo") if _estado["cat_selecionada"] else ""
+        sugestao = "SERVICO" if cod == "manutencao" else "PRODUTO"
+        _dialogo_novo_fornecedor(page, _ao_cadastrar_novo_fornecedor, tipo_sugerido=sugestao)
+
+    btn_novo_forn = ft.IconButton(
+        icon=ft.Icons.PERSON_ADD_ALT_1,
+        tooltip="Cadastrar novo fornecedor",
+        on_click=_abrir_novo_fornecedor,
+    )
+    linha_fornecedor = ft.Row([dd_fornecedor, btn_novo_forn], visible=False)
+
+    dd_metodo = ft.Dropdown(
+        label="Método de Pagamento *",
+        options=[ft.dropdown.Option(r["nome"]) for r in metodos_db],
+        value="Dinheiro",
+        expand=True,
+    )
+    linha_metodo = ft.Row([dd_metodo], visible=True)
 
     tf_valor = ft.TextField(
         label="Valor (R$) *",
@@ -266,8 +427,17 @@ def view(page: ft.Page) -> ft.Control:
         expand=True,
     )
 
+    def _formatar_campo_valor(e=None):
+        v = _to_float(tf_valor.value)
+        if v > 0:
+            tf_valor.value = f"{v:.2f}".replace(".", ",")
+            page.update()
+
+    tf_valor.on_blur   = _formatar_campo_valor
+    tf_valor.on_submit = _formatar_campo_valor
+
     tf_obs = ft.TextField(
-        label="Observações",
+        label="Observações / Detalhes",
         multiline=True,
         min_lines=2,
         max_lines=3,
@@ -275,84 +445,423 @@ def view(page: ft.Page) -> ft.Control:
     )
 
     txt_erro = ft.Text("", color=ft.Colors.RED_400, size=13)
-    lbl_titulo_form = ft.Text("Nova Movimentação", size=18, weight=ft.FontWeight.BOLD)
 
-    # Estado interno da categoria selecionada
-    _estado     = {"fluxo": "", "pessoa_obrig": False, "cat_nome": ""}
-    _editando_id = {"v": None}
+    # ── 5. Lógica de Subtipos e Campos Dinâmicos ──────────────────────────────
 
-    # ── Tabela ────────────────────────────────────────────────────────────
-    col_tabela = ft.Column(spacing=0, expand=True)
-    row_totais  = ft.Row(spacing=16, wrap=True)
+    def _atualizar_opcoes_subtipo():
+        dd_subtipo.value = None
+        if _estado["fluxo_ui"] == "SAIDA":
+            dd_subtipo.options = [
+                ft.dropdown.Option(key=str(c["id"]), text=c["descricao"])
+                for c in cats_saida
+            ]
+        elif _estado["fluxo_ui"] == "ENTRADA":
+            dd_subtipo.options = [
+                ft.dropdown.Option(key=str(c["id"]), text=c["descricao"])
+                for c in cats_entrada
+            ]
+        _ajustar_campos_por_subtipo(None)
 
-    def _atualizar_tabela():
+    def _ajustar_campos_por_subtipo(cat_dict):
+        _estado["cat_selecionada"] = cat_dict
+        if not cat_dict:
+            linha_pessoa.visible = False
+            linha_fornecedor.visible = False
+            linha_metodo.visible = False
+            page.update()
+            return
+
+        cod = cat_dict.get("codigo") or ""
+        usa_func = cat_dict.get("usa_funcionario", 0) == 1
+        usa_forn = cat_dict.get("usa_fornecedor", 0) == 1
+
+        # 1. Campo Pessoa
+        if usa_func:
+            if cod in ("corrida_extra", "reentrega"):
+                dd_pessoa.label = "Entregador *"
+                dd_pessoa.options = _opts_pessoa("ENTREGADOR")
+            else:
+                dd_pessoa.label = "Funcionário *"
+                dd_pessoa.options = _opts_pessoa("INTERNO")
+            linha_pessoa.visible = True
+        else:
+            linha_pessoa.visible = False
+            dd_pessoa.value = None
+
+        # 2. Campo Fornecedor
+        if usa_forn:
+            dd_fornecedor.label = "Prestador de Serviço *" if cod == "manutencao" else "Fornecedor / Insumos *"
+            dd_fornecedor.options = _carregar_opcoes_fornecedor(cod)
+            linha_fornecedor.visible = True
+        else:
+            linha_fornecedor.visible = False
+            dd_fornecedor.value = None
+
+        # 3. Campo Método de Pagamento
+        # Categorias de compensação contábil (neutro) não exigem método físico
+        if cod in ("consumo", "corrida_extra", "reentrega"):
+            linha_metodo.visible = False
+            dd_metodo.value = None
+        else:
+            linha_metodo.visible = True
+            if not dd_metodo.value:
+                dd_metodo.value = "Dinheiro"
+
+        txt_erro.value = ""
+        page.update()
+
+    def _on_subtipo_select(e):
+        if dd_subtipo.value:
+            cat = cat_map.get(int(dd_subtipo.value))
+            _ajustar_campos_por_subtipo(cat)
+        else:
+            _ajustar_campos_por_subtipo(None)
+
+    dd_subtipo.on_select = _on_subtipo_select
+
+    # ── 6. Alternância de Abas Superiores ─────────────────────────────────────
+
+    def _trocar_aba(aba: str):
+        _estado["fluxo_ui"] = aba
+        _limpar_form()
+
+        # Feedback visual dos botões
+        btn_aba_saida.style.bgcolor = ft.Colors.RED_800 if aba == "SAIDA" else ft.Colors.GREY_800
+        btn_aba_saida.style.color = ft.Colors.WHITE if aba == "SAIDA" else ft.Colors.GREY_300
+
+        btn_aba_entrada.style.bgcolor = ft.Colors.GREEN_800 if aba == "ENTRADA" else ft.Colors.GREY_800
+        btn_aba_entrada.style.color = ft.Colors.WHITE if aba == "ENTRADA" else ft.Colors.GREY_300
+
+        btn_aba_boletos.style.bgcolor = ft.Colors.ORANGE_800 if aba == "BOLETO" else ft.Colors.GREY_800
+        btn_aba_boletos.style.color = ft.Colors.WHITE if aba == "BOLETO" else ft.Colors.GREY_300
+
+        if aba == "BOLETO":
+            card_formulario.visible = False
+            card_boletos.visible = True
+            lbl_titulo_form.value = "Quitação de Boletos e Contas a Pagar"
+            _carregar_tabela_boletos()
+        else:
+            card_formulario.visible = True
+            card_boletos.visible = False
+            lbl_titulo_form.value = "Nova Saída de Caixa" if aba == "SAIDA" else "Nova Entrada de Caixa"
+            _atualizar_opcoes_subtipo()
+
+        page.update()
+
+    btn_aba_saida.on_click   = lambda e: _trocar_aba("SAIDA")
+    btn_aba_entrada.on_click = lambda e: _trocar_aba("ENTRADA")
+    btn_aba_boletos.on_click = lambda e: _trocar_aba("BOLETO")
+
+    # ── 7. Seção de Boletos em Aberto ─────────────────────────────────────────
+    col_lista_boletos = ft.Column(spacing=8, expand=True)
+
+    def _carregar_tabela_boletos():
+        database.boleto_atualizar_status_vencidos()
+        parcelas = database.boletos_parcelas_em_aberto(dias_frente=60)
+
+        col_lista_boletos.controls.clear()
+        if not parcelas:
+            col_lista_boletos.controls.append(ft.Container(
+                padding=ft.Padding.all(20),
+                content=ft.Text("Nenhum boleto ou conta a pagar em aberto nos próximos 60 dias.", italic=True, color=ft.Colors.GREY_400),
+            ))
+            return
+
+        linhas_b = []
+        for p in parcelas:
+            faixa = p["faixa"]
+            if faixa == "VENCIDO":
+                badge_cor = ft.Colors.RED_700
+                badge_txt = f"VENCIDO ({abs(p['dias_para_vencer'])}d)"
+            elif faixa == "HOJE":
+                badge_cor = ft.Colors.ORANGE_700
+                badge_txt = "VENCE HOJE"
+            elif faixa == "ATE_7":
+                badge_cor = ft.Colors.AMBER_800
+                badge_txt = f"Vence em {p['dias_para_vencer']}d"
+            else:
+                badge_cor = ft.Colors.BLUE_GREY_700
+                badge_txt = f"Em {p['dias_para_vencer']}d"
+
+            def _fazer_quitar(_p=p):
+                return lambda ev: _dialogo_quitar_parcela(
+                    page, _p, on_sucesso=lambda msg: (_carregar_tabela_boletos(), _atualizar_tabela_extrato(), page.overlay.append(ft.SnackBar(content=ft.Text(msg), bgcolor=ft.Colors.GREEN_700, open=True)), page.update())
+                )
+
+            linhas_b.append(ft.DataRow(cells=[
+                ft.DataCell(ft.Container(
+                    content=ft.Text(badge_txt, size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                    bgcolor=badge_cor,
+                    border_radius=4,
+                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                )),
+                ft.DataCell(ft.Text(_data_iso_para_br(p["vencimento"]))),
+                ft.DataCell(ft.Text(p["nome_fornecedor"], weight=ft.FontWeight.BOLD)),
+                ft.DataCell(ft.Text(p["descricao"])),
+                ft.DataCell(ft.Text(f"{p['num_parcela']}/{p['num_parcelas']}")),
+                ft.DataCell(ft.Text(f"R$ {p['valor']:.2f}", weight=ft.FontWeight.BOLD)),
+                ft.DataCell(ft.ElevatedButton(
+                    "Quitar",
+                    icon=ft.Icons.CHECK_CIRCLE,
+                    style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_700, color=ft.Colors.WHITE),
+                    on_click=_fazer_quitar(),
+                )),
+            ]))
+
+        col_lista_boletos.controls.append(ft.Row(
+            scroll=ft.ScrollMode.AUTO,
+            controls=[
+                ft.DataTable(
+                    columns=[
+                        ft.DataColumn(ft.Text("Situação")),
+                        ft.DataColumn(ft.Text("Vencimento")),
+                        ft.DataColumn(ft.Text("Fornecedor")),
+                        ft.DataColumn(ft.Text("Descrição")),
+                        ft.DataColumn(ft.Text("Parc.")),
+                        ft.DataColumn(ft.Text("Valor"), numeric=True),
+                        ft.DataColumn(ft.Text("Ação")),
+                    ],
+                    rows=linhas_b,
+                    column_spacing=16,
+                )
+            ]
+        ))
+
+    card_boletos = ft.Card(
+        visible=False,
+        content=ft.Container(
+            padding=ft.Padding.all(20),
+            content=ft.Column(
+                spacing=14,
+                controls=[
+                    ft.Row([
+                        ft.Text("Boletos e Contas a Pagar em Aberto (Próximos 60 dias)", size=16, weight=ft.FontWeight.BOLD),
+                        ft.IconButton(icon=ft.Icons.REFRESH, tooltip="Atualizar", on_click=lambda e: (_carregar_tabela_boletos(), page.update())),
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ft.Divider(height=1),
+                    col_lista_boletos,
+                ],
+            ),
+        ),
+    )
+
+    # ── 8. Salvar Lançamento (Manual / Edição) ─────────────────────────────────
+
+    def _limpar_form():
+        data_anterior = tf_data.value
+        dd_subtipo.value = None
+        dd_pessoa.value = None
+        dd_fornecedor.value = None
+        dd_metodo.value = "Dinheiro"
+        tf_valor.value = ""
+        tf_obs.value = ""
+        txt_erro.value = ""
+        linha_pessoa.visible = False
+        linha_fornecedor.visible = False
+        linha_metodo.visible = False
+        _estado["cat_selecionada"] = None
+        _estado["editando_id"] = None
+        btn_salvar.text = "Salvar Lançamento"
+        btn_cancelar.visible = False
+        lbl_titulo_form.value = "Nova Saída de Caixa" if _estado["fluxo_ui"] == "SAIDA" else "Nova Entrada de Caixa"
+        tf_data.value = data_anterior
+
+    def _salvar(e):
+        txt_erro.value = ""
+
+        if not dd_subtipo.value:
+            txt_erro.value = "Selecione o subtipo / categoria."
+            page.update()
+            return
+
+        cat = cat_map.get(int(dd_subtipo.value))
+        if not cat:
+            txt_erro.value = "Categoria inválida."
+            page.update()
+            return
+
+        valor = _to_float(tf_valor.value)
+        if valor <= 0:
+            txt_erro.value = "Informe o valor do lançamento."
+            page.update()
+            return
+
+        cod = cat.get("codigo") or ""
+        usa_func = cat.get("usa_funcionario", 0) == 1
+        usa_forn = cat.get("usa_fornecedor", 0) == 1
+
+        id_pessoa = int(dd_pessoa.value) if (usa_func and dd_pessoa.value) else None
+        if usa_func and not id_pessoa:
+            lbl_pessoa = "o entregador" if cod in ("corrida_extra", "reentrega") else "o funcionário"
+            txt_erro.value = f"Selecione {lbl_pessoa}."
+            page.update()
+            return
+
+        id_fornecedor = int(dd_fornecedor.value) if (usa_forn and dd_fornecedor.value) else None
+        if usa_forn and not id_fornecedor:
+            txt_erro.value = "Selecione o fornecedor / prestador de serviço."
+            page.update()
+            return
+
+        # REGRA FUNDAMENTAL: O fluxo vem SEMPRE da categoria (cat['fluxo']), nunca da UI
+        fluxo_banco = cat["fluxo"]
+
+        metodo = dd_metodo.value if linha_metodo.visible else None
+        obs = tf_obs.value.strip() or None
+        if cod == "consumo":
+            obs = _montar_obs_consumo(obs)
+
+        data_iso = _data_br_para_iso(tf_data.value)
+
+        try:
+            if _estado["editando_id"] is not None:
+                database.mov_extra_atualizar(
+                    _estado["editando_id"],
+                    data=data_iso,
+                    id_categoria=cat["id"],
+                    fluxo=fluxo_banco,
+                    valor=valor,
+                    id_pessoa=id_pessoa,
+                    id_fornecedor=id_fornecedor,
+                    metodo=metodo,
+                    obs=obs,
+                )
+                msg = "Movimentação atualizada com sucesso!"
+            else:
+                database.mov_extra_inserir(
+                    data=data_iso,
+                    id_categoria=cat["id"],
+                    fluxo=fluxo_banco,
+                    valor=valor,
+                    id_pessoa=id_pessoa,
+                    id_fornecedor=id_fornecedor,
+                    metodo=metodo,
+                    obs=obs,
+                )
+                msg = "Movimentação registrada com sucesso!"
+
+            _limpar_form()
+            _atualizar_tabela_extrato()
+
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text(msg),
+                bgcolor=ft.Colors.GREEN_700,
+                open=True,
+            ))
+            page.update()
+        except Exception as ex:
+            txt_erro.value = f"Erro ao salvar: {ex}"
+            page.update()
+
+    btn_salvar = ft.ElevatedButton(
+        "Salvar Lançamento",
+        icon=ft.Icons.SAVE,
+        on_click=_salvar,
+        style=ft.ButtonStyle(
+            bgcolor=ft.Colors.BLUE_700,
+            color=ft.Colors.WHITE,
+        ),
+    )
+
+    btn_cancelar = ft.TextButton(
+        "Cancelar Edição",
+        visible=False,
+        on_click=lambda e: (_limpar_form(), page.update()),
+    )
+
+    card_formulario = ft.Card(
+        content=ft.Container(
+            padding=ft.Padding.all(20),
+            content=ft.Column(
+                spacing=14,
+                controls=[
+                    lbl_titulo_form,
+                    ft.Divider(height=1),
+                    dd_subtipo,
+                    linha_pessoa,
+                    linha_fornecedor,
+                    linha_metodo,
+                    tf_valor,
+                    tf_obs,
+                    txt_erro,
+                    ft.Row([btn_salvar, btn_cancelar], spacing=10),
+                ],
+            ),
+        ),
+    )
+
+    # ── 9. Extrato do Dia e Totais ────────────────────────────────────────────
+    col_tabela_extrato = ft.Column(spacing=0, expand=True)
+    row_totais_extrato = ft.Row(spacing=16, wrap=True)
+
+    def _atualizar_tabela_extrato():
         data_iso = _data_br_para_iso(tf_data.value or hoje_br)
-        movs     = database.mov_extra_listar_por_data(data_iso)
+        movs = database.mov_extra_listar_por_data(data_iso)
 
         def _on_editar(m):
             def handler(e):
-                _editando_id["v"] = m["id"]
-                # Data ISO → BR
-                try:
-                    a, mo, d = m["data"].split("-")
-                    tf_data.value = f"{d}/{mo}/{a}"
-                except Exception:
-                    pass
-                # Reconstrói estado de categoria
-                cat  = cat_map.get(m["id_categoria"], {})
-                nome = cat.get("descricao", "")
-                cfg  = _CAT_CONFIG.get(nome, _CFG_DEFAULT)
-                mostra_pessoa, tipo_pessoa, mostra_metodo, fluxo_override = cfg
-                fluxo = fluxo_override if fluxo_override else cat.get("fluxo", "SAIDA")
-                _estado["fluxo"]        = fluxo
-                _estado["pessoa_obrig"] = mostra_pessoa
-                _estado["cat_nome"]     = nome
-                dd_categoria.value = str(m["id_categoria"])
-                if mostra_pessoa:
-                    dd_pessoa.label   = "Entregador *" if tipo_pessoa == "ENTREGADOR" else "Funcionário *"
-                    dd_pessoa.options = _opts_pessoa(tipo_pessoa)
-                    dd_pessoa.value   = str(m["id_pessoa"]) if m["id_pessoa"] else None
-                linha_pessoa.visible = mostra_pessoa
-                dd_metodo.value      = m["metodo"] or None
-                linha_metodo.visible = mostra_metodo
-                tf_valor.value       = f"{m['valor']:.2f}"
-                # Separa o fornecedor (nota avulsa) e/ou o sufixo de desconto
-                # do Consumo do restante da observação, para não duplicar ao
-                # salvar de novo.
-                _forn, _resto        = _extrair_fornecedor(m["obs"] or "")
-                linha_fornecedor.visible = nome in _CATS_FORNECEDOR
-                _set_fornecedor(_forn)
-                if nome == "Consumo":
-                    _resto = _extrair_obs_consumo(_resto)
-                tf_obs.value         = _resto
-                txt_erro.value       = ""
-                btn_salvar.content   = "Salvar Alteração"
-                lbl_titulo_form.value = "Editando Movimentação"
+                _estado["editando_id"] = m["id"]
+                tf_data.value = _data_iso_para_br(m["data"])
+
+                cat = cat_map.get(m["id_categoria"])
+                if cat:
+                    fluxo = cat["fluxo"]
+                    if fluxo in ("SAIDA", "NEUTRO"):
+                        _trocar_aba("SAIDA")
+                    else:
+                        _trocar_aba("ENTRADA")
+
+                    dd_subtipo.value = str(cat["id"])
+                    _ajustar_campos_por_subtipo(cat)
+
+                if m["id_pessoa"]:
+                    dd_pessoa.value = str(m["id_pessoa"])
+                if m.get("id_fornecedor"):
+                    dd_fornecedor.value = str(m["id_fornecedor"])
+                if m["metodo"]:
+                    dd_metodo.value = m["metodo"]
+
+                tf_valor.value = f"{m['valor']:.2f}".replace(".", ",")
+                
+                obs_txt = m["obs"] or ""
+                if cat and cat.get("codigo") == "consumo":
+                    obs_txt = _extrair_obs_consumo(obs_txt)
+                tf_obs.value = obs_txt
+
+                btn_salvar.text = "Salvar Alteração"
+                btn_cancelar.visible = True
+                lbl_titulo_form.value = f"Editando Movimentação #{m['id']}"
                 page.update()
             return handler
 
-        def _on_excluir(id_mov, cat, val, dt):
+        def _on_excluir(id_mov, desc, val, dt):
             def handler(e):
-                def _excluir():
+                def _executar():
                     database.mov_extra_excluir(id_mov)
                     database.log_registrar(
                         acao="EXCLUIR_MOVIMENTACAO",
                         tabela="movimentacoes_extras",
                         id_registro=id_mov,
-                        descricao=f"Movimentação excluída — "
-                                  f"Categoria: {cat} | "
-                                  f"Valor: R$ {val:.2f} | Data: {dt}",
-                        valor_antes=f"categoria={cat}, valor={val}",
+                        descricao=f"Movimentação excluída: {desc} | R$ {val:.2f} | Data: {dt}",
+                        valor_antes=f"cat={desc}, val={val}",
                     )
-                    _atualizar_tabela()
+                    _atualizar_tabela_extrato()
+                    page.overlay.append(ft.SnackBar(
+                        content=ft.Text("Movimentação excluída e estornada com sucesso."),
+                        bgcolor=ft.Colors.AMBER_900,
+                        open=True,
+                    ))
                     page.update()
-                _confirmar_exclusao(page, "esta movimentação", _excluir)
+                _confirmar_exclusao(page, f"a movimentação #{id_mov} ({desc} - R$ {val:.2f})", _executar)
             return handler
 
         total_entrada = 0.0
         total_saida   = 0.0
         total_neutro  = 0.0
         linhas = []
+
+        # Mapa de fornecedores para resolver nome caso necessário
+        forn_nome_map = {f["id"]: f["nome"] for f in fornecedores_db}
 
         for m in movs:
             fluxo = m["fluxo"]
@@ -362,21 +871,24 @@ def view(page: ft.Page) -> ft.Control:
             elif fluxo == "SAIDA":
                 total_saida += m["valor"]
                 fluxo_cor = ft.Colors.RED_400
-            else:   # NEUTRO
+            else:  # NEUTRO
                 total_neutro += m["valor"]
                 fluxo_cor = ft.Colors.GREY_500
 
+            # Detalhamento de Entidade Vinculada (Pessoa ou Fornecedor)
+            entidade_vinculada = "—"
+            if m["nome_pessoa"]:
+                entidade_vinculada = m["nome_pessoa"]
+            elif m.get("id_fornecedor") and m["id_fornecedor"] in forn_nome_map:
+                entidade_vinculada = forn_nome_map[m["id_fornecedor"]]
+
             linhas.append(ft.DataRow(cells=[
-                ft.DataCell(ft.Text(m["nome_pessoa"] or "—")),
-                ft.DataCell(ft.Text(m["categoria"])),
-                ft.DataCell(ft.Text(
-                    fluxo,
-                    color=fluxo_cor,
-                    weight=ft.FontWeight.W_500,
-                )),
+                ft.DataCell(ft.Text(entidade_vinculada)),
+                ft.DataCell(ft.Text(m["categoria"] or "—", weight=ft.FontWeight.W_500)),
+                ft.DataCell(ft.Text(fluxo, color=fluxo_cor, weight=ft.FontWeight.BOLD)),
                 ft.DataCell(ft.Text(m["metodo"] or "—")),
                 ft.DataCell(ft.Text(f"R$ {m['valor']:.2f}")),
-                ft.DataCell(ft.Text(m["obs"] or "")),
+                ft.DataCell(ft.Text(m["obs"] or "", size=12)),
                 ft.DataCell(ft.Row(spacing=0, controls=[
                     ft.IconButton(
                         icon=ft.Icons.EDIT_OUTLINED,
@@ -387,44 +899,41 @@ def view(page: ft.Page) -> ft.Control:
                     ft.IconButton(
                         icon=ft.Icons.DELETE_OUTLINE,
                         icon_color=ft.Colors.RED_400,
-                        tooltip="Excluir",
+                        tooltip="Excluir / Estornar",
                         on_click=_on_excluir(m["id"], m["categoria"], m["valor"], tf_data.value),
                     ),
                 ])),
             ]))
 
-        col_tabela.controls.clear()
+        col_tabela_extrato.controls.clear()
         if not linhas:
-            col_tabela.controls.append(ft.Text(
-                "Nenhuma movimentação nesta data.",
+            col_tabela_extrato.controls.append(ft.Text(
+                "Nenhuma movimentação registrada nesta data.",
                 italic=True,
                 color=ft.Colors.GREY_500,
             ))
         else:
-            col_tabela.controls.append(ft.Row(
+            col_tabela_extrato.controls.append(ft.Row(
                 scroll=ft.ScrollMode.AUTO,
                 controls=[
                     ft.DataTable(
                         columns=[
-                            ft.DataColumn(ft.Text("Pessoa")),
+                            ft.DataColumn(ft.Text("Pessoa / Fornecedor")),
                             ft.DataColumn(ft.Text("Categoria")),
                             ft.DataColumn(ft.Text("Fluxo")),
                             ft.DataColumn(ft.Text("Método")),
                             ft.DataColumn(ft.Text("Valor"), numeric=True),
                             ft.DataColumn(ft.Text("Obs")),
-                            ft.DataColumn(ft.Text("")),
+                            ft.DataColumn(ft.Text("Ações")),
                         ],
                         rows=linhas,
                         column_spacing=14,
-                        horizontal_lines=ft.BorderSide(
-                            1, ft.Colors.with_opacity(0.15, ft.Colors.BLACK)
-                        ),
                     )
                 ],
             ))
 
-        row_totais.controls.clear()
-        row_totais.controls += [
+        row_totais_extrato.controls.clear()
+        row_totais_extrato.controls += [
             ft.Text(
                 f"Entradas: R$ {total_entrada:.2f}",
                 color=ft.Colors.GREEN_400,
@@ -440,221 +949,62 @@ def view(page: ft.Page) -> ft.Control:
             ),
             ft.Text("|", color=ft.Colors.GREY_600),
             ft.Text(
-                f"Neutro (corridas/reentregas/consumos): R$ {total_neutro:.2f}",
+                f"Neutro (corridas/consumo): R$ {total_neutro:.2f}",
                 color=ft.Colors.GREY_500,
                 weight=ft.FontWeight.BOLD,
                 size=14,
             ),
         ]
 
-    # ── Lógica dinâmica de campos ─────────────────────────────────────────
+    def _atualizar_tudo():
+        _atualizar_tabela_extrato()
+        if _estado["fluxo_ui"] == "BOLETO":
+            _carregar_tabela_boletos()
 
-    def _on_categoria_select(e):
-        if not dd_categoria.value:
-            linha_pessoa.visible = False
-            linha_metodo.visible = False
-            linha_fornecedor.visible = False
-            _estado["fluxo"]        = ""
-            _estado["pessoa_obrig"] = False
-            _estado["cat_nome"]     = ""
-            txt_erro.value = ""
-            page.update()
-            return
+    # Dispara a carga inicial da tela
+    _trocar_aba("SAIDA")
+    _atualizar_tudo()
 
-        cat  = cat_map.get(int(dd_categoria.value), {})
-        nome = cat.get("descricao", "")
-        cfg  = _CAT_CONFIG.get(nome, _CFG_DEFAULT)
-        mostra_pessoa, tipo_pessoa, mostra_metodo, fluxo_override = cfg
-
-        fluxo = fluxo_override if fluxo_override else cat.get("fluxo", "SAIDA")
-        _estado["fluxo"]        = fluxo
-        _estado["pessoa_obrig"] = mostra_pessoa
-        _estado["cat_nome"]     = nome
-
-        # Ajusta dropdown de pessoa
-        if mostra_pessoa:
-            dd_pessoa.label   = "Entregador *" if tipo_pessoa == "ENTREGADOR" else "Funcionário *"
-            dd_pessoa.options = _opts_pessoa(tipo_pessoa)
-            dd_pessoa.value   = None
-        linha_pessoa.visible = mostra_pessoa
-
-        # Ajusta método
-        dd_metodo.value      = None
-        linha_metodo.visible = mostra_metodo
-
-        # Campo de fornecedor só nas categorias de nota avulsa
-        linha_fornecedor.visible = nome in _CATS_FORNECEDOR
-        if not linha_fornecedor.visible:
-            _set_fornecedor("")
-
-        txt_erro.value = ""
-        page.update()
-
-    def _on_data_change(e):
-        _atualizar_tabela()
-        page.update()
-
-    dd_categoria.on_select = _on_categoria_select
-    tf_data.on_submit      = _on_data_change
-    tf_data.on_blur        = _on_data_change
-
-    # ── Limpar formulário (mantém data) ───────────────────────────────────
-
-    def _limpar():
-        data_atual           = tf_data.value
-        dd_categoria.value   = None
-        dd_pessoa.value      = None
-        page.update()  # força limpeza visual do dropdown antes de ocultar a linha
-        dd_metodo.value      = None
-        tf_valor.value       = ""
-        tf_obs.value         = ""
-        txt_erro.value       = ""
-        linha_pessoa.visible = False
-        linha_metodo.visible = False
-        linha_fornecedor.visible = False
-        _set_fornecedor("")
-        _estado["fluxo"]        = ""
-        _estado["pessoa_obrig"] = False
-        _estado["cat_nome"]     = ""
-        _editando_id["v"]        = None
-        btn_salvar.content       = "Salvar"
-        lbl_titulo_form.value    = "Nova Movimentação"
-        tf_data.value = data_atual
-
-    # ── Salvar ────────────────────────────────────────────────────────────
-
-    def _salvar(e):
-        txt_erro.value = ""
-
-        if not dd_categoria.value:
-            txt_erro.value = "Selecione a categoria."
-            page.update()
-            return
-
-        valor = _to_float(tf_valor.value)
-        if valor <= 0:
-            txt_erro.value = "Informe o valor."
-            page.update()
-            return
-
-        if _estado["pessoa_obrig"] and not dd_pessoa.value:
-            lbl = "Entregador" if _estado["cat_nome"] in ("Corrida Extra", "Reentrega") else "Funcionário"
-            txt_erro.value = f"Selecione o {lbl}."
-            page.update()
-            return
-
-        id_cat   = int(dd_categoria.value)
-        cat      = cat_map[id_cat]
-        cat_nome = cat["descricao"]
-        fluxo    = _estado["fluxo"] or cat["fluxo"]
-        id_pessoa = int(dd_pessoa.value) if dd_pessoa.value else None
-        metodo    = dd_metodo.value or None
-
-        obs = tf_obs.value.strip() or None
-        if cat_nome == "Consumo":
-            obs = _montar_obs_consumo(obs)
-
-        # Nota avulsa: o fornecedor vai embutido em obs, com prefixo
-        if cat_nome in _CATS_FORNECEDOR:
-            fornecedor = _fornecedor_atual()
-            if not fornecedor:
-                txt_erro.value = "Informe o fornecedor."
-                page.update()
-                return
-            obs = _montar_obs(fornecedor, obs or "")
-
-        if _editando_id["v"] is not None:
-            database.mov_extra_atualizar(
-                _editando_id["v"],
-                data=_data_br_para_iso(tf_data.value),
-                id_categoria=id_cat,
-                fluxo=fluxo,
-                valor=valor,
-                id_pessoa=id_pessoa,
-                metodo=metodo,
-                obs=obs,
-            )
-            msg = "Movimentação atualizada!"
-        else:
-            database.mov_extra_inserir(
-                data=_data_br_para_iso(tf_data.value),
-                id_categoria=id_cat,
-                fluxo=fluxo,
-                valor=valor,
-                id_pessoa=id_pessoa,
-                metodo=metodo,
-                obs=obs,
-            )
-            msg = "Movimentação salva!"
-
-        _limpar()
-        _atualizar_tabela()
-
-        page.overlay.append(ft.SnackBar(
-            content=ft.Text(msg),
-            bgcolor=ft.Colors.GREEN_700,
-            open=True,
-        ))
-        page.update()
-
-    # ── Layout ────────────────────────────────────────────────────────────
-
-    btn_salvar = ft.ElevatedButton(
-        "Salvar",
-        icon=ft.Icons.SAVE,
-        on_click=_salvar,
-        style=ft.ButtonStyle(
-            bgcolor=ft.Colors.BLUE_700,
-            color=ft.Colors.WHITE,
-        ),
-    )
-
-    formulario = ft.Card(
-        content=ft.Container(
-            padding=ft.Padding.all(20),
-            content=ft.Column(
-                spacing=14,
-                controls=[
-                    lbl_titulo_form,
-                    ft.Divider(height=1),
-                    ft.Row([tf_data, btn_calendario, ft.IconButton(
-                        icon=ft.Icons.REFRESH,
-                        tooltip="Atualizar lista",
-                        on_click=lambda e: (_atualizar_tabela(), page.update()),
-                    )], spacing=8),
-                    dd_categoria,
-                    linha_fornecedor,
-                    linha_pessoa,
-                    linha_metodo,
-                    tf_valor,
-                    tf_obs,
-                    txt_erro,
-                    btn_salvar,
-                ],
-            ),
-        ),
-    )
-
-    _atualizar_tabela()
-
-    secao_tabela = ft.Card(
+    card_extrato = ft.Card(
         content=ft.Container(
             padding=ft.Padding.all(20),
             content=ft.Column(
                 spacing=12,
                 controls=[
-                    ft.Text("Movimentações do Dia", size=18, weight=ft.FontWeight.BOLD),
+                    ft.Row([
+                        ft.Text("Extrato de Movimentações do Dia", size=18, weight=ft.FontWeight.BOLD),
+                        ft.Row([tf_data, btn_calendario, btn_refresh], spacing=6),
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, wrap=True),
                     ft.Divider(height=1),
-                    col_tabela,
+                    col_tabela_extrato,
                     ft.Divider(height=1),
-                    row_totais,
+                    row_totais_extrato,
                 ],
             ),
         ),
     )
 
+    # ── 10. Montagem da Estrutura Final da Tela ───────────────────────────────
+    seletor_abas_topo = ft.Container(
+        padding=ft.Padding.symmetric(vertical=6),
+        content=ft.Row(
+            spacing=10,
+            controls=[
+                btn_aba_saida,
+                btn_aba_entrada,
+                btn_aba_boletos,
+            ],
+            wrap=True,
+        ),
+    )
+
     return ft.Column(
-        controls=[formulario, secao_tabela],
+        controls=[
+            seletor_abas_topo,
+            card_formulario,
+            card_boletos,
+            card_extrato,
+        ],
         scroll=ft.ScrollMode.AUTO,
         expand=True,
         spacing=16,

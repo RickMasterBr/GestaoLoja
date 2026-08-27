@@ -2447,15 +2447,17 @@ def pedido_totais_por_data(data: str) -> dict:
 
 def mov_extra_inserir(data: str, id_categoria: int, fluxo: str,
                       valor: float, id_pessoa: int = None,
-                      metodo: str = None, obs: str = None) -> int:
+                      metodo: str = None, obs: str = None,
+                      id_fornecedor: int = None,
+                      id_boleto_parcela: int = None) -> int:
     """Registra uma movimentação extra. Retorna o id gerado."""
     conn = conectar()
     try:
         cur = conn.execute(
             """INSERT INTO movimentacoes_extras
-               (data, id_pessoa, id_categoria, fluxo, metodo, valor, obs)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (data, id_pessoa, id_categoria, fluxo, metodo, valor, obs)
+               (data, id_pessoa, id_categoria, fluxo, metodo, valor, obs, id_fornecedor, id_boleto_parcela)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (data, id_pessoa, id_categoria, fluxo, metodo, valor, obs, id_fornecedor, id_boleto_parcela)
         )
         conn.commit()
         return cur.lastrowid
