@@ -225,8 +225,383 @@ def view(page: ft.Page) -> ft.Control:
     dd_p_tipo.on_select    = _on_tipo_change
     dd_p_tiposal.on_select = _on_tiposal_change
 
+    txt_contagem_pessoas = ft.Text("", size=12, color=ft.Colors.GREY_400)
+
+    # ── Dias Fixos de Trabalho ─────────────────────────────────────────────
+    # Ter=1, Qua=2, Qui=3, Sex=4, Sáb=5, Dom=6  (Segunda=0 é folga geral)
+    _DIAS_FIXOS = [
+        (1, "Terça"),
+        (2, "Quarta"),
+        (3, "Quinta"),
+        (4, "Sexta"),
+        (5, "Sábado"),
+        (6, "Domingo"),
+    ]
+
+    _df_checks: dict = {}
+    _df_horas:  dict = {}
+
+    for _dia, _nome in _DIAS_FIXOS:
+        _cb = ft.Checkbox(label=_nome, value=False)
+        _tf = ft.TextField(width=90, hint_text="HH:MM", disabled=True)
+        _df_checks[_dia] = _cb
+        _df_horas[_dia]  = _tf
+
+        def _on_df_change(e, d=_dia):
+            _df_horas[d].disabled = not _df_checks[d].value
+            if not _df_checks[d].value:
+                _df_horas[d].value = ""
+            page.update()
+
+        _cb.on_change = _on_df_change
+
+    def _limpar_dias_fixos():
+        for d, _ in _DIAS_FIXOS:
+            _df_checks[d].value   = False
+            _df_horas[d].value    = ""
+            _df_horas[d].disabled = True
+
+    def _carregar_dias_fixos(pid: int):
+        _limpar_dias_fixos()
+        for row in database.dias_fixos_listar(pid):
+            d = row["dia_semana"]
+            if d in _df_checks:
+                _df_checks[d].value   = True
+                _df_horas[d].value    = row["horario_entrada"] or ""
+                _df_horas[d].disabled = False
+
+    _df_grade_linhas = []
+    for i in range(0, len(_DIAS_FIXOS), 2):
+        par = _DIAS_FIXOS[i:i + 2]
+        row_ctrls = []
+        for d, _ in par:
+            row_ctrls += [_df_checks[d], _df_horas[d]]
+        _df_grade_linhas.append(ft.Row(controls=row_ctrls, spacing=16))
+
+    def _limpar_pessoa():
+        _pessoa_id["v"]          = None
+        lbl_p_titulo.value       = "Novo Colaborador"
+        tf_p_nome.value          = ""
+        dd_p_tipo.value          = "INTERNO"
+        tf_p_cargo.value         = ""
+        dd_p_tiposal.value       = "FIXO"
+        tf_p_salario.value       = ""
+        tf_p_diaria.value        = ""
+        tf_p_feriado.value       = "60.00"
+        tf_p_extra.value         = "50.00"
+        tf_p_falta.value         = "60.00"
+        cb_p_ativo.value         = True
+        cb_p_aparece_ponto.value = True
+        tf_p_hora_entrada_padrao.value = ""
+        tf_p_hora_saida_padrao.value   = ""
+        tf_p_hora_entrada_padrao.error_text = None
+        tf_p_hora_saida_padrao.error_text = None
+        linha_p_salario.visible  = True
+        linha_p_diaria.visible   = False
+        linha_p_holerite.visible = True
+        secao_acesso.visible     = True
+        txt_p_erro.value         = ""
+        _limpar_dias_fixos()
+        tf_dp_cpf.value  = ""
+        tf_dp_rg.value   = ""
+        tf_dp_nasc.value = ""
+        tf_dp_tel.value  = ""
+        tf_dp_end.value  = ""
+        tf_dp_obs.value  = ""
+        dd_perfil.value          = "OPERADOR"
+        tf_pin.value             = ""
+        tf_pin_confirmar.value   = ""
+
+    # ── Modal de Cadastro e Edição ─────────────────────────────────────────
+    tab_content_funcional = ft.Container(
+        padding=ft.Padding.all(14),
+        content=ft.Column(
+            spacing=12,
+            scroll=ft.ScrollMode.AUTO,
+            controls=[
+                ft.Row([tf_p_nome, dd_p_tipo], spacing=12),
+                ft.Row([tf_p_cargo, dd_p_tiposal], spacing=12),
+                linha_p_salario,
+                linha_p_diaria,
+                linha_p_holerite,
+                ft.Row([cb_p_ativo, cb_p_aparece_ponto], spacing=20),
+                ft.Row([tf_p_hora_entrada_padrao, tf_p_hora_saida_padrao], spacing=12),
+            ],
+        ),
+    )
+
+    tab_content_acesso = ft.Container(
+        padding=ft.Padding.all(14),
+        content=ft.Column(
+            spacing=12,
+            scroll=ft.ScrollMode.AUTO,
+            controls=[
+                ft.Text("Controle de Login e Permissões", size=13, weight=ft.FontWeight.BOLD),
+                ft.Divider(height=1),
+                dd_perfil,
+                ft.Row([tf_pin, tf_pin_confirmar], spacing=12),
+                txt_pin_nota,
+            ],
+        ),
+    )
+
+    tab_content_pessoal = ft.Container(
+        padding=ft.Padding.all(14),
+        content=ft.Column(
+            spacing=12,
+            scroll=ft.ScrollMode.AUTO,
+            controls=[
+                ft.Text("Documentação e Contato", size=13, weight=ft.FontWeight.BOLD),
+                ft.Divider(height=1),
+                ft.Row([tf_dp_cpf, tf_dp_rg], spacing=12),
+                ft.Row([tf_dp_nasc, tf_dp_tel], spacing=12),
+                tf_dp_end,
+                tf_dp_obs,
+            ],
+        ),
+    )
+
+    tab_content_dias_fixos = ft.Container(
+        padding=ft.Padding.all(14),
+        content=ft.Column(
+            spacing=12,
+            scroll=ft.ScrollMode.AUTO,
+            controls=[
+                ft.Text("Escala Fixa Semanal (Auto-preenchimento)", size=13, weight=ft.FontWeight.BOLD),
+                ft.Text("Marque os dias fixos de trabalho e informe o horário de entrada:", size=11, color=ft.Colors.GREY_400),
+                ft.Divider(height=1),
+                *_df_grade_linhas,
+            ],
+        ),
+    )
+
+    modal_tab_bar = ft.TabBar(
+        tabs=[
+            ft.Tab(label="Funcional", icon=ft.Icons.BADGE),
+            ft.Tab(label="Acesso & PIN", icon=ft.Icons.LOCK),
+            ft.Tab(label="Dados Pessoais", icon=ft.Icons.CONTACT_PAGE),
+            ft.Tab(label="Dias Fixos", icon=ft.Icons.CALENDAR_MONTH),
+        ]
+    )
+
+    modal_tab_view = ft.TabBarView(
+        controls=[
+            tab_content_funcional,
+            tab_content_acesso,
+            tab_content_pessoal,
+            tab_content_dias_fixos,
+        ],
+        expand=True,
+    )
+
+    modal_tabs = ft.Tabs(
+        length=4,
+        selected_index=0,
+        content=ft.Column([modal_tab_bar, modal_tab_view], expand=True),
+        expand=True,
+    )
+
+    def _abrir_modal_novo(e=None):
+        _limpar_pessoa()
+        lbl_p_titulo.value = "Novo Colaborador"
+        modal_tabs.selected_index = 0
+        dlg_pessoa.open = True
+        page.update()
+
+    def _fechar_modal_pessoa(e=None):
+        dlg_pessoa.open = False
+        txt_p_erro.value = ""
+        page.update()
+
+    def _salvar_pessoa(e=None):
+        txt_p_erro.value = ""
+        nome = tf_p_nome.value.strip()
+        if not nome:
+            txt_p_erro.value = "Nome é obrigatório."
+            page.update()
+            return
+        if not dd_p_tipo.value:
+            txt_p_erro.value = "Selecione o tipo (INTERNO ou ENTREGADOR)."
+            page.update()
+            return
+
+        hora_ent = tf_p_hora_entrada_padrao.value.strip()
+        hora_sai = tf_p_hora_saida_padrao.value.strip()
+        invalidos_horario = [
+            rotulo for rotulo, valor in (
+                ("Entrada padrão", hora_ent),
+                ("Saída padrão",   hora_sai),
+            )
+            if valor and not _hora_valida(valor)
+        ]
+        if invalidos_horario:
+            for campo, valor in ((tf_p_hora_entrada_padrao, hora_ent),
+                                 (tf_p_hora_saida_padrao,   hora_sai)):
+                erro = bool(valor) and not _hora_valida(valor)
+                campo.error_text = "HH:MM" if erro else None
+            txt_p_erro.value = (
+                "Horário inválido em: %s. Use HH:MM (00:00 a 23:59)."
+                % ", ".join(invalidos_horario)
+            )
+            page.update()
+            return
+        for campo in (tf_p_hora_entrada_padrao, tf_p_hora_saida_padrao):
+            campo.error_text = None
+
+        pin   = tf_pin.value.strip()
+        pin_c = tf_pin_confirmar.value.strip()
+        if pin or pin_c:
+            if pin != pin_c:
+                txt_p_erro.value = "Os PINs não coincidem."
+                page.update()
+                return
+            if not pin.isdigit() or len(pin) != 4:
+                txt_p_erro.value = "O PIN deve ter exatamente 4 dígitos numéricos."
+                page.update()
+                return
+
+        ts      = dd_p_tiposal.value
+        salario = _to_float(tf_p_salario.value) if ts == "FIXO"             else 0.0
+        diaria  = _to_float(tf_p_diaria.value)  if ts in ("DIARIO","ENTREGADOR") else 0.0
+
+        kwargs_hol = {}
+        if ts != "ENTREGADOR":
+            kwargs_hol = dict(
+                valor_feriado=_to_float(tf_p_feriado.value),
+                valor_extra=  _to_float(tf_p_extra.value),
+                valor_falta=  _to_float(tf_p_falta.value),
+            )
+
+        is_novo = (_pessoa_id["v"] is None)
+        if is_novo:
+            pid = database.pessoa_inserir(
+                nome=nome,
+                tipo=dd_p_tipo.value,
+                cargo=tf_p_cargo.value.strip() or None,
+                salario_base=salario,
+                tipo_salario=ts,
+                diaria_valor=diaria,
+                status_ativo=cb_p_ativo.value,
+            )
+            database.pessoa_atualizar(
+                pid,
+                aparece_no_ponto=int(cb_p_aparece_ponto.value),
+                horario_entrada_padrao=hora_ent or None,
+                horario_saida_padrao=hora_sai or None,
+            )
+            if kwargs_hol:
+                database.pessoa_atualizar(pid, **kwargs_hol)
+        else:
+            pid = _pessoa_id["v"]
+            database.pessoa_atualizar(
+                pid,
+                nome=nome,
+                tipo=dd_p_tipo.value,
+                cargo=tf_p_cargo.value.strip() or None,
+                salario_base=salario,
+                tipo_salario=ts,
+                diaria_valor=diaria,
+                status_ativo=int(cb_p_ativo.value),
+                aparece_no_ponto=int(cb_p_aparece_ponto.value),
+                horario_entrada_padrao=hora_ent or None,
+                horario_saida_padrao=hora_sai or None,
+                **kwargs_hol,
+            )
+
+        # Salva PIN e perfil
+        if pin:
+            database.usuario_definir_pin(pid, pin)
+        if dd_p_tipo.value != "ENTREGADOR":
+            database.usuario_definir_perfil(pid, dd_perfil.value or "OPERADOR")
+
+        # Salva dados pessoais
+        nasc_val = tf_dp_nasc.value.strip()
+        if nasc_val and "/" in nasc_val:
+            try:
+                d, m, a = nasc_val.split("/")
+                nasc_iso = f"{a}-{m.zfill(2)}-{d.zfill(2)}"
+            except Exception:
+                nasc_iso = nasc_val
+        else:
+            nasc_iso = nasc_val or None
+
+        database.pessoa_atualizar(
+            pid,
+            cpf=tf_dp_cpf.value.strip() or None,
+            rg=tf_dp_rg.value.strip() or None,
+            data_nascimento=nasc_iso,
+            telefone=tf_dp_tel.value.strip() or None,
+            endereco=tf_dp_end.value.strip() or None,
+            observacoes_pessoais=tf_dp_obs.value.strip() or None,
+        )
+
+        # Salva dias fixos (apenas se for INTERNO)
+        if dd_p_tipo.value == "INTERNO":
+            dias = [
+                {"dia_semana": d, "horario_entrada": _df_horas[d].value.strip() or None}
+                for d, _ in _DIAS_FIXOS
+                if _df_checks[d].value
+            ]
+            database.dias_fixos_salvar(pid, dias)
+
+        database.log_registrar(
+            acao="CADASTRAR_PESSOA" if is_novo else "ALTERAR_PESSOA",
+            tabela="cad_pessoas",
+            id_registro=pid,
+            descricao=f"Pessoa salva — {nome} ({dd_p_tipo.value})",
+        )
+
+        dlg_pessoa.open = False
+        _limpar_pessoa()
+        _refresh_pessoas()
+        _snack(page, f"Colaborador '{nome}' salvo com sucesso!")
+        page.update()
+
+    dlg_pessoa = ft.AlertDialog(
+        modal=True,
+        title=ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            controls=[
+                lbl_p_titulo,
+                ft.IconButton(ft.Icons.CLOSE, on_click=_fechar_modal_pessoa),
+            ],
+        ),
+        content=ft.Container(
+            width=680,
+            height=440,
+            content=ft.Column(
+                spacing=8,
+                expand=True,
+                controls=[
+                    modal_tabs,
+                    txt_p_erro,
+                ],
+            ),
+        ),
+        actions=[
+            ft.TextButton("Cancelar", on_click=_fechar_modal_pessoa),
+            ft.ElevatedButton(
+                "Salvar Colaborador",
+                icon=ft.Icons.SAVE,
+                on_click=_salvar_pessoa,
+                style=ft.ButtonStyle(
+                    bgcolor=ft.Colors.TEAL_700,
+                    color=ft.Colors.WHITE,
+                    padding=ft.Padding(16, 10, 16, 10),
+                ),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg_pessoa)
+
     def _refresh_pessoas():
         rows = database.pessoa_listar(apenas_ativos=False)
+        total = len(rows)
+        ativos = sum(1 for p in rows if p["status_ativo"])
+        inativos = total - ativos
+        txt_contagem_pessoas.value = f"{ativos} ativos · {inativos} inativos (total: {total})"
+
         linhas = []
         for p in rows:
             ts = p["tipo_salario"] or ""
@@ -279,7 +654,7 @@ def view(page: ft.Page) -> ft.Control:
                     secao_acesso.visible     = (r["tipo"] != "ENTREGADOR")
                     txt_p_erro.value = ""
                     _carregar_dias_fixos(pid)
-                    card_dias_fixos.visible = True
+
                     # Dados pessoais
                     def _iso_para_br(iso):
                         try:
@@ -292,10 +667,12 @@ def view(page: ft.Page) -> ft.Control:
                     tf_dp_tel.value  = r["telefone"] or ""
                     tf_dp_end.value  = r["endereco"] or ""
                     tf_dp_obs.value  = r["observacoes_pessoais"] or ""
-                    card_dados_pessoais.visible = True
                     dd_perfil.value          = r["perfil_acesso"] or "OPERADOR"
                     tf_pin.value             = ""
                     tf_pin_confirmar.value   = ""
+
+                    modal_tabs.selected_index = 0
+                    dlg_pessoa.open = True
                     page.update()
                 return handler
 
@@ -348,286 +725,30 @@ def view(page: ft.Page) -> ft.Control:
                 ])
             )
 
-    def _limpar_pessoa():
-        _pessoa_id["v"]          = None
-        lbl_p_titulo.value       = "Nova Pessoa"
-        tf_p_nome.value          = ""
-        dd_p_tipo.value          = None
-        tf_p_cargo.value         = ""
-        dd_p_tiposal.value       = None
-        tf_p_salario.value       = ""
-        tf_p_diaria.value        = ""
-        tf_p_feriado.value       = "60.00"
-        tf_p_extra.value         = "50.00"
-        tf_p_falta.value         = "60.00"
-        cb_p_ativo.value         = True
-        cb_p_aparece_ponto.value = True
-        tf_p_hora_entrada_padrao.value = ""
-        tf_p_hora_saida_padrao.value   = ""
-        linha_p_salario.visible  = True
-        linha_p_diaria.visible   = False
-        linha_p_holerite.visible = True
-        txt_p_erro.value         = ""
-        _limpar_dias_fixos()
-        card_dias_fixos.visible  = False
-        tf_dp_cpf.value  = ""
-        tf_dp_rg.value   = ""
-        tf_dp_nasc.value = ""
-        tf_dp_tel.value  = ""
-        tf_dp_end.value  = ""
-        tf_dp_obs.value  = ""
-        card_dados_pessoais.visible = False
-        dd_perfil.value          = "OPERADOR"
-        tf_pin.value             = ""
-        tf_pin_confirmar.value   = ""
+    _refresh_pessoas()
 
-    def _salvar_pessoa(e):
-        txt_p_erro.value = ""
-        nome = tf_p_nome.value.strip()
-        if not nome:
-            txt_p_erro.value = "Nome é obrigatório."
-            page.update()
-            return
-        if not dd_p_tipo.value:
-            txt_p_erro.value = "Selecione o tipo (INTERNO ou ENTREGADOR)."
-            page.update()
-            return
-
-        # Horário padrão: aceita vazio OU HH:MM válido (mesma validação de
-        # views/escala_geral.py) — se inválido, bloqueia o salvamento.
-        hora_ent = tf_p_hora_entrada_padrao.value.strip()
-        hora_sai = tf_p_hora_saida_padrao.value.strip()
-        invalidos_horario = [
-            rotulo for rotulo, valor in (
-                ("Entrada padrão", hora_ent),
-                ("Saída padrão",   hora_sai),
-            )
-            if valor and not _hora_valida(valor)
-        ]
-        if invalidos_horario:
-            for campo, valor in ((tf_p_hora_entrada_padrao, hora_ent),
-                                 (tf_p_hora_saida_padrao,   hora_sai)):
-                erro = bool(valor) and not _hora_valida(valor)
-                campo.error_text = "HH:MM" if erro else None
-            txt_p_erro.value = (
-                "Horário inválido em: %s. Use HH:MM (00:00 a 23:59)."
-                % ", ".join(invalidos_horario)
-            )
-            page.update()
-            return
-        for campo in (tf_p_hora_entrada_padrao, tf_p_hora_saida_padrao):
-            campo.error_text = None
-
-        ts      = dd_p_tiposal.value
-        salario = _to_float(tf_p_salario.value) if ts == "FIXO"             else 0.0
-        diaria  = _to_float(tf_p_diaria.value)  if ts in ("DIARIO","ENTREGADOR") else 0.0
-
-        kwargs_hol = {}
-        if ts != "ENTREGADOR":
-            kwargs_hol = dict(
-                valor_feriado=_to_float(tf_p_feriado.value),
-                valor_extra=  _to_float(tf_p_extra.value),
-                valor_falta=  _to_float(tf_p_falta.value),
-            )
-
-        if _pessoa_id["v"] is None:
-            pid = database.pessoa_inserir(
-                nome=nome,
-                tipo=dd_p_tipo.value,
-                cargo=tf_p_cargo.value.strip() or None,
-                salario_base=salario,
-                tipo_salario=ts,
-                diaria_valor=diaria,
-                status_ativo=cb_p_ativo.value,
-            )
-            database.pessoa_atualizar(
-                pid,
-                aparece_no_ponto=int(cb_p_aparece_ponto.value),
-                horario_entrada_padrao=hora_ent or None,
-                horario_saida_padrao=hora_sai or None,
-            )
-            if kwargs_hol:
-                database.pessoa_atualizar(pid, **kwargs_hol)
-        else:
-            pid = _pessoa_id["v"]
-            database.pessoa_atualizar(
-                pid,
-                nome=nome,
-                tipo=dd_p_tipo.value,
-                cargo=tf_p_cargo.value.strip() or None,
-                salario_base=salario,
-                tipo_salario=ts,
-                diaria_valor=diaria,
-                status_ativo=int(cb_p_ativo.value),
-                aparece_no_ponto=int(cb_p_aparece_ponto.value),
-                horario_entrada_padrao=hora_ent or None,
-                horario_saida_padrao=hora_sai or None,
-                **kwargs_hol,
-            )
-
-        # PIN / perfil de acesso
-        pin     = tf_pin.value.strip()
-        pin_c   = tf_pin_confirmar.value.strip()
-        if pin or pin_c:
-            if pin != pin_c:
-                txt_p_erro.value = "Os PINs não coincidem."
-                page.update()
-                return
-            if not pin.isdigit() or len(pin) != 4:
-                txt_p_erro.value = "O PIN deve ter exatamente 4 dígitos numéricos."
-                page.update()
-                return
-            database.usuario_definir_pin(pid, pin)
-        database.usuario_definir_perfil(pid, dd_perfil.value or "OPERADOR")
-
-        database.log_registrar(
-            acao="ALTERAR_PESSOA",
-            tabela="cad_pessoas",
-            id_registro=pid,
-            descricao=f"Pessoa salva — {nome} ({dd_p_tipo.value})",
-        )
-        _limpar_pessoa()
-        _refresh_pessoas()
-        page.update()
-
-    def _cancelar_pessoa(e):
-        _limpar_pessoa()
-        page.update()
-
-    # ── Dias Fixos de Trabalho ─────────────────────────────────────────────
-    # Ter=1, Qua=2, Qui=3, Sex=4, Sáb=5, Dom=6  (Segunda=0 é folga geral)
-    _DIAS_FIXOS = [
-        (1, "Terça"),
-        (2, "Quarta"),
-        (3, "Quinta"),
-        (4, "Sexta"),
-        (5, "Sábado"),
-        (6, "Domingo"),
-    ]
-
-    _df_checks: dict = {}
-    _df_horas:  dict = {}
-
-    for _dia, _nome in _DIAS_FIXOS:
-        _cb = ft.Checkbox(label=_nome, value=False)
-        _tf = ft.TextField(width=90, hint_text="HH:MM", disabled=True)
-        _df_checks[_dia] = _cb
-        _df_horas[_dia]  = _tf
-
-        def _on_df_change(e, d=_dia):
-            _df_horas[d].disabled = not _df_checks[d].value
-            if not _df_checks[d].value:
-                _df_horas[d].value = ""
-            page.update()
-
-        _cb.on_change = _on_df_change
-
-    def _limpar_dias_fixos():
-        for d, _ in _DIAS_FIXOS:
-            _df_checks[d].value   = False
-            _df_horas[d].value    = ""
-            _df_horas[d].disabled = True
-
-    def _carregar_dias_fixos(pid: int):
-        _limpar_dias_fixos()
-        for row in database.dias_fixos_listar(pid):
-            d = row["dia_semana"]
-            if d in _df_checks:
-                _df_checks[d].value   = True
-                _df_horas[d].value    = row["horario_entrada"] or ""
-                _df_horas[d].disabled = False
-
-    def _salvar_dias_fixos(e):
-        pid = _pessoa_id["v"]
-        if pid is None:
-            return
-        dias = [
-            {"dia_semana": d, "horario_entrada": _df_horas[d].value.strip() or None}
-            for d, _ in _DIAS_FIXOS
-            if _df_checks[d].value
-        ]
-        database.dias_fixos_salvar(pid, dias)
-        _snack(page, "Dias fixos salvos!")
-
-    # Grade: 2 dias por linha
-    _df_grade_linhas = []
-    for i in range(0, len(_DIAS_FIXOS), 2):
-        par = _DIAS_FIXOS[i:i + 2]
-        row_ctrls = []
-        for d, _ in par:
-            row_ctrls += [_df_checks[d], _df_horas[d]]
-        _df_grade_linhas.append(ft.Row(controls=row_ctrls, spacing=16))
-
-    card_dias_fixos = ft.Card(
-        visible=False,
+    card_topo_pessoas = ft.Card(
         content=ft.Container(
             padding=ft.Padding.all(16),
-            content=ft.Column(
-                spacing=12,
+            content=ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Text("Dias Fixos de Trabalho",
-                            size=14, weight=ft.FontWeight.BOLD),
-                    ft.Divider(height=1),
-                    *_df_grade_linhas,
-                    ft.ElevatedButton(
-                        "Salvar Dias Fixos",
-                        icon=ft.Icons.CALENDAR_MONTH,
-                        on_click=_salvar_dias_fixos,
-                        style=ft.ButtonStyle(
-                            bgcolor=ft.Colors.INDIGO_600,
-                            color=ft.Colors.WHITE,
-                        ),
+                    ft.Column(
+                        spacing=3,
+                        controls=[
+                            ft.Text("Colaboradores Cadastrados", size=16, weight=ft.FontWeight.BOLD),
+                            txt_contagem_pessoas,
+                        ],
                     ),
-                ],
-            ),
-        ),
-    )
-
-    def _salvar_dados_pessoais(e):
-        pid = _pessoa_id["v"]
-        if pid is None:
-            return
-        nasc_val = tf_dp_nasc.value.strip()
-        if nasc_val and "/" in nasc_val:
-            try:
-                d, m, a = nasc_val.split("/")
-                nasc_iso = f"{a}-{m.zfill(2)}-{d.zfill(2)}"
-            except Exception:
-                nasc_iso = nasc_val
-        else:
-            nasc_iso = nasc_val or None
-        nome = database.pessoa_buscar(pid)["nome"]
-        database.pessoa_atualizar(
-            pid,
-            cpf=tf_dp_cpf.value.strip() or None,
-            rg=tf_dp_rg.value.strip() or None,
-            data_nascimento=nasc_iso,
-            telefone=tf_dp_tel.value.strip() or None,
-            endereco=tf_dp_end.value.strip() or None,
-            observacoes_pessoais=tf_dp_obs.value.strip() or None,
-        )
-        _snack(page, f"Dados pessoais de {nome} salvos.")
-
-    card_dados_pessoais = ft.Card(
-        visible=False,
-        content=ft.Container(
-            padding=ft.Padding.all(16),
-            content=ft.Column(
-                spacing=12,
-                controls=[
-                    ft.Text("Dados Pessoais", size=14, weight=ft.FontWeight.BOLD),
-                    ft.Divider(height=1),
-                    ft.Row([tf_dp_cpf, tf_dp_rg], spacing=12),
-                    ft.Row([tf_dp_nasc, tf_dp_tel], spacing=12),
-                    ft.Row([tf_dp_end], spacing=12),
-                    ft.Row([tf_dp_obs], spacing=12),
                     ft.ElevatedButton(
-                        "Salvar Dados Pessoais",
-                        icon=ft.Icons.PERSON,
-                        on_click=_salvar_dados_pessoais,
+                        "Novo Colaborador",
+                        icon=ft.Icons.PERSON_ADD,
+                        on_click=_abrir_modal_novo,
                         style=ft.ButtonStyle(
                             bgcolor=ft.Colors.TEAL_700,
                             color=ft.Colors.WHITE,
+                            padding=ft.Padding(16, 12, 16, 12),
                         ),
                     ),
                 ],
@@ -635,42 +756,19 @@ def view(page: ft.Page) -> ft.Control:
         ),
     )
 
-    _refresh_pessoas()
+    card_tabela_pessoas = ft.Card(
+        content=ft.Container(
+            padding=ft.Padding.all(16),
+            content=tabela_pessoas,
+        ),
+    )
 
     tab_pessoas = ft.Column(
         scroll=ft.ScrollMode.AUTO,
-        spacing=12,
+        spacing=14,
         controls=[
-            ft.Card(content=ft.Container(
-                padding=ft.Padding.all(16),
-                content=ft.Column(spacing=12, controls=[
-                    lbl_p_titulo,
-                    ft.Row([tf_p_nome, dd_p_tipo], spacing=12),
-                    ft.Row([tf_p_cargo, dd_p_tiposal], spacing=12),
-                    linha_p_salario,
-                    linha_p_diaria,
-                    linha_p_holerite,
-                    cb_p_ativo,
-                    cb_p_aparece_ponto,
-                    ft.Row([tf_p_hora_entrada_padrao, tf_p_hora_saida_padrao], spacing=12),
-                    secao_acesso,
-                    txt_p_erro,
-                    ft.Row([
-                        ft.ElevatedButton("Salvar",   icon=ft.Icons.SAVE,  on_click=_salvar_pessoa),
-                        ft.TextButton("Cancelar", on_click=_cancelar_pessoa),
-                    ]),
-                ]),
-            )),
-            card_dias_fixos,
-            card_dados_pessoais,
-            ft.Card(content=ft.Container(
-                padding=ft.Padding.all(16),
-                content=ft.Column(spacing=8, controls=[
-                    ft.Text("Pessoas Cadastradas", size=14, weight=ft.FontWeight.BOLD),
-                    ft.Divider(height=1),
-                    tabela_pessoas,
-                ]),
-            )),
+            card_topo_pessoas,
+            card_tabela_pessoas,
         ],
     )
 
