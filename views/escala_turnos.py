@@ -173,19 +173,16 @@ def view(page: ft.Page) -> ft.Control:
     dd_pessoa = ft.Dropdown(
         label="Pessoa / Funcionária *",
         options=opts_pessoas,
-        expand=True,
     )
 
     tf_nome_avulso = ft.TextField(
         label="Nome do Extra Avulso *",
-        expand=True,
         visible=False,
     )
 
     tf_funcao_avulso = ft.TextField(
         label="Função / Cargo do Extra",
         hint_text="ex: Cozinha, Atendimento, Caixa",
-        expand=True,
         visible=False,
     )
 
@@ -291,20 +288,17 @@ def view(page: ft.Page) -> ft.Control:
                 ft.IconButton(ft.Icons.CLOSE, on_click=_fechar_modal),
             ],
         ),
-        content=ft.Container(
-            width=480,
-            content=ft.Column(
-                tight=True,
-                spacing=12,
-                scroll=ft.ScrollMode.AUTO,
-                controls=[
-                    dd_pessoa,
-                    tf_nome_avulso,
-                    tf_funcao_avulso,
-                    ft.Row([btn_turno_dia, btn_turno_noite], spacing=8),
-                    txt_erro_modal,
-                ],
-            ),
+        content=ft.Column(
+            tight=True,
+            width=460,
+            spacing=12,
+            controls=[
+                dd_pessoa,
+                tf_nome_avulso,
+                tf_funcao_avulso,
+                ft.Row([btn_turno_dia, btn_turno_noite], spacing=8),
+                txt_erro_modal,
+            ],
         ),
         actions=[
             ft.TextButton("Cancelar", on_click=_fechar_modal),
