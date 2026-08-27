@@ -778,16 +778,102 @@ def view(page: ft.Page) -> ft.Control:
 
     _bairro_id: dict = {"v": None}
 
-    tf_b_nome    = ft.TextField(label="Nome do Bairro",          expand=True)
+    tf_b_nome    = ft.TextField(label="Nome do Bairro *",          expand=True)
     tf_b_taxa    = ft.TextField(label="Taxa Cobrada (R$)",        keyboard_type=ft.KeyboardType.NUMBER, expand=True)
     tf_b_repasse = ft.TextField(label="Repasse Entregador (R$)",  keyboard_type=ft.KeyboardType.NUMBER, expand=True)
     txt_b_erro   = ft.Text("", color=ft.Colors.RED_400, size=12)
-    lbl_b_titulo = ft.Text("Novo Bairro", size=14, weight=ft.FontWeight.BOLD)
+    lbl_b_titulo = ft.Text("Novo Bairro", size=15, weight=ft.FontWeight.BOLD)
+    txt_contagem_bairros = ft.Text("0 bairros cadastrados", size=12, color=ft.Colors.GREY_400)
 
     tabela_bairros = ft.Column(spacing=0)
 
+    def _fechar_dlg_bairro(e=None):
+        dlg_bairro.open = False
+        txt_b_erro.value = ""
+        page.update()
+
+    def _limpar_bairro():
+        _bairro_id["v"]    = None
+        lbl_b_titulo.value = "Novo Bairro"
+        tf_b_nome.value    = ""
+        tf_b_taxa.value    = ""
+        tf_b_repasse.value = ""
+        txt_b_erro.value   = ""
+
+    def _abrir_modal_novo_bairro(e=None):
+        _limpar_bairro()
+        dlg_bairro.open = True
+        page.update()
+
+    def _salvar_bairro(e):
+        txt_b_erro.value = ""
+        nome = tf_b_nome.value.strip()
+        if not nome:
+            txt_b_erro.value = "Nome do bairro é obrigatório."
+            page.update()
+            return
+        taxa    = _to_float(tf_b_taxa.value)
+        repasse = _to_float(tf_b_repasse.value)
+        if _bairro_id["v"] is None:
+            id_bairro = database.bairro_inserir(nome, taxa, repasse)
+        else:
+            id_bairro = _bairro_id["v"]
+            database.bairro_atualizar(
+                id_bairro,
+                nome_bairro=nome,
+                taxa_cobrada=taxa,
+                repasse_entregador=repasse,
+            )
+        database.log_registrar(
+            acao="ALTERAR_BAIRRO",
+            tabela="cad_bairros",
+            id_registro=id_bairro,
+            descricao=f"Bairro salvo — {nome}: "
+                      f"Taxa R$ {taxa:.2f} | "
+                      f"Repasse R$ {repasse:.2f}",
+        )
+        dlg_bairro.open = False
+        _limpar_bairro()
+        _refresh_bairros()
+        page.update()
+
+    dlg_bairro = ft.AlertDialog(
+        modal=True,
+        title=ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            controls=[
+                lbl_b_titulo,
+                ft.IconButton(ft.Icons.CLOSE, on_click=_fechar_dlg_bairro),
+            ],
+        ),
+        content=ft.Container(
+            width=480,
+            content=ft.Column(
+                tight=True,
+                spacing=12,
+                controls=[
+                    tf_b_nome,
+                    ft.Row([tf_b_taxa, tf_b_repasse], spacing=12),
+                    txt_b_erro,
+                ],
+            ),
+        ),
+        actions=[
+            ft.TextButton("Cancelar", on_click=_fechar_dlg_bairro),
+            ft.ElevatedButton(
+                "Salvar",
+                icon=ft.Icons.SAVE,
+                on_click=_salvar_bairro,
+                style=ft.ButtonStyle(bgcolor=ft.Colors.TEAL_700, color=ft.Colors.WHITE),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg_bairro)
+
     def _refresh_bairros():
         rows = database.bairro_listar()
+        txt_contagem_bairros.value = f"{len(rows)} bairro(s) cadastrado(s)"
         linhas = []
         for b in rows:
             def _on_editar_bairro(bid):
@@ -801,6 +887,7 @@ def view(page: ft.Page) -> ft.Control:
                     tf_b_taxa.value    = f"{r['taxa_cobrada']:.2f}"
                     tf_b_repasse.value = f"{r['repasse_entregador']:.2f}"
                     txt_b_erro.value   = ""
+                    dlg_bairro.open = True
                     page.update()
                 return handler
 
@@ -849,76 +936,50 @@ def view(page: ft.Page) -> ft.Control:
                 ])
             )
 
-    def _limpar_bairro():
-        _bairro_id["v"]    = None
-        lbl_b_titulo.value = "Novo Bairro"
-        tf_b_nome.value    = ""
-        tf_b_taxa.value    = ""
-        tf_b_repasse.value = ""
-        txt_b_erro.value   = ""
-
-    def _salvar_bairro(e):
-        txt_b_erro.value = ""
-        nome = tf_b_nome.value.strip()
-        if not nome:
-            txt_b_erro.value = "Nome do bairro é obrigatório."
-            page.update()
-            return
-        taxa    = _to_float(tf_b_taxa.value)
-        repasse = _to_float(tf_b_repasse.value)
-        if _bairro_id["v"] is None:
-            id_bairro = database.bairro_inserir(nome, taxa, repasse)
-        else:
-            id_bairro = _bairro_id["v"]
-            database.bairro_atualizar(
-                id_bairro,
-                nome_bairro=nome,
-                taxa_cobrada=taxa,
-                repasse_entregador=repasse,
-            )
-        database.log_registrar(
-            acao="ALTERAR_BAIRRO",
-            tabela="cad_bairros",
-            id_registro=id_bairro,
-            descricao=f"Bairro salvo — {nome}: "
-                      f"Taxa R$ {taxa:.2f} | "
-                      f"Repasse R$ {repasse:.2f}",
-        )
-        _limpar_bairro()
-        _refresh_bairros()
-        page.update()
-
-    def _cancelar_bairro(e):
-        _limpar_bairro()
-        page.update()
-
     _refresh_bairros()
+
+    card_topo_bairros = ft.Card(
+        content=ft.Container(
+            padding=ft.Padding.all(16),
+            content=ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Column(
+                        spacing=3,
+                        controls=[
+                            ft.Text("Bairros Cadastrados", size=16, weight=ft.FontWeight.BOLD),
+                            txt_contagem_bairros,
+                        ],
+                    ),
+                    ft.ElevatedButton(
+                        "Novo Bairro",
+                        icon=ft.Icons.ADD_LOCATION_ALT,
+                        on_click=_abrir_modal_novo_bairro,
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.TEAL_700,
+                            color=ft.Colors.WHITE,
+                            padding=ft.Padding(16, 12, 16, 12),
+                        ),
+                    ),
+                ],
+            ),
+        ),
+    )
+
+    card_tabela_bairros = ft.Card(
+        content=ft.Container(
+            padding=ft.Padding.all(16),
+            content=tabela_bairros,
+        ),
+    )
 
     tab_bairros = ft.Column(
         scroll=ft.ScrollMode.AUTO,
-        spacing=12,
+        spacing=14,
         controls=[
-            ft.Card(content=ft.Container(
-                padding=ft.Padding.all(16),
-                content=ft.Column(spacing=12, controls=[
-                    lbl_b_titulo,
-                    tf_b_nome,
-                    ft.Row([tf_b_taxa, tf_b_repasse], spacing=12),
-                    txt_b_erro,
-                    ft.Row([
-                        ft.ElevatedButton("Salvar",   icon=ft.Icons.SAVE, on_click=_salvar_bairro),
-                        ft.TextButton("Cancelar", on_click=_cancelar_bairro),
-                    ]),
-                ]),
-            )),
-            ft.Card(content=ft.Container(
-                padding=ft.Padding.all(16),
-                content=ft.Column(spacing=8, controls=[
-                    ft.Text("Bairros Cadastrados", size=14, weight=ft.FontWeight.BOLD),
-                    ft.Divider(height=1),
-                    tabela_bairros,
-                ]),
-            )),
+            card_topo_bairros,
+            card_tabela_bairros,
         ],
     )
 
@@ -1002,9 +1063,9 @@ def view(page: ft.Page) -> ft.Control:
     #  ABA 4 — MÉTODOS DE PAGAMENTO
     # ══════════════════════════════════════════
 
-    tf_m_nome  = ft.TextField(label="Nome", expand=True)
+    tf_m_nome  = ft.TextField(label="Nome do Método *", expand=True)
     dd_m_tipo  = ft.Dropdown(
-        label="Tipo", width=200,
+        label="Tipo *", width=200,
         options=[
             ft.dropdown.Option("FISICO"),
             ft.dropdown.Option("PLATAFORMA"),
@@ -1013,11 +1074,75 @@ def view(page: ft.Page) -> ft.Control:
         ],
     )
     txt_m_erro = ft.Text("", color=ft.Colors.RED_400, size=12)
+    txt_contagem_metodos = ft.Text("0 métodos cadastrados", size=12, color=ft.Colors.GREY_400)
 
     tabela_metodos = ft.Column(spacing=0)
 
+    def _fechar_dlg_metodo(e=None):
+        dlg_metodo.open = False
+        txt_m_erro.value = ""
+        page.update()
+
+    def _abrir_modal_novo_metodo(e=None):
+        tf_m_nome.value = ""
+        dd_m_tipo.value = None
+        txt_m_erro.value = ""
+        dlg_metodo.open = True
+        page.update()
+
+    def _salvar_metodo(e):
+        txt_m_erro.value = ""
+        nome = tf_m_nome.value.strip()
+        if not nome:
+            txt_m_erro.value = "Nome é obrigatório."
+            page.update()
+            return
+        if not dd_m_tipo.value:
+            txt_m_erro.value = "Selecione o tipo."
+            page.update()
+            return
+        database.metodo_pag_inserir(nome, dd_m_tipo.value)
+        dlg_metodo.open = False
+        _refresh_metodos()
+        page.update()
+
+    dlg_metodo = ft.AlertDialog(
+        modal=True,
+        title=ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            controls=[
+                ft.Text("Novo Método de Pagamento", size=15, weight=ft.FontWeight.BOLD),
+                ft.IconButton(ft.Icons.CLOSE, on_click=_fechar_dlg_metodo),
+            ],
+        ),
+        content=ft.Container(
+            width=440,
+            content=ft.Column(
+                tight=True,
+                spacing=12,
+                controls=[
+                    tf_m_nome,
+                    dd_m_tipo,
+                    txt_m_erro,
+                ],
+            ),
+        ),
+        actions=[
+            ft.TextButton("Cancelar", on_click=_fechar_dlg_metodo),
+            ft.ElevatedButton(
+                "Salvar",
+                icon=ft.Icons.SAVE,
+                on_click=_salvar_metodo,
+                style=ft.ButtonStyle(bgcolor=ft.Colors.TEAL_700, color=ft.Colors.WHITE),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg_metodo)
+
     def _refresh_metodos():
         rows = database.metodo_pag_listar()
+        txt_contagem_metodos.value = f"{len(rows)} método(s) cadastrado(s)"
         linhas = []
         for m in rows:
             def _on_excluir_metodo(mid):
@@ -1053,53 +1178,57 @@ def view(page: ft.Page) -> ft.Control:
                         columns=[
                             ft.DataColumn(ft.Text("Nome")),
                             ft.DataColumn(ft.Text("Tipo")),
-                            ft.DataColumn(ft.Text("")),
+                            ft.DataColumn(ft.Text("Ações")),
                         ],
                         rows=linhas,
                     )
                 ])
             )
 
-    def _salvar_metodo(e):
-        txt_m_erro.value = ""
-        nome = tf_m_nome.value.strip()
-        if not nome:
-            txt_m_erro.value = "Nome é obrigatório."
-            page.update()
-            return
-        if not dd_m_tipo.value:
-            txt_m_erro.value = "Selecione o tipo."
-            page.update()
-            return
-        database.metodo_pag_inserir(nome, dd_m_tipo.value)
-        tf_m_nome.value = ""
-        dd_m_tipo.value = None
-        _refresh_metodos()
-        page.update()
-
     _refresh_metodos()
+
+    card_topo_metodos = ft.Card(
+        content=ft.Container(
+            padding=ft.Padding.all(16),
+            content=ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Column(
+                        spacing=3,
+                        controls=[
+                            ft.Text("Métodos de Pagamento", size=16, weight=ft.FontWeight.BOLD),
+                            txt_contagem_metodos,
+                        ],
+                    ),
+                    ft.ElevatedButton(
+                        "Novo Método",
+                        icon=ft.Icons.ADD_CARD,
+                        on_click=_abrir_modal_novo_metodo,
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.TEAL_700,
+                            color=ft.Colors.WHITE,
+                            padding=ft.Padding(16, 12, 16, 12),
+                        ),
+                    ),
+                ],
+            ),
+        ),
+    )
+
+    card_tabela_metodos = ft.Card(
+        content=ft.Container(
+            padding=ft.Padding.all(16),
+            content=tabela_metodos,
+        ),
+    )
 
     tab_metodos = ft.Column(
         scroll=ft.ScrollMode.AUTO,
-        spacing=12,
+        spacing=14,
         controls=[
-            ft.Card(content=ft.Container(
-                padding=ft.Padding.all(16),
-                content=ft.Column(spacing=12, controls=[
-                    ft.Text("Adicionar Método de Pagamento", size=14, weight=ft.FontWeight.BOLD),
-                    ft.Row([tf_m_nome, dd_m_tipo], spacing=12),
-                    txt_m_erro,
-                    ft.ElevatedButton("Adicionar", icon=ft.Icons.ADD, on_click=_salvar_metodo),
-                ]),
-            )),
-            ft.Card(content=ft.Container(
-                padding=ft.Padding.all(16),
-                content=ft.Column(spacing=8, controls=[
-                    ft.Text("Métodos Cadastrados", size=14, weight=ft.FontWeight.BOLD),
-                    ft.Divider(height=1),
-                    tabela_metodos,
-                ]),
-            )),
+            card_topo_metodos,
+            card_tabela_metodos,
         ],
     )
 
@@ -1107,18 +1236,87 @@ def view(page: ft.Page) -> ft.Control:
     #  ABA 5 — CATEGORIAS EXTRAS
     # ══════════════════════════════════════════
 
-    tf_cat_desc   = ft.TextField(label="Descrição", expand=True)
+    tf_cat_desc   = ft.TextField(label="Descrição da Categoria *", expand=True)
     dd_cat_fluxo  = ft.Dropdown(
-        label="Fluxo", width=160,
+        label="Fluxo *", width=160,
         options=[ft.dropdown.Option("ENTRADA"), ft.dropdown.Option("SAIDA")],
     )
     cb_cat_func   = ft.Checkbox(label="Usa Funcionário", value=False)
     txt_cat_erro  = ft.Text("", color=ft.Colors.RED_400, size=12)
+    txt_contagem_cats = ft.Text("0 categorias cadastradas", size=12, color=ft.Colors.GREY_400)
 
     tabela_cats = ft.Column(spacing=0)
 
+    def _fechar_dlg_cat(e=None):
+        dlg_categoria.open = False
+        txt_cat_erro.value = ""
+        page.update()
+
+    def _abrir_modal_novo_cat(e=None):
+        tf_cat_desc.value = ""
+        dd_cat_fluxo.value = None
+        cb_cat_func.value = False
+        txt_cat_erro.value = ""
+        dlg_categoria.open = True
+        page.update()
+
+    def _salvar_cat(e):
+        txt_cat_erro.value = ""
+        desc = tf_cat_desc.value.strip()
+        if not desc:
+            txt_cat_erro.value = "Descrição é obrigatória."
+            page.update()
+            return
+        if not dd_cat_fluxo.value:
+            txt_cat_erro.value = "Selecione o fluxo."
+            page.update()
+            return
+        database.categoria_extra_inserir(desc, dd_cat_fluxo.value, cb_cat_func.value)
+        dlg_categoria.open = False
+        _refresh_cats()
+        page.update()
+
+    dlg_categoria = ft.AlertDialog(
+        modal=True,
+        title=ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            controls=[
+                ft.Text("Nova Categoria de Movimentação", size=15, weight=ft.FontWeight.BOLD),
+                ft.IconButton(ft.Icons.CLOSE, on_click=_fechar_dlg_cat),
+            ],
+        ),
+        content=ft.Container(
+            width=460,
+            content=ft.Column(
+                tight=True,
+                spacing=12,
+                controls=[
+                    tf_cat_desc,
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[dd_cat_fluxo, cb_cat_func],
+                    ),
+                    txt_cat_erro,
+                ],
+            ),
+        ),
+        actions=[
+            ft.TextButton("Cancelar", on_click=_fechar_dlg_cat),
+            ft.ElevatedButton(
+                "Salvar",
+                icon=ft.Icons.SAVE,
+                on_click=_salvar_cat,
+                style=ft.ButtonStyle(bgcolor=ft.Colors.TEAL_700, color=ft.Colors.WHITE),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg_categoria)
+
     def _refresh_cats():
         rows = database.categoria_extra_listar()
+        txt_contagem_cats.value = f"{len(rows)} categoria(s) cadastrada(s)"
         linhas = []
         for c in rows:
             cor_fluxo = ft.Colors.GREEN_400 if c["fluxo"] == "ENTRADA" else ft.Colors.RED_400
@@ -1134,7 +1332,7 @@ def view(page: ft.Page) -> ft.Control:
 
             linhas.append(ft.DataRow(cells=[
                 ft.DataCell(ft.Text(c["descricao"])),
-                ft.DataCell(ft.Text(c["fluxo"], color=cor_fluxo)),
+                ft.DataCell(ft.Text(c["fluxo"], color=cor_fluxo, weight=ft.FontWeight.BOLD)),
                 ft.DataCell(ft.Text("Sim" if c["usa_funcionario"] else "Não")),
                 ft.DataCell(ft.IconButton(
                     icon=ft.Icons.DELETE_OUTLINE,
@@ -1158,55 +1356,57 @@ def view(page: ft.Page) -> ft.Control:
                             ft.DataColumn(ft.Text("Descrição")),
                             ft.DataColumn(ft.Text("Fluxo")),
                             ft.DataColumn(ft.Text("Usa Func.")),
-                            ft.DataColumn(ft.Text("")),
+                            ft.DataColumn(ft.Text("Ações")),
                         ],
                         rows=linhas,
                     )
                 ])
             )
 
-    def _salvar_cat(e):
-        txt_cat_erro.value = ""
-        desc = tf_cat_desc.value.strip()
-        if not desc:
-            txt_cat_erro.value = "Descrição é obrigatória."
-            page.update()
-            return
-        if not dd_cat_fluxo.value:
-            txt_cat_erro.value = "Selecione o fluxo."
-            page.update()
-            return
-        database.categoria_extra_inserir(desc, dd_cat_fluxo.value, cb_cat_func.value)
-        tf_cat_desc.value  = ""
-        dd_cat_fluxo.value = None
-        cb_cat_func.value  = False
-        _refresh_cats()
-        page.update()
-
     _refresh_cats()
+
+    card_topo_cats = ft.Card(
+        content=ft.Container(
+            padding=ft.Padding.all(16),
+            content=ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Column(
+                        spacing=3,
+                        controls=[
+                            ft.Text("Categorias de Movimentação", size=16, weight=ft.FontWeight.BOLD),
+                            txt_contagem_cats,
+                        ],
+                    ),
+                    ft.ElevatedButton(
+                        "Nova Categoria",
+                        icon=ft.Icons.CREATE_NEW_FOLDER_OUTLINED,
+                        on_click=_abrir_modal_novo_cat,
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.TEAL_700,
+                            color=ft.Colors.WHITE,
+                            padding=ft.Padding(16, 12, 16, 12),
+                        ),
+                    ),
+                ],
+            ),
+        ),
+    )
+
+    card_tabela_cats = ft.Card(
+        content=ft.Container(
+            padding=ft.Padding.all(16),
+            content=tabela_cats,
+        ),
+    )
 
     tab_categorias = ft.Column(
         scroll=ft.ScrollMode.AUTO,
-        spacing=12,
+        spacing=14,
         controls=[
-            ft.Card(content=ft.Container(
-                padding=ft.Padding.all(16),
-                content=ft.Column(spacing=12, controls=[
-                    ft.Text("Adicionar Categoria Extra", size=14, weight=ft.FontWeight.BOLD),
-                    ft.Row([tf_cat_desc, dd_cat_fluxo], spacing=12),
-                    cb_cat_func,
-                    txt_cat_erro,
-                    ft.ElevatedButton("Adicionar", icon=ft.Icons.ADD, on_click=_salvar_cat),
-                ]),
-            )),
-            ft.Card(content=ft.Container(
-                padding=ft.Padding.all(16),
-                content=ft.Column(spacing=8, controls=[
-                    ft.Text("Categorias Cadastradas", size=14, weight=ft.FontWeight.BOLD),
-                    ft.Divider(height=1),
-                    tabela_cats,
-                ]),
-            )),
+            card_topo_cats,
+            card_tabela_cats,
         ],
     )
 
