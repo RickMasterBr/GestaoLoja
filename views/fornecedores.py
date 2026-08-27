@@ -307,7 +307,6 @@ def view(page: ft.Page) -> ft.Control:
         tf_obs.value      = ""
         cb_ativo.value    = True
         txt_erro.value    = ""
-        btn_cancelar.visible = False
         lbl_titulo.value  = "Novo Fornecedor"
 
     def _carregar():
@@ -396,6 +395,17 @@ def view(page: ft.Page) -> ft.Control:
 
         page.update()
 
+    def _abrir_modal_novo(e=None):
+        _limpar()
+        lbl_titulo.value = "Novo Fornecedor"
+        dlg_fornecedor.open = True
+        page.update()
+
+    def _fechar_modal_forn(e=None):
+        dlg_fornecedor.open = False
+        txt_erro.value = ""
+        page.update()
+
     def _editar(forn):
         _id_edicao["v"]   = forn["id"]
         tf_nome.value     = forn["nome"] or ""
@@ -407,11 +417,11 @@ def view(page: ft.Page) -> ft.Control:
         tf_obs.value      = forn["obs"] or ""
         cb_ativo.value    = bool(forn["ativo"])
         txt_erro.value    = ""
-        btn_cancelar.visible = True
         lbl_titulo.value  = f"Editando: {forn['nome']}"
+        dlg_fornecedor.open = True
         page.update()
 
-    def _salvar(e):
+    def _salvar(e=None):
         nome = tf_nome.value.strip()
         if not nome:
             txt_erro.value = "O nome do fornecedor é obrigatório."
@@ -428,6 +438,7 @@ def view(page: ft.Page) -> ft.Control:
                 vendedor=tf_vendedor.value.strip() or None,
                 obs=tf_obs.value.strip() or None,
             )
+            msg = f"Fornecedor '{nome}' cadastrado com sucesso."
         else:
             database.fornecedor_atualizar(
                 _id_edicao["v"],
@@ -440,13 +451,16 @@ def view(page: ft.Page) -> ft.Control:
                 obs=tf_obs.value.strip() or None,
                 ativo=1 if cb_ativo.value else 0,
             )
+            msg = f"Fornecedor '{nome}' atualizado com sucesso."
 
+        dlg_fornecedor.open = False
         page.overlay.append(ft.SnackBar(
-            content=ft.Text("Fornecedor salvo com sucesso."),
+            content=ft.Text(msg),
             bgcolor=ft.Colors.GREEN_700, open=True,
         ))
         _limpar()
         _carregar()
+        page.update()
 
     # ── Boletos ───────────────────────────────────────────────────────────────
 
@@ -818,45 +832,80 @@ def view(page: ft.Page) -> ft.Control:
         _carregar()
 
     # ── Controles com estado ──────────────────────────────────────────────────
-    lbl_titulo   = ft.Text("Novo Fornecedor", size=15, weight=ft.FontWeight.BOLD)
-    btn_cancelar = ft.TextButton(
-        "Cancelar",
-        on_click=lambda e: (_limpar(), _carregar()),
-        visible=False,
-    )
+    lbl_titulo = ft.Text("Novo Fornecedor", size=15, weight=ft.FontWeight.BOLD)
 
-    bloco_form = ft.Card(content=ft.Container(
-        padding=ft.Padding.all(16),
-        content=ft.Column(spacing=12, controls=[
-            ft.Row(controls=[lbl_titulo, ft.Container(expand=True), btn_cancelar]),
-            ft.Divider(height=1),
-            tf_nome,
-            ft.Row([tf_telefone, tf_email], spacing=12),
-            ft.Row([tf_cnpj, tf_endereco], spacing=12),
-            tf_vendedor,
-            tf_obs,
-            cb_ativo,
-            txt_erro,
-            ft.Row(controls=[
-                ft.ElevatedButton(
-                    "Salvar Fornecedor",
-                    icon=ft.Icons.SAVE,
-                    on_click=_salvar,
-                    style=ft.ButtonStyle(
-                        bgcolor=ft.Colors.TEAL_700,
-                        color=ft.Colors.WHITE,
-                    ),
+    # ── Modal de Cadastro e Edição de Fornecedor ─────────────────────────────
+    dlg_fornecedor = ft.AlertDialog(
+        modal=True,
+        title=ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            controls=[
+                lbl_titulo,
+                ft.IconButton(ft.Icons.CLOSE, on_click=_fechar_modal_forn),
+            ],
+        ),
+        content=ft.Container(
+            width=620,
+            content=ft.Column(
+                tight=True,
+                spacing=12,
+                scroll=ft.ScrollMode.AUTO,
+                controls=[
+                    tf_nome,
+                    ft.Row([tf_telefone, tf_email], spacing=12),
+                    ft.Row([tf_cnpj, tf_endereco], spacing=12),
+                    tf_vendedor,
+                    tf_obs,
+                    cb_ativo,
+                    txt_erro,
+                ],
+            ),
+        ),
+        actions=[
+            ft.TextButton("Cancelar", on_click=_fechar_modal_forn),
+            ft.ElevatedButton(
+                "Salvar Fornecedor",
+                icon=ft.Icons.SAVE,
+                on_click=_salvar,
+                style=ft.ButtonStyle(
+                    bgcolor=ft.Colors.TEAL_700,
+                    color=ft.Colors.WHITE,
+                    padding=ft.Padding(16, 10, 16, 10),
                 ),
-            ]),
-        ]),
-    ))
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg_fornecedor)
 
     bloco_tabela = ft.Card(content=ft.Container(
         padding=ft.Padding.all(16),
-        content=ft.Column(spacing=10, controls=[
-            ft.Text("Fornecedores Cadastrados", size=15, weight=ft.FontWeight.BOLD),
+        content=ft.Column(spacing=12, controls=[
+            ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Row(
+                        spacing=16,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Text("Fornecedores Cadastrados", size=15, weight=ft.FontWeight.BOLD),
+                            cb_apenas_ativos,
+                        ],
+                    ),
+                    ft.ElevatedButton(
+                        "Novo Fornecedor",
+                        icon=ft.Icons.BUSINESS,
+                        on_click=_abrir_modal_novo,
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.TEAL_700,
+                            color=ft.Colors.WHITE,
+                            padding=ft.Padding(14, 10, 14, 10),
+                        ),
+                    ),
+                ],
+            ),
             ft.Divider(height=1),
-            cb_apenas_ativos,
             tabela_col,
         ]),
     ))
@@ -892,7 +941,7 @@ def view(page: ft.Page) -> ft.Control:
     _carregar_vencimentos()
 
     return ft.Column(
-        controls=[bloco_vencimentos, bloco_form, bloco_tabela],
+        controls=[bloco_vencimentos, bloco_tabela],
         scroll=ft.ScrollMode.AUTO,
         expand=True,
         spacing=16,
