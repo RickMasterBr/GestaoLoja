@@ -417,13 +417,13 @@ def view(page: ft.Page) -> ft.Control:
                         ],
                     ),
                     ft.ElevatedButton(
-                        "+ Lembrete",
+                        "Lembrete",
                         icon=ft.Icons.ADD,
                         on_click=lambda e: _abrir_modal_novo(dia_iso),
                         style=ft.ButtonStyle(
                             bgcolor=ft.Colors.TEAL_700,
                             color=ft.Colors.WHITE,
-                            padding=ft.Padding(10, 6, 10, 6),
+                            padding=ft.Padding(12, 6, 12, 6),
                         ),
                     ),
                 ],
@@ -627,16 +627,6 @@ def view(page: ft.Page) -> ft.Control:
                                 ),
                             ),
                         ],
-                    ),
-                    ft.ElevatedButton(
-                        "Novo Lembrete",
-                        icon=ft.Icons.ADD,
-                        on_click=lambda e: _abrir_modal_novo(),
-                        style=ft.ButtonStyle(
-                            bgcolor=ft.Colors.TEAL_700,
-                            color=ft.Colors.WHITE,
-                            padding=ft.Padding(14, 10, 14, 10),
-                        ),
                     ),
                 ],
             ),
