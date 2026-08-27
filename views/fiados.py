@@ -192,8 +192,9 @@ def view(page: ft.Page) -> ft.Control:
                             tf_data.value = f"{d}/{m}/{a}"
                         except Exception:
                             tf_data.value = hoje_br
-                        btn_registrar.content = "Salvar Alteração"
+                        lbl_titulo.value = f"Editando: Fiado de {r['nome_cliente']}"
                         txt_erro.value = ""
+                        dlg_fiado.open = True
                         page.update()
                     return handler
 
@@ -258,6 +259,8 @@ def view(page: ft.Page) -> ft.Control:
 
         page.update()
 
+    lbl_titulo = ft.Text("Novo Fiado", size=15, weight=ft.FontWeight.BOLD)
+
     def _limpar_form():
         tf_nome.value  = ""
         tf_valor.value = ""
@@ -265,10 +268,21 @@ def view(page: ft.Page) -> ft.Control:
         tf_obs.value   = ""
         tf_data.value  = hoje_br
         txt_erro.value = ""
-        _editando_id["v"]  = None
-        btn_registrar.content = "Registrar Fiado"
+        _editando_id["v"] = None
+        lbl_titulo.value = "Novo Fiado"
 
-    def _registrar(e):
+    def _abrir_modal_novo(e=None):
+        _limpar_form()
+        lbl_titulo.value = "Novo Fiado"
+        dlg_fiado.open = True
+        page.update()
+
+    def _fechar_modal_fiado(e=None):
+        dlg_fiado.open = False
+        txt_erro.value = ""
+        page.update()
+
+    def _registrar(e=None):
         txt_erro.value = ""
         nome = tf_nome.value.strip()
         if not nome:
@@ -306,62 +320,104 @@ def view(page: ft.Page) -> ft.Control:
             )
             msg = f"Fiado de {nome} registrado!"
 
+        dlg_fiado.open = False
         _limpar_form()
         page.overlay.append(ft.SnackBar(
             content=ft.Text(msg),
             bgcolor=ft.Colors.INDIGO_700, open=True,
         ))
         _refresh()
+        page.update()
+
+    # ── Modal de Cadastro e Edição de Fiado ──────────────────────────────────
+    dlg_fiado = ft.AlertDialog(
+        modal=True,
+        title=ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            controls=[
+                lbl_titulo,
+                ft.IconButton(ft.Icons.CLOSE, on_click=_fechar_modal_fiado),
+            ],
+        ),
+        content=ft.Container(
+            width=560,
+            content=ft.Column(
+                tight=True,
+                spacing=12,
+                scroll=ft.ScrollMode.AUTO,
+                controls=[
+                    tf_nome,
+                    ft.Row([tf_valor, tf_data], spacing=12),
+                    tf_desc,
+                    tf_obs,
+                    txt_erro,
+                ],
+            ),
+        ),
+        actions=[
+            ft.TextButton("Cancelar", on_click=_fechar_modal_fiado),
+            ft.ElevatedButton(
+                "Salvar Fiado",
+                icon=ft.Icons.SAVE,
+                on_click=_registrar,
+                style=ft.ButtonStyle(
+                    bgcolor=ft.Colors.INDIGO_600,
+                    color=ft.Colors.WHITE,
+                    padding=ft.Padding(16, 10, 16, 10),
+                ),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg_fiado)
 
     cb_apenas_abertos.on_change = _refresh
     _refresh()
 
-    btn_registrar = ft.ElevatedButton(
-        "Registrar Fiado",
-        icon=ft.Icons.ADD,
-        on_click=_registrar,
-        style=ft.ButtonStyle(
-            bgcolor=ft.Colors.INDIGO_600,
-            color=ft.Colors.WHITE,
-        ),
-    )
+    # ── Card Principal ─────────────────────────────────────────────────────────
+    card_tabela = ft.Card(content=ft.Container(
+        padding=ft.Padding.all(16),
+        content=ft.Column(spacing=12, controls=[
+            ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                wrap=True,
+                controls=[
+                    ft.Row(
+                        spacing=16,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Text("Controle de Fiados", size=15, weight=ft.FontWeight.BOLD),
+                            cb_apenas_abertos,
+                        ],
+                    ),
+                    ft.Row(
+                        spacing=14,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            txt_total,
+                            ft.ElevatedButton(
+                                "Novo Fiado",
+                                icon=ft.Icons.ADD,
+                                on_click=_abrir_modal_novo,
+                                style=ft.ButtonStyle(
+                                    bgcolor=ft.Colors.INDIGO_600,
+                                    color=ft.Colors.WHITE,
+                                    padding=ft.Padding(14, 10, 14, 10),
+                                ),
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+            ft.Divider(height=1),
+            tabela_col,
+        ]),
+    ))
 
-    # ── Layout ─────────────────────────────────────────────────────────────────
     return ft.Column(
         expand=True,
         scroll=ft.ScrollMode.AUTO,
         spacing=16,
-        controls=[
-            # Formulário
-            ft.Card(content=ft.Container(
-                padding=ft.Padding.all(16),
-                content=ft.Column(spacing=12, controls=[
-                    ft.Text("Registrar Novo Fiado", size=14,
-                            weight=ft.FontWeight.BOLD),
-                    ft.Row([tf_nome, tf_valor], spacing=12),
-                    ft.Row([tf_desc, tf_data], spacing=12),
-                    tf_obs,
-                    txt_erro,
-                    btn_registrar,
-                ]),
-            )),
-            # Tabela
-            ft.Card(content=ft.Container(
-                padding=ft.Padding.all(16),
-                content=ft.Column(spacing=10, controls=[
-                    ft.Row(
-                        controls=[
-                            ft.Text("Fiados", size=14,
-                                    weight=ft.FontWeight.BOLD),
-                            cb_apenas_abertos,
-                        ],
-                        spacing=16,
-                    ),
-                    ft.Divider(height=1),
-                    tabela_col,
-                    ft.Divider(height=1),
-                    txt_total,
-                ]),
-            )),
-        ],
+        controls=[card_tabela],
     )
