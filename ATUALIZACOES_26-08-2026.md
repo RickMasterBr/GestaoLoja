@@ -45,6 +45,17 @@
 
 ---
 
+### ⚙️ Modernização de Parâmetros > Abas Bairros, Métodos e Categorias (Modais Unificados)
+- **Arquivo modificado:** `views/parametros.py`
+- **Commit:** `222683f`
+- **O que mudou:**
+  - **Aba Bairros:** Removido o formulário fixo do topo; foco imediato na tabela de bairros, cabeçalho executivo com contagem e botão `[ + Novo Bairro ]`, com modal `dlg_bairro` para inclusão e edição rápida.
+  - **Aba Métodos de Pagamento:** Removido o card estático do topo; tabela no topo com totalizador e botão `[ + Novo Método ]`, com modal `dlg_metodo`.
+  - **Aba Categorias Extras:** Removido o card estático do topo; tabela com totalizador e botão `[ + Nova Categoria ]`, com modal `dlg_categoria`.
+  - **Consistência Total:** 100% das abas de cadastro de Parâmetros agora seguem rigorosamente o mesmo padrão corporativo, limpo e sem poluição visual.
+
+---
+
 ### 👥 Modernização de Parâmetros > Aba Pessoas (Modal Unificado com 4 Abas)
 - **Arquivo modificado:** `views/parametros.py`
 - **Commit:** `770e12e`
@@ -119,6 +130,8 @@
 
 | Hash | Mensagem do Commit |
 | :--- | :--- |
+| `222683f` | `feat(parametros): Padroniza abas Bairros, Metodos e Categorias com modais e foco nas tabelas` |
+| `f745517` | `fix(agenda): Remove botao redundante do topo e corrige simbolo duplicado de soma` |
 | `d09f819` | `feat(agenda): Implementa modulo completo de Calendario e Agenda Operacional` |
 | `44cca1f` | `feat(fiados): Moderniza tela de fiados com modal unificado e cabecalho executivo` |
 | `3b44c0d` | `feat(fornecedores): Converte formulario de cadastro em modal e despolui a tela` |
