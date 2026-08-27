@@ -1075,7 +1075,33 @@ def view(page: ft.Page) -> ft.Control:
             _kpi_card("Neutro (Compensações)", totais.get("neutro", 0.0), ft.Colors.GREY_400, ft.Icons.SYNC_ALT),
         ])
 
-        # 2. Resumo por Fornecedor
+        # 2. Resumo por Categoria
+        categorias = dados.get("resumo_categorias", [])
+        lin_cat = [
+            ft.DataRow(cells=[
+                ft.DataCell(ft.Text(c["categoria"], weight=ft.FontWeight.W_500)),
+                ft.DataCell(ft.Text(
+                    c["fluxo"],
+                    color=ft.Colors.GREEN_400 if c["fluxo"] == "ENTRADA" else (ft.Colors.RED_400 if c["fluxo"] == "SAIDA" else ft.Colors.GREY_400),
+                    weight=ft.FontWeight.BOLD,
+                )),
+                ft.DataCell(ft.Text(str(c["qtd"]))),
+                ft.DataCell(ft.Text(f"R$ {c['total']:.2f}", weight=ft.FontWeight.BOLD)),
+            ])
+            for c in categorias
+        ]
+        tab_cat = ft.DataTable(
+            columns=[
+                ft.DataColumn(ft.Text("Categoria")),
+                ft.DataColumn(ft.Text("Fluxo")),
+                ft.DataColumn(ft.Text("Qtd Lanç."), numeric=True),
+                ft.DataColumn(ft.Text("Total (R$)"), numeric=True),
+            ],
+            rows=lin_cat,
+            column_spacing=16,
+        ) if lin_cat else ft.Text("Nenhuma movimentação no período.", italic=True, color=ft.Colors.GREY_500)
+
+        # 3. Resumo por Fornecedor
         fornecedores = dados.get("resumo_fornecedores", [])
         lin_forn = [
             ft.DataRow(cells=[
@@ -1086,57 +1112,82 @@ def view(page: ft.Page) -> ft.Control:
             for f in fornecedores
         ]
         tab_forn = ft.DataTable(
-            columns=[ft.DataColumn(ft.Text("Fornecedor")), ft.DataColumn(ft.Text("Lanç."), numeric=True), ft.DataColumn(ft.Text("Total Gasto"), numeric=True)],
+            columns=[
+                ft.DataColumn(ft.Text("Fornecedor")),
+                ft.DataColumn(ft.Text("Qtd Lanç."), numeric=True),
+                ft.DataColumn(ft.Text("Total Gasto (R$)"), numeric=True),
+            ],
             rows=lin_forn,
-            column_spacing=14,
+            column_spacing=16,
         ) if lin_forn else ft.Text("Nenhum lançamento com fornecedor no período.", italic=True, color=ft.Colors.GREY_500)
 
-        # 3. Resumo por Categoria
-        categorias = dados.get("resumo_categorias", [])
-        lin_cat = [
+        # 4. Resumo por Método
+        metodos = dados.get("resumo_metodos", [])
+        lin_met = [
             ft.DataRow(cells=[
-                ft.DataCell(ft.Text(c["categoria"])),
-                ft.DataCell(ft.Text(c["fluxo"], color=ft.Colors.GREEN_400 if c["fluxo"] == "ENTRADA" else (ft.Colors.RED_400 if c["fluxo"] == "SAIDA" else ft.Colors.GREY_400))),
-                ft.DataCell(ft.Text(str(c["qtd"]))),
-                ft.DataCell(ft.Text(f"R$ {c['total']:.2f}", weight=ft.FontWeight.BOLD)),
+                ft.DataCell(ft.Text(m["metodo"], weight=ft.FontWeight.W_500)),
+                ft.DataCell(ft.Text(str(m["qtd"]))),
+                ft.DataCell(ft.Text(f"R$ {m['total']:.2f}", weight=ft.FontWeight.BOLD)),
             ])
-            for c in categorias
+            for m in metodos
         ]
-        tab_cat = ft.DataTable(
-            columns=[ft.DataColumn(ft.Text("Categoria")), ft.DataColumn(ft.Text("Fluxo")), ft.DataColumn(ft.Text("Qtd"), numeric=True), ft.DataColumn(ft.Text("Total"), numeric=True)],
-            rows=lin_cat,
-            column_spacing=14,
-        ) if lin_cat else ft.Text("Nenhuma movimentação no período.", italic=True, color=ft.Colors.GREY_500)
+        tab_met = ft.DataTable(
+            columns=[
+                ft.DataColumn(ft.Text("Forma de Pagamento")),
+                ft.DataColumn(ft.Text("Qtd Lanç."), numeric=True),
+                ft.DataColumn(ft.Text("Total (R$)"), numeric=True),
+            ],
+            rows=lin_met,
+            column_spacing=16,
+        ) if lin_met else ft.Text("Nenhum método registrado no período.", italic=True, color=ft.Colors.GREY_500)
 
         col_tabela_resumos.controls.clear()
         col_tabela_resumos.controls.extend([
-            ft.Row([
-                ft.Container(
-                    expand=True,
-                    padding=ft.Padding.all(12),
-                    bgcolor=ft.Colors.GREY_900,
-                    border_radius=8,
-                    content=ft.Column([
-                        ft.Text("Gastos por Fornecedor (Saídas)", weight=ft.FontWeight.BOLD),
-                        ft.Divider(height=1),
-                        tab_forn,
-                    ]),
-                ),
-                ft.Container(
-                    expand=True,
-                    padding=ft.Padding.all(12),
-                    bgcolor=ft.Colors.GREY_900,
-                    border_radius=8,
-                    content=ft.Column([
-                        ft.Text("Resumo por Categoria", weight=ft.FontWeight.BOLD),
-                        ft.Divider(height=1),
-                        tab_cat,
-                    ]),
-                ),
-            ], wrap=True, spacing=14),
+            ft.Container(
+                padding=ft.Padding.all(16),
+                bgcolor=ft.Colors.GREY_900,
+                border_radius=8,
+                border=ft.Border.all(1, ft.Colors.GREY_800),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.CATEGORY, size=18, color=ft.Colors.BLUE_400),
+                        ft.Text("Resumo por Categoria", size=15, weight=ft.FontWeight.BOLD),
+                    ], spacing=8),
+                    ft.Divider(height=1),
+                    ft.Row([tab_cat], scroll=ft.ScrollMode.AUTO),
+                ], spacing=10),
+            ),
+            ft.Container(
+                padding=ft.Padding.all(16),
+                bgcolor=ft.Colors.GREY_900,
+                border_radius=8,
+                border=ft.Border.all(1, ft.Colors.GREY_800),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.STORE, size=18, color=ft.Colors.ORANGE_400),
+                        ft.Text("Gastos por Fornecedor (Saídas)", size=15, weight=ft.FontWeight.BOLD),
+                    ], spacing=8),
+                    ft.Divider(height=1),
+                    ft.Row([tab_forn], scroll=ft.ScrollMode.AUTO),
+                ], spacing=10),
+            ),
+            ft.Container(
+                padding=ft.Padding.all(16),
+                bgcolor=ft.Colors.GREY_900,
+                border_radius=8,
+                border=ft.Border.all(1, ft.Colors.GREY_800),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.PAYMENT, size=18, color=ft.Colors.GREEN_400),
+                        ft.Text("Resumo por Forma de Pagamento", size=15, weight=ft.FontWeight.BOLD),
+                    ], spacing=8),
+                    ft.Divider(height=1),
+                    ft.Row([tab_met], scroll=ft.ScrollMode.AUTO),
+                ], spacing=10),
+            ),
         ])
 
-        # 4. Extrato Analítico
+        # 5. Extrato Analítico
         itens = dados.get("itens", [])
         lin_itens = []
         for r in itens:
@@ -1153,28 +1204,37 @@ def view(page: ft.Page) -> ft.Control:
                 ft.DataCell(ft.Text(r["obs"] or "", size=11)),
             ]))
 
+        tab_analitico = ft.DataTable(
+            columns=[
+                ft.DataColumn(ft.Text("Data")),
+                ft.DataColumn(ft.Text("Pessoa / Fornecedor")),
+                ft.DataColumn(ft.Text("Categoria")),
+                ft.DataColumn(ft.Text("Fluxo")),
+                ft.DataColumn(ft.Text("Método")),
+                ft.DataColumn(ft.Text("Valor"), numeric=True),
+                ft.DataColumn(ft.Text("Obs")),
+            ],
+            rows=lin_itens,
+            column_spacing=14,
+        ) if lin_itens else ft.Text("Nenhum lançamento no período filtrado.", italic=True, color=ft.Colors.GREY_500)
+
         col_analitico_rel.controls.clear()
-        if lin_itens:
-            col_analitico_rel.controls.append(ft.Row(
-                scroll=ft.ScrollMode.AUTO,
-                controls=[
-                    ft.DataTable(
-                        columns=[
-                            ft.DataColumn(ft.Text("Data")),
-                            ft.DataColumn(ft.Text("Pessoa / Fornecedor")),
-                            ft.DataColumn(ft.Text("Categoria")),
-                            ft.DataColumn(ft.Text("Fluxo")),
-                            ft.DataColumn(ft.Text("Método")),
-                            ft.DataColumn(ft.Text("Valor"), numeric=True),
-                            ft.DataColumn(ft.Text("Obs")),
-                        ],
-                        rows=lin_itens,
-                        column_spacing=14,
-                    )
-                ]
-            ))
-        else:
-            col_analitico_rel.controls.append(ft.Text("Nenhum lançamento no período filtrado.", italic=True, color=ft.Colors.GREY_500))
+        col_analitico_rel.controls.append(
+            ft.Container(
+                padding=ft.Padding.all(16),
+                bgcolor=ft.Colors.GREY_900,
+                border_radius=8,
+                border=ft.Border.all(1, ft.Colors.GREY_800),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.LIST_ALT, size=18, color=ft.Colors.CYAN_400),
+                        ft.Text(f"Lançamentos Analíticos do Período ({len(itens)} registros)", size=15, weight=ft.FontWeight.BOLD),
+                    ], spacing=8),
+                    ft.Divider(height=1),
+                    ft.Row([tab_analitico], scroll=ft.ScrollMode.AUTO),
+                ], spacing=10),
+            )
+        )
 
     card_relatorios = ft.Card(
         visible=False,

@@ -2566,6 +2566,8 @@ def mov_extra_relatorio_periodo(data_inicio: str, data_fim: str) -> dict:
                 if not nome_f and r.get("obs") and r["obs"].startswith("Fornecedor: "):
                     corpo = r["obs"][len("Fornecedor: "):]
                     nome_f = corpo.split(" | ", 1)[0].strip() if " | " in corpo else corpo.strip()
+                if not nome_f and r.get("categoria") in ("Sacolão Naldo", "Sacolão Vera", "Sacolão palhada", "Rio minas"):
+                    nome_f = r["categoria"]
                 if nome_f:
                     if nome_f not in forn_map:
                         forn_map[nome_f] = {"nome": nome_f, "qtd": 0, "total": 0.0}
