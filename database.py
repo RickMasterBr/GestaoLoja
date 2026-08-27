@@ -342,6 +342,7 @@ def inicializar_banco():
         _migrar_nome_cliente_pedido(conn)
         _migrar_id_pedido_fiado(conn)
         _migrar_agenda(conn)
+        _migrar_schema_fase1(conn)
         conn.commit()
         _popular_dados_iniciais(conn)
         conn.commit()
@@ -1003,6 +1004,106 @@ def _migrar_agenda(conn: sqlite3.Connection):
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_agenda_data ON cad_agenda (data)")
+
+
+def _migrar_schema_fase1(conn: sqlite3.Connection):
+    """
+    Migração de Schema e Dados — Fase 1 (Movimentações e Caixa).
+    - Adiciona colunas 'ativo', 'codigo', 'usa_fornecedor', 'min_perfil' em cad_categorias_extra.
+    - Cria índice UNIQUE em cad_categorias_extra(codigo).
+    - Adiciona coluna 'tipo' em cad_fornecedores.
+    - Cria índices de performance em movimentacoes_extras.
+    - Migra registros 256 -> 259 (isolando o registro 561).
+    - Inativa categorias legadas/duplicadas.
+    - Atribui códigos canônicos imutáveis com validação estrita (rowcount == 1).
+    - Executa em transação única com rollback em caso de falha. Idempotente.
+    """
+    # Executa dentro de transação atômica com rollback garantido no SQLite
+    old_iso = conn.isolation_level
+    conn.isolation_level = None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+
+        # 1. DDL: Colunas em cad_categorias_extra
+        cols_cat = {r["name"] for r in conn.execute("PRAGMA table_info(cad_categorias_extra)")}
+        if "ativo" not in cols_cat:
+            conn.execute("ALTER TABLE cad_categorias_extra ADD COLUMN ativo INTEGER NOT NULL DEFAULT 1")
+        if "codigo" not in cols_cat:
+            conn.execute("ALTER TABLE cad_categorias_extra ADD COLUMN codigo TEXT DEFAULT NULL")
+        if "usa_fornecedor" not in cols_cat:
+            conn.execute("ALTER TABLE cad_categorias_extra ADD COLUMN usa_fornecedor INTEGER NOT NULL DEFAULT 0")
+        if "min_perfil" not in cols_cat:
+            conn.execute("ALTER TABLE cad_categorias_extra ADD COLUMN min_perfil TEXT NOT NULL DEFAULT 'OPERADOR'")
+
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_categorias_codigo ON cad_categorias_extra(codigo)")
+
+        # 2. DDL: Coluna tipo em cad_fornecedores
+        cols_forn = {r["name"] for r in conn.execute("PRAGMA table_info(cad_fornecedores)")}
+        if "tipo" not in cols_forn:
+            conn.execute("ALTER TABLE cad_fornecedores ADD COLUMN tipo TEXT NOT NULL DEFAULT 'PRODUTO'")
+
+        # 3. DDL: Índices em movimentacoes_extras
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_mov_fornecedor ON movimentacoes_extras(id_fornecedor)")
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_mov_categoria ON movimentacoes_extras(id_categoria)")
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_mov_data_fluxo ON movimentacoes_extras(data, fluxo)")
+
+        # 4. DML: Migrar 5 registros da categoria 256 para 259 (isolando o registro 561)
+        conn.execute("UPDATE movimentacoes_extras SET id_categoria = 259 WHERE id_categoria = 256 AND id != 561")
+
+        # 5. DML: Inativar categorias legadas/duplicadas
+        conn.execute("""
+            UPDATE cad_categorias_extra
+            SET ativo = 0
+            WHERE id IN (7, 249, 251, 252, 253, 254, 256, 257, 258)
+        """)
+
+        # 6. DML: Atribuição estrita de códigos com validação de rowcount == 1
+        def _atribuir(codigo: str, coluna_filtro: str, valor_filtro):
+            row = conn.execute(
+                f"SELECT id, descricao, codigo FROM cad_categorias_extra WHERE {coluna_filtro} = ?",
+                (valor_filtro,)
+            ).fetchone()
+            if not row:
+                raise RuntimeError(
+                    f"[ERRO DE MIGRAÇÃO] Categoria obrigatória não encontrada: {coluna_filtro} = '{valor_filtro}'"
+                )
+            if row["codigo"] != codigo:
+                cur = conn.execute(
+                    f"UPDATE cad_categorias_extra SET codigo = ? WHERE id = ?",
+                    (codigo, row["id"])
+                )
+                if cur.rowcount != 1:
+                    raise RuntimeError(
+                        f"[ERRO DE MIGRAÇÃO] Falha ao atribuir codigo='{codigo}' para categoria '{row['descricao']}'. "
+                        f"Esperado 1 rowcount, obteve {cur.rowcount}."
+                    )
+
+        _atribuir("vale",               "descricao", "Vale")
+        _atribuir("sangria",            "descricao", "Sangria")
+        _atribuir("consumo",            "descricao", "Consumo")
+        _atribuir("corrida_extra",      "descricao", "Corrida Extra")
+        _atribuir("reentrega",          "descricao", "Reentrega")
+        _atribuir("fiado",              "descricao", "Fiado")
+        _atribuir("outros",             "descricao", "Outros")
+        _atribuir("pagamento_pessoal",  "id",        7)
+        _atribuir("emprestimo_parcela", "id",        255)
+        _atribuir("retirada_socia",     "id",        259)
+        _atribuir("manutencao",         "id",        260)
+        _atribuir("aporte",             "id",        261)
+        _atribuir("compra_fornecedor",  "id",        262)
+
+        # 7. DML: Flags usa_fornecedor
+        conn.execute("UPDATE cad_categorias_extra SET usa_fornecedor = 1 WHERE id IN (260, 262)")
+
+        # 8. DML: Restrição de perfil gerencial (exclusivamente para a Retirada Nova Yaki)
+        conn.execute("UPDATE cad_categorias_extra SET min_perfil = 'GERENTE' WHERE id = 259")
+
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.isolation_level = old_iso
 
 
 # ══════════════════════════════════════════════
