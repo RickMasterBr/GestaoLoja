@@ -25,14 +25,14 @@ def _carregar() -> None:
     global _CARREGADO
     if _CARREGADO:
         return
-    global A4, colors, cm, SimpleDocTemplate, Table, TableStyle, Paragraph
+    global A4, landscape, colors, cm, SimpleDocTemplate, Table, TableStyle, Paragraph
     global Spacer, HRFlowable, ParagraphStyle, TA_CENTER, TA_RIGHT
     global _AZUL, _CINZA_SEC, _CINZA_ALT, _VERDE, _VERMELHO, _LARANJA
     global _BRANCO, _CINZA_TEXT, _CINZA_GRADE, _VERDE_CLARO, _LU
     global _ST_NOME_LOJA, _ST_SUBTITULO, _ST_DATA_HDR, _ST_SECAO_TXT
     global _ST_SUBSECAO, _ST_NOTA, _ST_RODAPE, _ST_SEM_DADOS
 
-    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib import colors
     from reportlab.lib.units import cm
     from reportlab.platypus import (
@@ -1334,6 +1334,144 @@ def gerar_pdf_movimentacoes(ini_br: str, fim_br: str, dados: dict, abrir_ao_conc
         story.append(t_i)
     else:
         story.append(Paragraph("Sem movimentações registradas para este período.", _ST_SEM_DADOS))
+
+    _rodape(story)
+    doc.build(story)
+    if abrir_ao_concluir:
+        abrir_pdf(caminho)
+    return caminho
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  9. gerar_pdf_escala_turnos
+# ══════════════════════════════════════════════════════════════════════════════
+
+def gerar_pdf_escala_turnos(ano: int, mes: int, dados: dict, abrir_ao_concluir: bool = True) -> str:
+    """
+    Gera relatório em PDF (A4 Paisagem) com a grade mensal de escala de turnos
+    para fixação no mural da loja.
+    """
+    _carregar()
+    import calendar
+    from datetime import date
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    caminho = os.path.join(tempfile.gettempdir(), f"escala_turnos_{ano}_{mes:02d}_{ts}.pdf")
+    doc = SimpleDocTemplate(
+        caminho,
+        pagesize=landscape(A4),
+        leftMargin=1.5 * cm,
+        rightMargin=1.5 * cm,
+        topMargin=1.2 * cm,
+        bottomMargin=1.2 * cm,
+    )
+    story = []
+
+    meses_pt = [
+        "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ]
+    nome_mes = meses_pt[mes] if 1 <= mes <= 12 else str(mes)
+
+    # Cabeçalho
+    story.append(Paragraph(dados.get("nome_loja", "Gestão Loja"), _ST_NOME_LOJA))
+    story.append(Paragraph(f"Escala Mensal de Turnos — {nome_mes.upper()} / {ano}", _ST_SUBTITULO))
+    story.append(HRFlowable(width="100%", thickness=2, color=_AZUL, spaceAfter=8))
+
+    # Largura útil em paisagem: ~756 pt / 7 colunas ≈ 108 pt
+    largura_total = landscape(A4)[0] - 3.0 * cm
+    col_w = largura_total / 7.0
+
+    dias_map = dados.get("escalas_por_dia", {})
+
+    # Monta a matriz de semanas
+    cal = calendar.Calendar(firstweekday=6) # Domingo a Sábado
+    semanas = cal.monthdatescalendar(ano, mes)
+
+    cabecalho = ["DOMINGO", "SEGUNDA", "TERÇA", "QUARTA", "QUINTA", "SEXTA", "SÁBADO"]
+    linhas_tabela = [cabecalho]
+
+    # Estilos de parágrafo para as células do calendário
+    st_dia_num = ParagraphStyle(
+        "DiaNum",
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        leading=12,
+        textColor=_AZUL,
+        alignment=0,
+    )
+    st_dia_num_fora = ParagraphStyle(
+        "DiaNumFora",
+        fontName="Helvetica",
+        fontSize=9,
+        leading=11,
+        textColor=colors.HexColor("#bbbbbb"),
+        alignment=0,
+    )
+    st_turno_dia = ParagraphStyle(
+        "TurnoDia",
+        fontName="Helvetica",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.HexColor("#0d47a1"),
+    )
+    st_turno_noite = ParagraphStyle(
+        "TurnoNoite",
+        fontName="Helvetica",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.HexColor("#4a148c"),
+    )
+
+    for sem in semanas:
+        linha_celulas = []
+        for dt in sem:
+            dt_iso = dt.isoformat()
+            eh_do_mes = (dt.month == mes)
+
+            elementos_celula = []
+            if eh_do_mes:
+                elementos_celula.append(Paragraph(f"<b>{dt.day}</b>", st_dia_num))
+            else:
+                elementos_celula.append(Paragraph(f"{dt.day}", st_dia_num_fora))
+
+            if eh_do_mes:
+                turnos_dia = dias_map.get(dt_iso, {})
+                lista_dia = turnos_dia.get("DIA", [])
+                lista_noite = turnos_dia.get("NOITE", [])
+
+                if lista_dia:
+                    nomes_d = ", ".join(p.get("nome_exibicao", "") for p in lista_dia)
+                    elementos_celula.append(Paragraph(f"<b>DIA:</b> {nomes_d}", st_turno_dia))
+
+                if lista_noite:
+                    nomes_n = ", ".join(p.get("nome_exibicao", "") for p in lista_noite)
+                    elementos_celula.append(Paragraph(f"<b>NOITE:</b> {nomes_n}", st_turno_noite))
+
+                if not lista_dia and not lista_noite:
+                    elementos_celula.append(Paragraph("—", ParagraphStyle("Vazio", fontName="Helvetica", fontSize=7, textColor=colors.HexColor("#aaaaaa"))))
+
+            linha_celulas.append(elementos_celula)
+        linhas_tabela.append(linha_celulas)
+
+    # Estilo da grade mensal
+    t_grade = Table(linhas_tabela, colWidths=[col_w] * 7)
+    t_grade.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), _AZUL),
+        ("TEXTCOLOR",     (0, 0), (-1, 0), _BRANCO),
+        ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",      (0, 0), (-1, 0), 8.5),
+        ("ALIGN",         (0, 0), (-1, 0), "CENTER"),
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+        ("GRID",          (0, 0), (-1, -1), 0.5, _CINZA_GRADE),
+        ("TOPPADDING",    (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("BACKGROUND",    (0, 1), (0, -1), colors.HexColor("#fafafa")), # Domingo destaque
+        ("BACKGROUND",    (6, 1), (6, -1), colors.HexColor("#fafafa")), # Sábado destaque
+    ]))
+    story.append(t_grade)
 
     _rodape(story)
     doc.build(story)

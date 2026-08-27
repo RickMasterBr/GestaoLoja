@@ -54,6 +54,7 @@ from views import (
     fiados,
     funcionarios,
     escala_geral,
+    escala_turnos,
     entregadores,
     estoque,
     fornecedores,
@@ -66,20 +67,21 @@ from views import (
 # ── Mapeamento de telas com perfil mínimo necessário ──────────────────────────
 
 TELAS = [
-    {"view": dashboard.view,         "label": "Dashboard",      "icon": ft.Icons.DASHBOARD,              "min_perfil": "OPERADOR"},
-    {"view": pdv.view,               "label": "PDV",            "icon": ft.Icons.POINT_OF_SALE,          "min_perfil": "OPERADOR"},
-    {"view": extras.view,            "label": "Movim. e Caixa", "icon": ft.Icons.ADD_CIRCLE,             "min_perfil": "OPERADOR"},
-    {"view": agenda.view,            "label": "Agenda",         "icon": ft.Icons.EVENT_NOTE,             "min_perfil": "OPERADOR"},
-    {"view": relatorio_diario.view,  "label": "Rel. Diário",    "icon": ft.Icons.TODAY,                  "min_perfil": "OPERADOR"},
-    {"view": relatorio_periodo.view, "label": "Rel. Período",   "icon": ft.Icons.DATE_RANGE,             "min_perfil": "GERENTE"},
-    {"view": fluxo_caixa.view,       "label": "Fluxo Caixa",   "icon": ft.Icons.ACCOUNT_BALANCE_WALLET, "min_perfil": "GERENTE"},
-    {"view": funcionarios.view,      "label": "Funcionários",   "icon": ft.Icons.PEOPLE,                 "min_perfil": "GERENTE"},
-    {"view": escala_geral.view,      "label": "Escala Geral",   "icon": ft.Icons.CALENDAR_MONTH,         "min_perfil": "OPERADOR"},
-    {"view": entregadores.view,      "label": "Entregadores",   "icon": ft.Icons.DELIVERY_DINING,        "min_perfil": "OPERADOR"},
-    {"view": fiados.view,            "label": "Fiados",         "icon": ft.Icons.MONEY_OFF,              "min_perfil": "OPERADOR"},
-    {"view": estoque.view,           "label": "Estoque",        "icon": ft.Icons.INVENTORY_2,            "min_perfil": "GERENTE"},
-    {"view": fornecedores.view,      "label": "Fornecedores",   "icon": ft.Icons.LOCAL_SHIPPING,         "min_perfil": "GERENTE"},
-    {"view": parametros.view,        "label": "Parâmetros",     "icon": ft.Icons.SETTINGS,               "min_perfil": "ADMIN"},
+    {"view": dashboard.view,         "label": "Dashboard",        "icon": ft.Icons.DASHBOARD,              "min_perfil": "OPERADOR"},
+    {"view": pdv.view,               "label": "PDV",              "icon": ft.Icons.POINT_OF_SALE,          "min_perfil": "OPERADOR"},
+    {"view": extras.view,            "label": "Movim. e Caixa",   "icon": ft.Icons.ADD_CIRCLE,             "min_perfil": "OPERADOR"},
+    {"view": agenda.view,            "label": "Agenda",           "icon": ft.Icons.EVENT_NOTE,             "min_perfil": "OPERADOR"},
+    {"view": relatorio_diario.view,  "label": "Rel. Diário",      "icon": ft.Icons.TODAY,                  "min_perfil": "OPERADOR"},
+    {"view": relatorio_periodo.view, "label": "Rel. Período",     "icon": ft.Icons.DATE_RANGE,             "min_perfil": "GERENTE"},
+    {"view": fluxo_caixa.view,       "label": "Fluxo Caixa",     "icon": ft.Icons.ACCOUNT_BALANCE_WALLET, "min_perfil": "GERENTE"},
+    {"view": funcionarios.view,      "label": "Funcionários",     "icon": ft.Icons.PEOPLE,                 "min_perfil": "GERENTE"},
+    {"view": escala_turnos.view,      "label": "Escala de Turnos", "icon": ft.Icons.BADGE_OUTLINED,        "min_perfil": "OPERADOR"},
+    {"view": escala_geral.view,      "label": "Escala Geral",     "icon": ft.Icons.CALENDAR_MONTH,         "min_perfil": "OPERADOR"},
+    {"view": entregadores.view,      "label": "Entregadores",     "icon": ft.Icons.DELIVERY_DINING,        "min_perfil": "OPERADOR"},
+    {"view": fiados.view,            "label": "Fiados",           "icon": ft.Icons.MONEY_OFF,              "min_perfil": "OPERADOR"},
+    {"view": estoque.view,           "label": "Estoque",          "icon": ft.Icons.INVENTORY_2,            "min_perfil": "GERENTE"},
+    {"view": fornecedores.view,      "label": "Fornecedores",     "icon": ft.Icons.LOCAL_SHIPPING,         "min_perfil": "GERENTE"},
+    {"view": parametros.view,        "label": "Parâmetros",       "icon": ft.Icons.SETTINGS,               "min_perfil": "ADMIN"},
 ]
 
 

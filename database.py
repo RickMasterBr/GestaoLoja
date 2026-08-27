@@ -344,6 +344,7 @@ def inicializar_banco():
         _migrar_agenda(conn)
         _migrar_schema_fase1(conn)
         _migrar_schema_fase2(conn)
+        _migrar_schema_escala_turnos(conn)
         conn.commit()
         _popular_dados_iniciais(conn)
         conn.commit()
@@ -1140,6 +1141,57 @@ def _migrar_schema_fase2(conn: sqlite3.Connection):
             SET id_categoria = ?
             WHERE id_categoria = 257
         """, (id_cat_compra,))
+
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.isolation_level = old_iso
+
+
+def _migrar_schema_escala_turnos(conn: sqlite3.Connection):
+    """
+    Criação da tabela e índices de planejamento visual de turnos (escala_turnos_planejamento).
+    Idempotente e transacional.
+    """
+    old_iso = conn.isolation_level
+    conn.isolation_level = None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS escala_turnos_planejamento (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                data         TEXT    NOT NULL,
+                id_pessoa    INTEGER NULL REFERENCES cad_pessoas(id) ON DELETE CASCADE,
+                nome_avulso  TEXT    NULL,
+                turno        TEXT    NOT NULL CHECK(turno IN ('DIA', 'NOITE')),
+                funcao       TEXT    NULL,
+                criado_em    TEXT    DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT chk_escala_identificacao CHECK (
+                    (id_pessoa IS NOT NULL AND nome_avulso IS NULL) OR
+                    (id_pessoa IS NULL AND nome_avulso IS NOT NULL AND LENGTH(TRIM(nome_avulso)) > 0)
+                )
+            )
+        """)
+
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_escala_pessoa_turno 
+            ON escala_turnos_planejamento(data, id_pessoa, turno) 
+            WHERE id_pessoa IS NOT NULL
+        """)
+
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_escala_avulso_turno 
+            ON escala_turnos_planejamento(data, LOWER(TRIM(nome_avulso)), turno) 
+            WHERE nome_avulso IS NOT NULL
+        """)
+
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS ix_escala_turnos_data 
+            ON escala_turnos_planejamento(data)
+        """)
 
         conn.execute("COMMIT")
     except Exception:
@@ -4567,6 +4619,106 @@ def agenda_boletos_mes(mes_ano: str) -> list:
             ORDER BY p.vencimento ASC, f.nome ASC
         """
         return conn.execute(sql, (f"{mes_ano}%",)).fetchall()
+    finally:
+        conn.close()
+
+
+# ── Escala Visual de Turnos (Planejamento Mensal) ──────────────────────────────
+
+def escala_turno_inserir(data: str, turno: str, id_pessoa: int = None, nome_avulso: str = None, funcao: str = None) -> int:
+    """
+    Insere uma pessoa ou extra avulso em um turno (DIA ou NOITE) de uma data (YYYY-MM-DD).
+    """
+    turno = (turno or "").upper().strip()
+    if turno not in ("DIA", "NOITE"):
+        raise ValueError("Turno inválido. Deve ser 'DIA' ou 'NOITE'.")
+
+    nome_avulso_limpo = (nome_avulso or "").strip() or None
+    funcao_limpa = (funcao or "").strip() or None
+
+    if id_pessoa is not None:
+        nome_avulso_limpo = None  # Garante exclusividade mútua
+        funcao_limpa = None       # Cargo vem de cad_pessoas via JOIN
+    elif not nome_avulso_limpo:
+        raise ValueError("Informe a pessoa cadastrada ou o nome do extra avulso.")
+
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """INSERT INTO escala_turnos_planejamento (data, id_pessoa, nome_avulso, turno, funcao)
+               VALUES (?, ?, ?, ?, ?)""",
+            (data, id_pessoa, nome_avulso_limpo, turno, funcao_limpa),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def escala_turno_excluir(id_escala: int) -> bool:
+    """Exclui um registro da escala de turnos pelo ID."""
+    conn = conectar()
+    try:
+        cur = conn.execute("DELETE FROM escala_turnos_planejamento WHERE id = ?", (id_escala,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def escala_turnos_listar_mes(mes_ano_iso: str) -> list:
+    """
+    Retorna todos os turnos planejados para o mês (ex.: '2026-08').
+    Inclui JOIN com cad_pessoas para obter nome e cargo oficiais.
+    """
+    conn = conectar()
+    try:
+        sql = """
+            SELECT
+                e.id,
+                e.data,
+                e.id_pessoa,
+                e.nome_avulso,
+                e.turno,
+                e.funcao,
+                p.nome AS nome_pessoa,
+                p.cargo AS cargo_pessoa,
+                COALESCE(p.nome, e.nome_avulso) AS nome_exibicao,
+                COALESCE(p.cargo, e.funcao, 'Extra') AS cargo_exibicao
+            FROM escala_turnos_planejamento e
+            LEFT JOIN cad_pessoas p ON p.id = e.id_pessoa
+            WHERE e.data LIKE ?
+            ORDER BY e.data ASC, e.turno ASC, nome_exibicao ASC
+        """
+        return conn.execute(sql, (f"{mes_ano_iso}%",)).fetchall()
+    finally:
+        conn.close()
+
+
+def escala_turnos_listar_dia(data_iso: str) -> list:
+    """
+    Retorna todos os turnos planejados para um dia específico (YYYY-MM-DD).
+    """
+    conn = conectar()
+    try:
+        sql = """
+            SELECT
+                e.id,
+                e.data,
+                e.id_pessoa,
+                e.nome_avulso,
+                e.turno,
+                e.funcao,
+                p.nome AS nome_pessoa,
+                p.cargo AS cargo_pessoa,
+                COALESCE(p.nome, e.nome_avulso) AS nome_exibicao,
+                COALESCE(p.cargo, e.funcao, 'Extra') AS cargo_exibicao
+            FROM escala_turnos_planejamento e
+            LEFT JOIN cad_pessoas p ON p.id = e.id_pessoa
+            WHERE e.data = ?
+            ORDER BY e.turno ASC, nome_exibicao ASC
+        """
+        return conn.execute(sql, (data_iso,)).fetchall()
     finally:
         conn.close()
 
