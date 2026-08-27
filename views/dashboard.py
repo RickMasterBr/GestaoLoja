@@ -679,6 +679,7 @@ def view(page: ft.Page) -> ft.Control:
             controls=[
                 ft.Text("Ações Rápidas:", size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_300),
                 _criar_btn_atalho("Novo Pedido", ft.Icons.POINT_OF_SALE, "PDV", ft.Colors.TEAL_800),
+                _criar_btn_atalho("Agenda", ft.Icons.EVENT_NOTE, "Agenda", ft.Colors.INDIGO_800),
                 _criar_btn_atalho("Fluxo de Caixa", ft.Icons.ACCOUNT_BALANCE_WALLET, "Fluxo Caixa"),
                 _criar_btn_atalho("Relatório Diário", ft.Icons.PIE_CHART_OUTLINE, "Rel. Diário"),
                 _criar_btn_atalho("Fornecedores", ft.Icons.LOCAL_SHIPPING_OUTLINED, "Fornecedores"),

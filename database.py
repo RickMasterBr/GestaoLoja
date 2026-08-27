@@ -273,6 +273,7 @@ def inicializar_banco():
         _migrar_fornecedor_vendedor(conn)
         _migrar_nome_cliente_pedido(conn)
         _migrar_id_pedido_fiado(conn)
+        _migrar_agenda(conn)
         conn.commit()
         _popular_dados_iniciais(conn)
         conn.commit()
@@ -916,6 +917,24 @@ def _migrar_nome_cliente_pedido(conn: sqlite3.Connection):
     colunas = {row["name"] for row in conn.execute("PRAGMA table_info(vendas_pedidos)")}
     if "nome_cliente" not in colunas:
         conn.execute("ALTER TABLE vendas_pedidos ADD COLUMN nome_cliente TEXT")
+
+
+def _migrar_agenda(conn: sqlite3.Connection):
+    """Cria a tabela cad_agenda se não existir. Idempotente."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cad_agenda (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            data            TEXT    NOT NULL,
+            horario         TEXT,
+            titulo          TEXT    NOT NULL,
+            descricao       TEXT,
+            tipo            TEXT    NOT NULL DEFAULT 'LEMBRETE',
+            concluido       INTEGER NOT NULL DEFAULT 0,
+            criado_por      TEXT,
+            criado_em       TEXT    DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_agenda_data ON cad_agenda (data)")
 
 
 # ══════════════════════════════════════════════
@@ -4026,6 +4045,141 @@ def registrar_encerramento_turno(data_iso: str, usuario: str) -> None:
                   f"para a data {data_iso}",
         usuario=usuario,
     )
+
+
+# ══════════════════════════════════════════════
+#  CRUD — cad_agenda (Agenda & Lembretes)
+# ══════════════════════════════════════════════
+
+def agenda_inserir(
+    data: str,
+    titulo: str,
+    horario: str = None,
+    descricao: str = None,
+    tipo: str = "LEMBRETE",
+    criado_por: str = None,
+) -> int:
+    conn = conectar()
+    try:
+        cur = conn.execute(
+            """INSERT INTO cad_agenda
+               (data, horario, titulo, descricao, tipo, criado_por)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (data, horario or None, titulo, descricao or None, tipo, criado_por or None),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def agenda_listar_mes(mes_ano: str) -> list:
+    """
+    Retorna todos os compromissos/lembretes de um mês (ex: '2026-08').
+    """
+    conn = conectar()
+    try:
+        return conn.execute(
+            """SELECT * FROM cad_agenda
+               WHERE data LIKE ?
+               ORDER BY data ASC, horario ASC, id ASC""",
+            (f"{mes_ano}%",),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def agenda_listar_dia(data: str) -> list:
+    """
+    Retorna os compromissos de um dia específico (ex: '2026-08-26').
+    """
+    conn = conectar()
+    try:
+        return conn.execute(
+            """SELECT * FROM cad_agenda
+               WHERE data = ?
+               ORDER BY horario ASC, id ASC""",
+            (data,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def agenda_buscar(id_agenda: int):
+    conn = conectar()
+    try:
+        return conn.execute(
+            "SELECT * FROM cad_agenda WHERE id = ?", (id_agenda,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def agenda_atualizar(id_agenda: int, **campos) -> bool:
+    if not campos:
+        return False
+    colunas = ", ".join(f"{k} = ?" for k in campos)
+    valores = list(campos.values()) + [id_agenda]
+    conn = conectar()
+    try:
+        conn.execute(f"UPDATE cad_agenda SET {colunas} WHERE id = ?", valores)
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def agenda_concluir(id_agenda: int, concluido: bool = True) -> bool:
+    conn = conectar()
+    try:
+        conn.execute(
+            "UPDATE cad_agenda SET concluido = ? WHERE id = ?",
+            (1 if concluido else 0, id_agenda),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def agenda_excluir(id_agenda: int) -> bool:
+    conn = conectar()
+    try:
+        conn.execute("DELETE FROM cad_agenda WHERE id = ?", (id_agenda,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def agenda_boletos_mes(mes_ano: str) -> list:
+    """
+    Retorna as parcelas de boletos que vencem no mês (ex: '2026-08')
+    junto com o nome do fornecedor e o status.
+    """
+    conn = conectar()
+    try:
+        sql = """
+            SELECT
+                p.id,
+                p.id_boleto,
+                p.num_parcela,
+                b.num_parcelas,
+                p.valor,
+                p.vencimento,
+                p.pago,
+                p.data_pago,
+                b.descricao,
+                f.nome AS nome_fornecedor
+            FROM cad_boletos_parcelas p
+            JOIN cad_boletos b ON b.id = p.id_boleto
+            JOIN cad_fornecedores f ON f.id = b.id_fornecedor
+            WHERE p.vencimento LIKE ?
+            ORDER BY p.vencimento ASC, f.nome ASC
+        """
+        return conn.execute(sql, (f"{mes_ano}%",)).fetchall()
+    finally:
+        conn.close()
 
 
 # ══════════════════════════════════════════════

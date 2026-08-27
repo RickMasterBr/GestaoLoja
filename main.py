@@ -59,6 +59,7 @@ from views import (
     fornecedores,
     parametros,
     login,
+    agenda,
 )
 
 
@@ -68,6 +69,7 @@ TELAS = [
     {"view": dashboard.view,         "label": "Dashboard",      "icon": ft.Icons.DASHBOARD,              "min_perfil": "OPERADOR"},
     {"view": pdv.view,               "label": "PDV",            "icon": ft.Icons.POINT_OF_SALE,          "min_perfil": "OPERADOR"},
     {"view": extras.view,            "label": "Movim. e Caixa", "icon": ft.Icons.ADD_CIRCLE,             "min_perfil": "OPERADOR"},
+    {"view": agenda.view,            "label": "Agenda",         "icon": ft.Icons.EVENT_NOTE,             "min_perfil": "OPERADOR"},
     {"view": relatorio_diario.view,  "label": "Rel. Diário",    "icon": ft.Icons.TODAY,                  "min_perfil": "OPERADOR"},
     {"view": relatorio_periodo.view, "label": "Rel. Período",   "icon": ft.Icons.DATE_RANGE,             "min_perfil": "GERENTE"},
     {"view": fluxo_caixa.view,       "label": "Fluxo Caixa",   "icon": ft.Icons.ACCOUNT_BALANCE_WALLET, "min_perfil": "GERENTE"},
@@ -693,6 +695,11 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
         "movimentacoes": "Movim. e Caixa",
         "dashboard": "Dashboard",
         "inicio": "Dashboard",
+        "agenda": "Agenda",
+        "calendario": "Agenda",
+        "calendário": "Agenda",
+        "lembretes": "Agenda",
+        "compromissos": "Agenda",
     }
 
     def navegar_para(destino):
