@@ -10,6 +10,8 @@ import os
 import shutil
 import sqlite3
 import time
+import sys
+import ctypes
 
 # ── Instrumentação de performance (temporário) ────────────────────────────────
 _perf_logger = logging.getLogger("perf")
@@ -52,58 +54,124 @@ CAMINHOS_POSSIVEIS = [
 LOCAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "loja_caixa.db")
 
 
+def _is_producao_autorizada() -> bool:
+    """
+    Retorna True apenas se o build/ambiente tiver autorização explícita para acessar
+    o banco de produção da loja via arquivo marcador local ou variável de emergência.
+    O padrão é SEMPRE desenvolvimento (False).
+    """
+    # 1. Critério primário: arquivo marcador gerado pelo build de produção
+    base_dir = (
+        os.path.dirname(sys.executable)
+        if getattr(sys, "frozen", False)
+        else os.path.dirname(os.path.abspath(__file__))
+    )
+    if os.path.exists(os.path.join(base_dir, "loja_producao.flag")):
+        return True
+
+    # 2. Critério secundário: variável de ambiente para emergências de suporte
+    if os.environ.get("GESTAOLOJA_PROD") == "1":
+        return True
+
+    return False
+
+
+def _exibir_erro_fatal_e_abortar(titulo: str, mensagem: str):
+    """Imprime erro no console e exibe MessageBox nativa do Windows no EXE."""
+    print(f"\n[ERRO FATAL] {titulo}: {mensagem}\n")
+    try:
+        ctypes.windll.user32.MessageBoxW(0, mensagem, titulo, 0x10)  # 0x10 = MB_ICONERROR
+    except Exception:
+        pass
+    sys.exit(1)
+
+
+def _localizar_banco_producao(timeout_segundos: int = 30, intervalo: float = 2.0) -> str:
+    """
+    Localiza o banco no Google Drive com espera ativa e retentativa em caso de race condition no boot.
+    Se o timeout expirar, exibe diálogo nativo com opção de Repetir ou Cancelar.
+    """
+    while True:
+        inicio = time.time()
+        print(f"[database] Aguardando conexão com o Google Drive (timeout={timeout_segundos}s)...")
+        while time.time() - inicio < timeout_segundos:
+            for caminho in CAMINHOS_POSSIVEIS:
+                if os.path.exists(caminho):
+                    return caminho
+            time.sleep(intervalo)
+
+        # Timeout esgotado sem encontrar o Drive montado
+        msg = (
+            "O banco de dados de produção da loja não foi encontrado no Google Drive.\n\n"
+            "Possíveis causas:\n"
+            "• O Google Drive ainda está inicializando ou montando a unidade G:\n"
+            "• A máquina está sem conexão com a internet\n"
+            "• A conta do Google Drive foi desconectada\n\n"
+            "Clique em 'Repetir' para tentar novamente ou 'Cancelar' para encerrar."
+        )
+        titulo = "Gestão Loja — Conexão com o Google Drive"
+        print(f"\n[AVISO] {titulo}: Drive não encontrado após {timeout_segundos}s.")
+
+        # 0x35 = MB_ICONWARNING (0x30) | MB_RETRYCANCEL (0x05)
+        # Retorno: IDRETRY (4) ou IDCANCEL (2)
+        resposta = 2
+        try:
+            resposta = ctypes.windll.user32.MessageBoxW(0, msg, titulo, 0x35)
+        except Exception:
+            pass
+
+        if resposta == 4:  # IDRETRY
+            print("[INFO] Usuário solicitou nova tentativa de conexão com o Drive.")
+            continue
+        else:  # IDCANCEL
+            print("[INFO] Inicialização cancelada pelo usuário. Encerrando.")
+            sys.exit(1)
+
+
 def _encontrar_banco():
-    # Passo 1: arquivo .db já existe em algum caminho do Drive → usa direto
+    # 1. Modo Teste Explícito (GESTAOLOJA_TESTE)
+    caminho_teste = os.environ.get("GESTAOLOJA_TESTE")
+    if caminho_teste:
+        for p in CAMINHOS_POSSIVEIS:
+            if os.path.abspath(caminho_teste) == os.path.abspath(p):
+                _exibir_erro_fatal_e_abortar(
+                    "Configuração Inválida",
+                    "A variável GESTAOLOJA_TESTE está apontando para o banco de PRODUÇÃO do Google Drive!\n"
+                    "Operação abortada para proteger os dados da loja."
+                )
+        print(f"\n{'='*60}\n[BANCO DE DADOS] MODO TESTE ATIVO\nArquivo: {caminho_teste}\n{'='*60}\n")
+        return caminho_teste
+
+    # 2. Modo Produção Autorizado (Flag no build ou GESTAOLOJA_PROD=1)
+    if _is_producao_autorizada():
+        caminho_drive = _localizar_banco_producao(timeout_segundos=30, intervalo=2.0)
+        print(f"\n{'='*60}\n[BANCO DE DADOS] MODO PRODUÇÃO (LOJA)\nArquivo: {caminho_drive}\n{'='*60}\n")
+        return caminho_drive
+
+    # 3. Modo Desenvolvimento (Padrão)
+    # Se não é produção autorizada, verificar se algum caminho de produção existe nesta máquina
     for caminho in CAMINHOS_POSSIVEIS:
         if os.path.exists(caminho):
-            return caminho
+            # Drive montado no PC, mas execução sem autorização de produção
+            _exibir_erro_fatal_e_abortar(
+                "Bloqueio de Segurança — Ambiente de Desenvolvimento",
+                "O banco de PRODUÇÃO da loja foi detectado no Google Drive, mas esta execução "
+                "não possui autorização de produção (arquivo loja_producao.flag ausente).\n\n"
+                "Para rodar em desenvolvimento, use o banco local ou defina GESTAOLOJA_TESTE.\n"
+                "A aplicação foi encerrada para evitar alterações acidentais no banco da loja."
+            )
 
-    # Passo 2: nenhum .db no Drive, mas a pasta do primeiro caminho existe
-    # e o banco local tem dados → copia local → Drive antes de retornar
-    primeiro_drive = CAMINHOS_POSSIVEIS[0]
-    pasta_drive = os.path.dirname(primeiro_drive)
-    if os.path.exists(pasta_drive) and os.path.exists(LOCAL_PATH):
-        shutil.copy2(LOCAL_PATH, primeiro_drive)
-        print(f"[database] Banco local copiado para o Drive: {primeiro_drive}")
-        for sufixo in ("-wal", "-shm"):
-            origem = LOCAL_PATH + sufixo
-            if os.path.exists(origem):
-                shutil.copy2(origem, primeiro_drive + sufixo)
-                print(f"[database] Arquivo auxiliar copiado: {primeiro_drive + sufixo}")
-        return primeiro_drive
-
-    # Passo 3: fallback seguro — usa banco local
+    # Padrão seguro para desenvolvimento isolado (quando Drive não está acessível)
+    print(f"\n{'='*60}\n[BANCO DE DADOS] MODO DESENVOLVIMENTO (LOCAL)\nArquivo: {LOCAL_PATH}\n{'='*60}\n")
     return LOCAL_PATH
 
-# ── MODO TESTE (temporário — não afeta o EXE de produção) ─────────
-# Se GESTAOLOJA_TESTE estiver setada, ignora o Drive por completo
-# e usa um banco isolado local, sem risco de mexer no banco da loja.
-_CAMINHO_TESTE = os.environ.get("GESTAOLOJA_TESTE")
-if _CAMINHO_TESTE:
-    def _encontrar_banco():
-        print(f"[database] MODO TESTE ativo. Banco isolado: {_CAMINHO_TESTE}")
-        return _CAMINHO_TESTE
 
 DB_PATH = _encontrar_banco()
 
 
 def get_db_path() -> str:
-    """
-    Retorna o caminho ativo do banco de dados com detecção lazy.
-
-    Na primeira chamada usa DB_PATH resolvido no import. Em chamadas subsequentes,
-    se o caminho atual ainda for LOCAL_PATH e um dos caminhos do Drive tiver o
-    arquivo .db disponível, atualiza DB_PATH e retorna o novo caminho.
-    Isso permite que o Drive montado após a inicialização seja detectado
-    automaticamente na próxima conexão aberta.
-    """
+    """Retorna o caminho ativo do banco de dados resolvido na inicialização."""
     global DB_PATH
-    if DB_PATH == LOCAL_PATH:
-        for caminho in CAMINHOS_POSSIVEIS:
-            if os.path.exists(caminho):
-                DB_PATH = caminho
-                print(f"[database] Drive detectado após inicialização. Usando: {DB_PATH}")
-                break
     return DB_PATH
 
 
@@ -949,6 +1017,11 @@ def _popular_dados_iniciais(conn: sqlite3.Connection):
 
     def _vazia(tabela: str) -> bool:
         return conn.execute(f"SELECT COUNT(*) FROM {tabela}").fetchone()[0] == 0
+
+    # Proteção de escrita: Se a base já contém pessoas cadastradas, ela é uma base
+    # existente de produção ou teste com dados. Não reinjeta dados padrão.
+    if not _vazia("cad_pessoas"):
+        return
 
     # Métodos de pagamento padrão
     if _vazia("cad_metodos_pag"):
