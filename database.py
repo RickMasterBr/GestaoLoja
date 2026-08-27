@@ -2512,6 +2512,106 @@ def mov_extra_listar_periodo(data_inicio: str, data_fim: str,
         conn.close()
 
 
+def mov_extra_relatorio_periodo(data_inicio: str, data_fim: str) -> dict:
+    """
+    Gera dados agregados de movimentações extras para o período especificado.
+    Retorna dicionário estruturado com totais, resumo por fornecedor,
+    resumo por categoria, resumo por método e lista analítica de itens.
+    """
+    conn = conectar()
+    try:
+        itens_rows = conn.execute(
+            """SELECT me.*,
+                      cp.nome AS nome_pessoa,
+                      ce.descricao AS categoria,
+                      ce.codigo AS categoria_codigo,
+                      f.nome AS nome_fornecedor
+               FROM movimentacoes_extras me
+               LEFT JOIN cad_pessoas cp ON cp.id = me.id_pessoa
+               LEFT JOIN cad_categorias_extra ce ON ce.id = me.id_categoria
+               LEFT JOIN cad_fornecedores f ON f.id = me.id_fornecedor
+               WHERE me.data BETWEEN ? AND ?
+               ORDER BY me.data DESC, me.id DESC""",
+            (data_inicio, data_fim),
+        ).fetchall()
+
+        itens = [dict(r) for r in itens_rows]
+
+        tot_entradas = sum(r["valor"] for r in itens if r["fluxo"] == "ENTRADA")
+        tot_saidas   = sum(r["valor"] for r in itens if r["fluxo"] == "SAIDA")
+        tot_neutro   = sum(r["valor"] for r in itens if r["fluxo"] == "NEUTRO")
+        tot_saidas_dinheiro = sum(
+            r["valor"] for r in itens
+            if r["fluxo"] == "SAIDA" and (r.get("metodo") or "").upper() == "DINHEIRO"
+        )
+        tot_saidas_pix = sum(
+            r["valor"] for r in itens
+            if r["fluxo"] == "SAIDA" and (r.get("metodo") or "").upper() == "PIX"
+        )
+
+        totais = {
+            "entradas": tot_entradas,
+            "saidas": tot_saidas,
+            "saldo": tot_entradas - tot_saidas,
+            "neutro": tot_neutro,
+            "saidas_dinheiro": tot_saidas_dinheiro,
+            "saidas_pix": tot_saidas_pix,
+        }
+
+        # Resumo por Fornecedor (Saídas)
+        forn_map = {}
+        for r in itens:
+            if r["fluxo"] == "SAIDA":
+                nome_f = r["nome_fornecedor"]
+                if not nome_f and r.get("obs") and r["obs"].startswith("Fornecedor: "):
+                    corpo = r["obs"][len("Fornecedor: "):]
+                    nome_f = corpo.split(" | ", 1)[0].strip() if " | " in corpo else corpo.strip()
+                if nome_f:
+                    if nome_f not in forn_map:
+                        forn_map[nome_f] = {"nome": nome_f, "qtd": 0, "total": 0.0}
+                    forn_map[nome_f]["qtd"] += 1
+                    forn_map[nome_f]["total"] += r["valor"]
+
+        resumo_fornecedores = sorted(forn_map.values(), key=lambda x: x["total"], reverse=True)
+
+        # Resumo por Categoria
+        cat_map = {}
+        for r in itens:
+            cat_desc = r["categoria"] or "Outros"
+            fl = r["fluxo"]
+            chave = (cat_desc, fl)
+            if chave not in cat_map:
+                cat_map[chave] = {"categoria": cat_desc, "fluxo": fl, "qtd": 0, "total": 0.0}
+            cat_map[chave]["qtd"] += 1
+            cat_map[chave]["total"] += r["valor"]
+
+        resumo_categorias = sorted(
+            cat_map.values(),
+            key=lambda x: (0 if x["fluxo"] == "SAIDA" else (1 if x["fluxo"] == "ENTRADA" else 2), -x["total"]),
+        )
+
+        # Resumo por Método de Pagamento
+        met_map = {}
+        for r in itens:
+            met = r["metodo"] or "Não informado"
+            if met not in met_map:
+                met_map[met] = {"metodo": met, "qtd": 0, "total": 0.0}
+            met_map[met]["qtd"] += 1
+            met_map[met]["total"] += r["valor"]
+
+        resumo_metodos = sorted(met_map.values(), key=lambda x: x["total"], reverse=True)
+
+        return {
+            "totais": totais,
+            "resumo_fornecedores": resumo_fornecedores,
+            "resumo_categorias": resumo_categorias,
+            "resumo_metodos": resumo_metodos,
+            "itens": itens,
+        }
+    finally:
+        conn.close()
+
+
 def mov_extra_atualizar(id_mov: int, **campos) -> bool:
     """Atualiza campos de uma movimentação. Retorna True se alterado."""
     if not campos:

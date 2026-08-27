@@ -753,3 +753,126 @@ def excel_estoque_movimentacoes(ini_br: str, fim_br: str,
         b.adicionar_nota("Sem movimentações para este período.")
 
     return b.salvar("estoque_movimentacoes")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  8. excel_movimentacoes
+# ══════════════════════════════════════════════════════════════════════════════
+
+def excel_movimentacoes(ini_br: str, fim_br: str, dados: dict, abrir_ao_concluir: bool = True) -> str:
+    """
+    Gera planilha com o relatório de movimentações extras do período.
+    Inclui: Resumo Geral, Resumo por Fornecedor, Resumo por Categoria,
+    Resumo por Método e Extrato Analítico de Lançamentos.
+    """
+    _carregar()
+    b = ExcelBuilder("Movimentações e Caixa")
+    b.adicionar_titulo(
+        f"Relatório de Movimentações — {ini_br} a {fim_br}",
+        subtitulo="Gestão Loja — Controle Financeiro e Operacional",
+    )
+
+    totais = dados.get("totais", {})
+    b.adicionar_secao("Resumo Financeiro do Período")
+    b.adicionar_cabecalho(["Indicador", "Valor Total"])
+    b.adicionar_linha(["Total de Entradas", _r(totais.get("entradas", 0.0))], cor_texto=GREEN_FG)
+    b.adicionar_linha(["Total de Saídas", _r(totais.get("saidas", 0.0))], alternada=True, cor_texto=RED_FG)
+    b.adicionar_linha(["Saldo Líquido", _r(totais.get("saldo", 0.0))], is_total=True,
+                      cor_texto=GREEN_FG if totais.get("saldo", 0.0) >= 0 else RED_FG)
+    b.adicionar_linha(["Saídas em Dinheiro (Gaveta)", _r(totais.get("saidas_dinheiro", 0.0))], alternada=True)
+    b.adicionar_linha(["Saídas em PIX", _r(totais.get("saidas_pix", 0.0))])
+    b.adicionar_linha(["Neutro (Consumos / Corridas)", _r(totais.get("neutro", 0.0))], alternada=True, cor_texto=GREY_FG)
+    b.adicionar_linha_vazia()
+
+    # Resumo por Fornecedor
+    fornecedores = dados.get("resumo_fornecedores", [])
+    b.adicionar_secao("Gastos por Fornecedor (Saídas)")
+    if fornecedores:
+        b.adicionar_cabecalho(["Fornecedor", "Lançamentos", "Total Gasto (R$)"])
+        total_forn = 0.0
+        for i, f in enumerate(fornecedores):
+            val = f.get("total", 0.0)
+            total_forn += val
+            b.adicionar_linha([
+                f.get("nome", "Não informado"),
+                str(f.get("qtd", 0)),
+                _r(val),
+            ], alternada=(i % 2 == 1), cor_texto=RED_FG)
+        b.adicionar_linha(["TOTAL FORNECEDORES", str(sum(f.get("qtd", 0) for f in fornecedores)), _r(total_forn)], is_total=True)
+    else:
+        b.adicionar_nota("Nenhum lançamento com fornecedor neste período.")
+    b.adicionar_linha_vazia()
+
+    # Resumo por Categoria
+    categorias = dados.get("resumo_categorias", [])
+    b.adicionar_secao("Resumo por Categoria")
+    if categorias:
+        b.adicionar_cabecalho(["Categoria", "Fluxo", "Lançamentos", "Total (R$)"])
+        for i, c in enumerate(categorias):
+            fl = c.get("fluxo", "")
+            cor = GREEN_FG if fl == "ENTRADA" else (RED_FG if fl == "SAIDA" else GREY_FG)
+            b.adicionar_linha([
+                c.get("categoria", ""),
+                fl,
+                str(c.get("qtd", 0)),
+                _r(c.get("total", 0.0)),
+            ], alternada=(i % 2 == 1), cor_texto=cor)
+    else:
+        b.adicionar_nota("Nenhuma categoria com movimentação neste período.")
+    b.adicionar_linha_vazia()
+
+    # Resumo por Método
+    metodos = dados.get("resumo_metodos", [])
+    b.adicionar_secao("Resumo por Forma de Pagamento")
+    if metodos:
+        b.adicionar_cabecalho(["Método", "Lançamentos", "Total (R$)"])
+        for i, m in enumerate(metodos):
+            b.adicionar_linha([
+                m.get("metodo", "Não informado"),
+                str(m.get("qtd", 0)),
+                _r(m.get("total", 0.0)),
+            ], alternada=(i % 2 == 1))
+    else:
+        b.adicionar_nota("Nenhum método registrado neste período.")
+    b.adicionar_linha_vazia()
+
+    # Extrato Detalhado
+    itens = dados.get("itens", [])
+    b.adicionar_secao("Extrato Detalhado de Movimentações")
+    if itens:
+        b.adicionar_cabecalho([
+            "Data", "Beneficiário / Fornecedor", "Categoria", "Fluxo",
+            "Método", "Valor", "Observações",
+        ])
+        for i, r in enumerate(itens):
+            fl = r.get("fluxo", "")
+            cor = GREEN_FG if fl == "ENTRADA" else (RED_FG if fl == "SAIDA" else GREY_FG)
+            beneficiario = r.get("nome_fornecedor") or r.get("nome_pessoa") or "—"
+            if beneficiario == "—" and r.get("obs") and r.get("obs").startswith("Fornecedor: "):
+                corpo = r["obs"][len("Fornecedor: "):]
+                beneficiario = corpo.split(" | ", 1)[0].strip() if " | " in corpo else corpo.strip()
+
+            dt_br = r.get("data", "")
+            if "-" in dt_br:
+                try:
+                    ano, mes, dia = dt_br.split("-")
+                    dt_br = f"{dia}/{mes}/{ano}"
+                except Exception:
+                    pass
+
+            b.adicionar_linha([
+                dt_br,
+                beneficiario,
+                r.get("categoria", ""),
+                fl,
+                r.get("metodo", "—") or "—",
+                _r(r.get("valor", 0.0)),
+                r.get("obs", "") or "",
+            ], alternada=(i % 2 == 1), cor_texto=cor)
+    else:
+        b.adicionar_nota("Sem movimentações registradas neste período.")
+
+    caminho = b.salvar("movimentacoes_periodo")
+    if abrir_ao_concluir:
+        b.abrir(caminho)
+    return caminho

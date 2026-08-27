@@ -1,9 +1,10 @@
 """
-views/extras.py — Movimentações de Caixa (Entradas, Saídas, Neutros e Quitação de Boletos)
+views/extras.py — Movimentações de Caixa (Entradas, Saídas, Neutros, Quitação de Boletos e Relatórios)
 
 Reestruturação completa da Fase 3:
-- Seletor de fluxo superior [SAÍDA] / [ENTRADA] / [PAGAR BOLETO].
+- Seletor de fluxo superior [SAÍDA] / [ENTRADA] / [PAGAR BOLETO] / [RELATÓRIOS & GASTOS].
 - Subtipos canônicos filtrados por ativo=1 e permissão de perfil (sessao_tem_acesso).
+- Aba de Relatórios & Gastos consolidada para gerência com filtros por período, KPIs, tabelas de resumo e exportação Excel/PDF.
 - Campos dinâmicos: Funcionário/Entregador (usa_funcionario=1), Fornecedor (usa_fornecedor=1), Método de Pagamento.
 - Quitação rápida de boletos e duplicatas integrada na operação de caixa.
 - Gravação estrita do fluxo da categoria (categoria['fluxo']) preservando NEUTRO.
@@ -12,8 +13,9 @@ Reestruturação completa da Fase 3:
 """
 
 import flet as ft
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import database
+from relatorios import excel_gerador, pdf_gerador
 
 
 # ── Utilitários ───────────────────────────────────────────────────────────────
@@ -255,7 +257,8 @@ def _dialogo_quitar_parcela(page: ft.Page, parcela: dict, on_sucesso) -> None:
 # ── View Principal ────────────────────────────────────────────────────────────
 
 def view(page: ft.Page) -> ft.Control:
-    hoje_br = date.today().strftime("%d/%m/%Y")
+    hoje_obj = date.today()
+    hoje_br  = hoje_obj.strftime("%d/%m/%Y")
 
     # ── 1. Dados e Permissões da Sessão ───────────────────────────────────────
     categorias_todas = [dict(c) for c in database.categoria_extra_listar()]
@@ -265,6 +268,9 @@ def view(page: ft.Page) -> ft.Control:
     pessoas_todas    = [dict(p) for p in database.pessoa_listar(apenas_ativos=True)]
     fornecedores_db  = [dict(f) for f in database.fornecedor_listar(apenas_ativos=True)]
 
+    # Permissão para visualizar relatórios consolidados de gastos (Restrito a Gerente/Admin)
+    pode_ver_relatorios = database.sessao_tem_acesso("GERENTE")
+
     # Filtra apenas categorias ativas E com permissão mínima da sessão
     categorias_validas = [
         c for c in categorias_todas
@@ -273,13 +279,12 @@ def view(page: ft.Page) -> ft.Control:
     cat_map = {r["id"]: r for r in categorias_validas}
 
     # Separação de categorias por agrupamento de fluxo
-    # Saídas operacionais (inclui neutros como consumo/corridas/reentregas)
     cats_saida = [c for c in categorias_validas if c["fluxo"] in ("SAIDA", "NEUTRO")]
     cats_entrada = [c for c in categorias_validas if c["fluxo"] == "ENTRADA"]
 
     # ── 2. Estado da Tela ─────────────────────────────────────────────────────
     _estado = {
-        "fluxo_ui": "SAIDA",     # 'SAIDA' | 'ENTRADA' | 'BOLETO'
+        "fluxo_ui": "SAIDA",     # 'SAIDA' | 'ENTRADA' | 'BOLETO' | 'RELATORIOS'
         "cat_selecionada": None, # dict da categoria ativa
         "editando_id": None,     # ID da movimentação em edição
     }
@@ -318,26 +323,23 @@ def view(page: ft.Page) -> ft.Control:
     btn_aba_saida = ft.ElevatedButton(
         "Saídas / Despesas",
         icon=ft.Icons.ARROW_UPWARD,
-        style=ft.ButtonStyle(
-            bgcolor=ft.Colors.RED_800,
-            color=ft.Colors.WHITE,
-        ),
+        style=ft.ButtonStyle(bgcolor=ft.Colors.RED_800, color=ft.Colors.WHITE),
     )
     btn_aba_entrada = ft.ElevatedButton(
         "Entradas / Troco",
         icon=ft.Icons.ARROW_DOWNWARD,
-        style=ft.ButtonStyle(
-            bgcolor=ft.Colors.GREY_800,
-            color=ft.Colors.GREY_300,
-        ),
+        style=ft.ButtonStyle(bgcolor=ft.Colors.GREY_800, color=ft.Colors.GREY_300),
     )
     btn_aba_boletos = ft.ElevatedButton(
         "Pagar Boletos",
         icon=ft.Icons.RECEIPT_LONG,
-        style=ft.ButtonStyle(
-            bgcolor=ft.Colors.GREY_800,
-            color=ft.Colors.GREY_300,
-        ),
+        style=ft.ButtonStyle(bgcolor=ft.Colors.GREY_800, color=ft.Colors.GREY_300),
+    )
+    btn_aba_relatorios = ft.ElevatedButton(
+        "Relatórios & Gastos",
+        icon=ft.Icons.BAR_CHART,
+        visible=pode_ver_relatorios,
+        style=ft.ButtonStyle(bgcolor=ft.Colors.GREY_800, color=ft.Colors.GREY_300),
     )
 
     # ── 4. Controles do Formulário de Lançamento ──────────────────────────────
@@ -371,10 +373,9 @@ def view(page: ft.Page) -> ft.Control:
     linha_pessoa = ft.Row([dd_pessoa], visible=False)
 
     def _carregar_opcoes_fornecedor(subtipo_codigo=""):
-        # Para manutenção, prestadores de serviço sobem para o topo
         forns_ordenados = list(fornecedores_db)
         if subtipo_codigo == "manutencao":
-            forns_ordenados.sort(key=lambda f: (0 if (f["tipo"] or "").upper() == "SERVICO" else 1, f["nome"]))
+            forns_ordenados.sort(key=lambda f: (0 if (f.get("tipo") or "").upper() == "SERVICO" else 1, f["nome"]))
         else:
             forns_ordenados.sort(key=lambda f: f["nome"])
 
@@ -391,7 +392,7 @@ def view(page: ft.Page) -> ft.Control:
 
     def _ao_cadastrar_novo_fornecedor(id_novo, nome_novo):
         nonlocal fornecedores_db
-        fornecedores_db = database.fornecedor_listar(apenas_ativos=True)
+        fornecedores_db = [dict(f) for f in database.fornecedor_listar(apenas_ativos=True)]
         dd_fornecedor.options = _carregar_opcoes_fornecedor(_estado["cat_selecionada"].get("codigo") if _estado["cat_selecionada"] else "")
         dd_fornecedor.value = str(id_novo)
         page.overlay.append(ft.SnackBar(
@@ -498,7 +499,6 @@ def view(page: ft.Page) -> ft.Control:
             dd_fornecedor.value = None
 
         # 3. Campo Método de Pagamento
-        # Categorias de compensação contábil (neutro) não exigem método físico
         if cod in ("consumo", "corrida_extra", "reentrega"):
             linha_metodo.visible = False
             dd_metodo.value = None
@@ -525,7 +525,6 @@ def view(page: ft.Page) -> ft.Control:
         _estado["fluxo_ui"] = aba
         _limpar_form()
 
-        # Feedback visual dos botões
         btn_aba_saida.style.bgcolor = ft.Colors.RED_800 if aba == "SAIDA" else ft.Colors.GREY_800
         btn_aba_saida.style.color = ft.Colors.WHITE if aba == "SAIDA" else ft.Colors.GREY_300
 
@@ -535,22 +534,35 @@ def view(page: ft.Page) -> ft.Control:
         btn_aba_boletos.style.bgcolor = ft.Colors.ORANGE_800 if aba == "BOLETO" else ft.Colors.GREY_800
         btn_aba_boletos.style.color = ft.Colors.WHITE if aba == "BOLETO" else ft.Colors.GREY_300
 
+        btn_aba_relatorios.style.bgcolor = ft.Colors.BLUE_800 if aba == "RELATORIOS" else ft.Colors.GREY_800
+        btn_aba_relatorios.style.color = ft.Colors.WHITE if aba == "RELATORIOS" else ft.Colors.GREY_300
+
         if aba == "BOLETO":
             card_formulario.visible = False
             card_boletos.visible = True
-            lbl_titulo_form.value = "Quitação de Boletos e Contas a Pagar"
+            card_extrato.visible = True
+            card_relatorios.visible = False
             _carregar_tabela_boletos()
+        elif aba == "RELATORIOS":
+            card_formulario.visible = False
+            card_boletos.visible = False
+            card_extrato.visible = False
+            card_relatorios.visible = True
+            _carregar_relatorio_periodo()
         else:
             card_formulario.visible = True
             card_boletos.visible = False
+            card_extrato.visible = True
+            card_relatorios.visible = False
             lbl_titulo_form.value = "Nova Saída de Caixa" if aba == "SAIDA" else "Nova Entrada de Caixa"
             _atualizar_opcoes_subtipo()
 
         page.update()
 
-    btn_aba_saida.on_click   = lambda e: _trocar_aba("SAIDA")
-    btn_aba_entrada.on_click = lambda e: _trocar_aba("ENTRADA")
-    btn_aba_boletos.on_click = lambda e: _trocar_aba("BOLETO")
+    btn_aba_saida.on_click      = lambda e: _trocar_aba("SAIDA")
+    btn_aba_entrada.on_click    = lambda e: _trocar_aba("ENTRADA")
+    btn_aba_boletos.on_click    = lambda e: _trocar_aba("BOLETO")
+    btn_aba_relatorios.on_click = lambda e: _trocar_aba("RELATORIOS")
 
     # ── 7. Seção de Boletos em Aberto ─────────────────────────────────────────
     col_lista_boletos = ft.Column(spacing=8, expand=True)
@@ -703,9 +715,7 @@ def view(page: ft.Page) -> ft.Control:
             page.update()
             return
 
-        # REGRA FUNDAMENTAL: O fluxo vem SEMPRE da categoria (cat['fluxo']), nunca da UI
         fluxo_banco = cat["fluxo"]
-
         metodo = dd_metodo.value if linha_metodo.visible else None
         obs = tf_obs.value.strip() or None
         if cod == "consumo":
@@ -757,10 +767,7 @@ def view(page: ft.Page) -> ft.Control:
         "Salvar Lançamento",
         icon=ft.Icons.SAVE,
         on_click=_salvar,
-        style=ft.ButtonStyle(
-            bgcolor=ft.Colors.BLUE_700,
-            color=ft.Colors.WHITE,
-        ),
+        style=ft.ButtonStyle(bgcolor=ft.Colors.BLUE_700, color=ft.Colors.WHITE),
     )
 
     btn_cancelar = ft.TextButton(
@@ -859,8 +866,6 @@ def view(page: ft.Page) -> ft.Control:
         total_saida   = 0.0
         total_neutro  = 0.0
         linhas = []
-
-        # Mapa de fornecedores para resolver nome caso necessário
         forn_nome_map = {f["id"]: f["nome"] for f in fornecedores_db}
 
         for m in movs:
@@ -875,7 +880,6 @@ def view(page: ft.Page) -> ft.Control:
                 total_neutro += m["valor"]
                 fluxo_cor = ft.Colors.GREY_500
 
-            # Detalhamento de Entidade Vinculada (Pessoa ou Fornecedor)
             entidade_vinculada = "—"
             if m["nome_pessoa"]:
                 entidade_vinculada = m["nome_pessoa"]
@@ -934,36 +938,12 @@ def view(page: ft.Page) -> ft.Control:
 
         row_totais_extrato.controls.clear()
         row_totais_extrato.controls += [
-            ft.Text(
-                f"Entradas: R$ {total_entrada:.2f}",
-                color=ft.Colors.GREEN_400,
-                weight=ft.FontWeight.BOLD,
-                size=14,
-            ),
+            ft.Text(f"Entradas: R$ {total_entrada:.2f}", color=ft.Colors.GREEN_400, weight=ft.FontWeight.BOLD, size=14),
             ft.Text("|", color=ft.Colors.GREY_600),
-            ft.Text(
-                f"Saídas: R$ {total_saida:.2f}",
-                color=ft.Colors.RED_400,
-                weight=ft.FontWeight.BOLD,
-                size=14,
-            ),
+            ft.Text(f"Saídas: R$ {total_saida:.2f}", color=ft.Colors.RED_400, weight=ft.FontWeight.BOLD, size=14),
             ft.Text("|", color=ft.Colors.GREY_600),
-            ft.Text(
-                f"Neutro (corridas/consumo): R$ {total_neutro:.2f}",
-                color=ft.Colors.GREY_500,
-                weight=ft.FontWeight.BOLD,
-                size=14,
-            ),
+            ft.Text(f"Neutro (corridas/consumo): R$ {total_neutro:.2f}", color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD, size=14),
         ]
-
-    def _atualizar_tudo():
-        _atualizar_tabela_extrato()
-        if _estado["fluxo_ui"] == "BOLETO":
-            _carregar_tabela_boletos()
-
-    # Dispara a carga inicial da tela
-    _trocar_aba("SAIDA")
-    _atualizar_tudo()
 
     card_extrato = ft.Card(
         content=ft.Container(
@@ -984,7 +964,275 @@ def view(page: ft.Page) -> ft.Control:
         ),
     )
 
-    # ── 10. Montagem da Estrutura Final da Tela ───────────────────────────────
+    # ── 10. Seção de Relatórios & Consulta por Período ─────────────────────────
+    # Filtros de data do relatório
+    primeiro_dia_mes = date(hoje_obj.year, hoje_obj.month, 1)
+    tf_rel_ini = ft.TextField(label="Data Início", value=primeiro_dia_mes.strftime("%d/%m/%Y"), width=130, text_align=ft.TextAlign.CENTER)
+    tf_rel_fim = ft.TextField(label="Data Fim", value=hoje_br, width=130, text_align=ft.TextAlign.CENTER)
+
+    def _on_rel_ini_picked(e):
+        if e.control.value:
+            tf_rel_ini.value = e.control.value.strftime("%d/%m/%Y")
+            _carregar_relatorio_periodo()
+            page.update()
+
+    def _on_rel_fim_picked(e):
+        if e.control.value:
+            tf_rel_fim.value = e.control.value.strftime("%d/%m/%Y")
+            _carregar_relatorio_periodo()
+            page.update()
+
+    dp_rel_ini = ft.DatePicker(on_change=_on_rel_ini_picked)
+    dp_rel_fim = ft.DatePicker(on_change=_on_rel_fim_picked)
+    page.overlay.extend([dp_rel_ini, dp_rel_fim])
+
+    # Containers de exibição do relatório
+    row_kpis_relatorio = ft.Row(spacing=12, wrap=True)
+    col_tabela_resumos = ft.Column(spacing=14, expand=True)
+    col_analitico_rel  = ft.Column(spacing=8, expand=True)
+
+    _relatorio_cache = {"dados": {}, "ini_iso": "", "fim_iso": ""}
+
+    def _definir_periodo_rapido(dias_atras=0, mes_atual=False, mes_anterior=False):
+        nonlocal hoje_obj
+        if mes_atual:
+            dt_ini = date(hoje_obj.year, hoje_obj.month, 1)
+            dt_fim = hoje_obj
+        elif mes_anterior:
+            primeiro_deste = date(hoje_obj.year, hoje_obj.month, 1)
+            ultimo_passado = primeiro_deste - timedelta(days=1)
+            dt_ini = date(ultimo_passado.year, ultimo_passado.month, 1)
+            dt_fim = ultimo_passado
+        else:
+            dt_ini = hoje_obj - timedelta(days=dias_atras)
+            dt_fim = hoje_obj
+
+        tf_rel_ini.value = dt_ini.strftime("%d/%m/%Y")
+        tf_rel_fim.value = dt_fim.strftime("%d/%m/%Y")
+        _carregar_relatorio_periodo()
+        page.update()
+
+    def _exportar_excel(e):
+        dados = _relatorio_cache.get("dados")
+        if not dados:
+            return
+        try:
+            caminho = excel_gerador.excel_movimentacoes(tf_rel_ini.value, tf_rel_fim.value, dados, abrir_ao_concluir=True)
+            page.overlay.append(ft.SnackBar(content=ft.Text(f"Planilha Excel gerada: {caminho}"), bgcolor=ft.Colors.GREEN_700, open=True))
+            page.update()
+        except Exception as ex:
+            page.overlay.append(ft.SnackBar(content=ft.Text(f"Erro ao exportar Excel: {ex}"), bgcolor=ft.Colors.RED_700, open=True))
+            page.update()
+
+    def _exportar_pdf(e):
+        dados = _relatorio_cache.get("dados")
+        if not dados:
+            return
+        try:
+            caminho = pdf_gerador.gerar_pdf_movimentacoes(tf_rel_ini.value, tf_rel_fim.value, dados, abrir_ao_concluir=True)
+            page.overlay.append(ft.SnackBar(content=ft.Text(f"Relatório PDF gerado: {caminho}"), bgcolor=ft.Colors.GREEN_700, open=True))
+            page.update()
+        except Exception as ex:
+            page.overlay.append(ft.SnackBar(content=ft.Text(f"Erro ao exportar PDF: {ex}"), bgcolor=ft.Colors.RED_700, open=True))
+            page.update()
+
+    def _kpi_card(titulo: str, valor: float, cor_valor: str, icon: ft.Icons):
+        return ft.Container(
+            width=180,
+            padding=ft.Padding.all(12),
+            bgcolor=ft.Colors.GREY_900,
+            border_radius=8,
+            border=ft.Border.all(1, ft.Colors.GREY_800),
+            content=ft.Column(
+                spacing=4,
+                controls=[
+                    ft.Row([ft.Icon(icon, size=16, color=cor_valor), ft.Text(titulo, size=12, color=ft.Colors.GREY_400)], spacing=6),
+                    ft.Text(f"R$ {valor:.2f}", size=18, weight=ft.FontWeight.BOLD, color=cor_valor),
+                ],
+            ),
+        )
+
+    def _carregar_relatorio_periodo():
+        ini_iso = _data_br_para_iso(tf_rel_ini.value)
+        fim_iso = _data_br_para_iso(tf_rel_fim.value)
+
+        dados = database.mov_extra_relatorio_periodo(ini_iso, fim_iso)
+        _relatorio_cache["dados"]   = dados
+        _relatorio_cache["ini_iso"] = ini_iso
+        _relatorio_cache["fim_iso"] = fim_iso
+
+        totais = dados.get("totais", {})
+        saldo = totais.get("saldo", 0.0)
+
+        # 1. Atualiza KPIs
+        row_kpis_relatorio.controls.clear()
+        row_kpis_relatorio.controls.extend([
+            _kpi_card("Total Entradas", totais.get("entradas", 0.0), ft.Colors.GREEN_400, ft.Icons.ARROW_DOWNWARD),
+            _kpi_card("Total Saídas", totais.get("saidas", 0.0), ft.Colors.RED_400, ft.Icons.ARROW_UPWARD),
+            _kpi_card("Saldo Líquido", saldo, ft.Colors.GREEN_400 if saldo >= 0 else ft.Colors.RED_400, ft.Icons.ACCOUNT_BALANCE_WALLET),
+            _kpi_card("Saídas Dinheiro", totais.get("saidas_dinheiro", 0.0), ft.Colors.AMBER_400, ft.Icons.MONEY),
+            _kpi_card("Saídas PIX", totais.get("saidas_pix", 0.0), ft.Colors.CYAN_400, ft.Icons.PIX),
+            _kpi_card("Neutro (Compensações)", totais.get("neutro", 0.0), ft.Colors.GREY_400, ft.Icons.SYNC_ALT),
+        ])
+
+        # 2. Resumo por Fornecedor
+        fornecedores = dados.get("resumo_fornecedores", [])
+        lin_forn = [
+            ft.DataRow(cells=[
+                ft.DataCell(ft.Text(f["nome"], weight=ft.FontWeight.W_500)),
+                ft.DataCell(ft.Text(str(f["qtd"]))),
+                ft.DataCell(ft.Text(f"R$ {f['total']:.2f}", color=ft.Colors.RED_400, weight=ft.FontWeight.BOLD)),
+            ])
+            for f in fornecedores
+        ]
+        tab_forn = ft.DataTable(
+            columns=[ft.DataColumn(ft.Text("Fornecedor")), ft.DataColumn(ft.Text("Lanç."), numeric=True), ft.DataColumn(ft.Text("Total Gasto"), numeric=True)],
+            rows=lin_forn,
+            column_spacing=14,
+        ) if lin_forn else ft.Text("Nenhum lançamento com fornecedor no período.", italic=True, color=ft.Colors.GREY_500)
+
+        # 3. Resumo por Categoria
+        categorias = dados.get("resumo_categorias", [])
+        lin_cat = [
+            ft.DataRow(cells=[
+                ft.DataCell(ft.Text(c["categoria"])),
+                ft.DataCell(ft.Text(c["fluxo"], color=ft.Colors.GREEN_400 if c["fluxo"] == "ENTRADA" else (ft.Colors.RED_400 if c["fluxo"] == "SAIDA" else ft.Colors.GREY_400))),
+                ft.DataCell(ft.Text(str(c["qtd"]))),
+                ft.DataCell(ft.Text(f"R$ {c['total']:.2f}", weight=ft.FontWeight.BOLD)),
+            ])
+            for c in categorias
+        ]
+        tab_cat = ft.DataTable(
+            columns=[ft.DataColumn(ft.Text("Categoria")), ft.DataColumn(ft.Text("Fluxo")), ft.DataColumn(ft.Text("Qtd"), numeric=True), ft.DataColumn(ft.Text("Total"), numeric=True)],
+            rows=lin_cat,
+            column_spacing=14,
+        ) if lin_cat else ft.Text("Nenhuma movimentação no período.", italic=True, color=ft.Colors.GREY_500)
+
+        col_tabela_resumos.controls.clear()
+        col_tabela_resumos.controls.extend([
+            ft.Row([
+                ft.Container(
+                    expand=True,
+                    padding=ft.Padding.all(12),
+                    bgcolor=ft.Colors.GREY_900,
+                    border_radius=8,
+                    content=ft.Column([
+                        ft.Text("Gastos por Fornecedor (Saídas)", weight=ft.FontWeight.BOLD),
+                        ft.Divider(height=1),
+                        tab_forn,
+                    ]),
+                ),
+                ft.Container(
+                    expand=True,
+                    padding=ft.Padding.all(12),
+                    bgcolor=ft.Colors.GREY_900,
+                    border_radius=8,
+                    content=ft.Column([
+                        ft.Text("Resumo por Categoria", weight=ft.FontWeight.BOLD),
+                        ft.Divider(height=1),
+                        tab_cat,
+                    ]),
+                ),
+            ], wrap=True, spacing=14),
+        ])
+
+        # 4. Extrato Analítico
+        itens = dados.get("itens", [])
+        lin_itens = []
+        for r in itens:
+            fl = r["fluxo"]
+            cor = ft.Colors.GREEN_400 if fl == "ENTRADA" else (ft.Colors.RED_400 if fl == "SAIDA" else ft.Colors.GREY_400)
+            entidade = r["nome_fornecedor"] or r["nome_pessoa"] or "—"
+            lin_itens.append(ft.DataRow(cells=[
+                ft.DataCell(ft.Text(_data_iso_para_br(r["data"]))),
+                ft.DataCell(ft.Text(entidade)),
+                ft.DataCell(ft.Text(r["categoria"] or "—")),
+                ft.DataCell(ft.Text(fl, color=cor, weight=ft.FontWeight.BOLD)),
+                ft.DataCell(ft.Text(r["metodo"] or "—")),
+                ft.DataCell(ft.Text(f"R$ {r['valor']:.2f}")),
+                ft.DataCell(ft.Text(r["obs"] or "", size=11)),
+            ]))
+
+        col_analitico_rel.controls.clear()
+        if lin_itens:
+            col_analitico_rel.controls.append(ft.Row(
+                scroll=ft.ScrollMode.AUTO,
+                controls=[
+                    ft.DataTable(
+                        columns=[
+                            ft.DataColumn(ft.Text("Data")),
+                            ft.DataColumn(ft.Text("Pessoa / Fornecedor")),
+                            ft.DataColumn(ft.Text("Categoria")),
+                            ft.DataColumn(ft.Text("Fluxo")),
+                            ft.DataColumn(ft.Text("Método")),
+                            ft.DataColumn(ft.Text("Valor"), numeric=True),
+                            ft.DataColumn(ft.Text("Obs")),
+                        ],
+                        rows=lin_itens,
+                        column_spacing=14,
+                    )
+                ]
+            ))
+        else:
+            col_analitico_rel.controls.append(ft.Text("Nenhum lançamento no período filtrado.", italic=True, color=ft.Colors.GREY_500))
+
+    card_relatorios = ft.Card(
+        visible=False,
+        content=ft.Container(
+            padding=ft.Padding.all(20),
+            content=ft.Column(
+                spacing=16,
+                controls=[
+                    ft.Row([
+                        ft.Text("Relatório & Análise de Movimentações", size=18, weight=ft.FontWeight.BOLD),
+                        ft.Row([
+                            ft.ElevatedButton("Exportar Excel", icon=ft.Icons.TABLE_VIEW, style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_800, color=ft.Colors.WHITE), on_click=_exportar_excel),
+                            ft.ElevatedButton("Gerar PDF", icon=ft.Icons.PICTURE_AS_PDF, style=ft.ButtonStyle(bgcolor=ft.Colors.RED_800, color=ft.Colors.WHITE), on_click=_exportar_pdf),
+                        ], spacing=8),
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, wrap=True),
+                    ft.Divider(height=1),
+                    # Filtros de Período
+                    ft.Row([
+                        ft.OutlinedButton("Hoje", on_click=lambda e: _definir_periodo_rapido(dias_atras=0)),
+                        ft.OutlinedButton("7 Dias", on_click=lambda e: _definir_periodo_rapido(dias_atras=7)),
+                        ft.OutlinedButton("Mês Atual", on_click=lambda e: _definir_periodo_rapido(mes_atual=True)),
+                        ft.OutlinedButton("Mês Anterior", on_click=lambda e: _definir_periodo_rapido(mes_anterior=True)),
+                        ft.Row([
+                            tf_rel_ini,
+                            ft.IconButton(icon=ft.Icons.CALENDAR_MONTH, on_click=lambda e: (setattr(dp_rel_ini, "open", True), page.update())),
+                            ft.Text("até"),
+                            tf_rel_fim,
+                            ft.IconButton(icon=ft.Icons.CALENDAR_MONTH, on_click=lambda e: (setattr(dp_rel_fim, "open", True), page.update())),
+                            ft.IconButton(icon=ft.Icons.SEARCH, tooltip="Filtrar Período", on_click=lambda e: (_carregar_relatorio_periodo(), page.update())),
+                        ], spacing=4, wrap=True),
+                    ], wrap=True, spacing=8),
+                    ft.Divider(height=1),
+                    # KPIs
+                    row_kpis_relatorio,
+                    ft.Divider(height=1),
+                    # Tabelas de Resumo
+                    col_tabela_resumos,
+                    ft.Divider(height=1),
+                    # Extrato Analítico
+                    ft.Text("Lançamentos Analíticos do Período", size=15, weight=ft.FontWeight.BOLD),
+                    col_analitico_rel,
+                ],
+            ),
+        ),
+    )
+
+    def _atualizar_tudo():
+        _atualizar_tabela_extrato()
+        if _estado["fluxo_ui"] == "BOLETO":
+            _carregar_tabela_boletos()
+        elif _estado["fluxo_ui"] == "RELATORIOS":
+            _carregar_relatorio_periodo()
+
+    # Dispara a carga inicial da tela
+    _trocar_aba("SAIDA")
+    _atualizar_tudo()
+
+    # ── 11. Montagem da Estrutura Final da Tela ───────────────────────────────
     seletor_abas_topo = ft.Container(
         padding=ft.Padding.symmetric(vertical=6),
         content=ft.Row(
@@ -993,6 +1241,7 @@ def view(page: ft.Page) -> ft.Control:
                 btn_aba_saida,
                 btn_aba_entrada,
                 btn_aba_boletos,
+                btn_aba_relatorios,
             ],
             wrap=True,
         ),
@@ -1004,6 +1253,7 @@ def view(page: ft.Page) -> ft.Control:
             card_formulario,
             card_boletos,
             card_extrato,
+            card_relatorios,
         ],
         scroll=ft.ScrollMode.AUTO,
         expand=True,

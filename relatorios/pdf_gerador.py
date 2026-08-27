@@ -1169,6 +1169,179 @@ def gerar_pdf_estoque(ini_br: str, fim_br: str,
     return caminho
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  8. gerar_pdf_movimentacoes
+# ══════════════════════════════════════════════════════════════════════════════
+
+def gerar_pdf_movimentacoes(ini_br: str, fim_br: str, dados: dict, abrir_ao_concluir: bool = True) -> str:
+    """Gera relatório em PDF das movimentações extras do período."""
+    _carregar()
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    caminho = os.path.join(tempfile.gettempdir(), f"movimentacoes_{ts}.pdf")
+    doc = SimpleDocTemplate(
+        caminho, pagesize=A4,
+        leftMargin=2*cm, rightMargin=2*cm,
+        topMargin=2*cm,  bottomMargin=2*cm,
+    )
+    story = []
+
+    story.append(Paragraph(dados.get("nome_loja", "Gestão Loja"), _ST_NOME_LOJA))
+    story.append(Paragraph("Relatório de Movimentações e Caixa", _ST_SUBTITULO))
+    story.append(Paragraph(f"Período: {ini_br} a {fim_br}", _ST_DATA_HDR))
+    story.append(HRFlowable(width="100%", thickness=2, color=_AZUL, spaceAfter=8))
+
+    # Resumo Geral
+    story.append(_secao("Resumo Financeiro do Período"))
+    story.append(_sp())
+    totais = dados.get("totais", {})
+    saldo = totais.get("saldo", 0.0)
+    lin_res = [
+        ["Total de Entradas", _r(totais.get("entradas", 0.0))],
+        ["Total de Saídas", _r(totais.get("saidas", 0.0))],
+        ["Saldo Líquido", _r(saldo)],
+        ["Saídas em Dinheiro (Gaveta)", _r(totais.get("saidas_dinheiro", 0.0))],
+        ["Saídas em PIX", _r(totais.get("saidas_pix", 0.0))],
+        ["Neutro (Consumo/Corridas)", _r(totais.get("neutro", 0.0))],
+    ]
+    t_res = Table(lin_res, colWidths=[_LU * 0.65, _LU * 0.35])
+    t_res.setStyle(TableStyle([
+        ("FONTNAME",       (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE",       (0, 0), (-1, -1), 9),
+        ("ALIGN",          (1, 0), (1, -1), "RIGHT"),
+        ("ALIGN",          (0, 0), (0, -1), "LEFT"),
+        ("TOPPADDING",     (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING",  (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",    (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",   (0, 0), (-1, -1), 6),
+        _alt_rows(0, 5),
+        ("TEXTCOLOR",      (0, 0), (1, 0), _VERDE),
+        ("TEXTCOLOR",      (0, 1), (1, 1), _VERMELHO),
+        ("TEXTCOLOR",      (0, 2), (1, 2), _VERDE if saldo >= 0 else _VERMELHO),
+        ("FONTNAME",       (0, 2), (1, 2), "Helvetica-Bold"),
+        ("GRID",           (0, 0), (-1, -1), 0.5, _CINZA_GRADE),
+    ]))
+    story.append(t_res)
+
+    # Gastos por Fornecedor
+    fornecedores = dados.get("resumo_fornecedores", [])
+    if fornecedores:
+        story.append(_sp())
+        story.append(_secao("Gastos por Fornecedor (Saídas)"))
+        story.append(_sp())
+        cab_f = ["Fornecedor", "Lançamentos", "Total Gasto"]
+        cw_f  = [_LU * 0.55, _LU * 0.20, _LU * 0.25]
+        rows_f = []
+        for f in fornecedores:
+            rows_f.append([
+                f.get("nome", "Não informado"),
+                str(f.get("qtd", 0)),
+                _r(f.get("total", 0.0)),
+            ])
+        t_f = Table([cab_f] + rows_f, colWidths=cw_f)
+        t_f.setStyle(TableStyle(
+            _cab_style() + _body_style() + [_alt_rows(1, len(rows_f))] + [
+                ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+                ("TEXTCOLOR", (2, 1), (2, -1), _VERMELHO),
+            ]
+        ))
+        story.append(t_f)
+
+    # Resumo por Categoria
+    categorias = dados.get("resumo_categorias", [])
+    if categorias:
+        story.append(_sp())
+        story.append(_secao("Resumo por Categoria"))
+        story.append(_sp())
+        cab_c = ["Categoria", "Fluxo", "Lançamentos", "Total"]
+        cw_c  = [_LU * 0.45, _LU * 0.18, _LU * 0.17, _LU * 0.20]
+        rows_c = []
+        color_cmds_c = []
+        for i, c in enumerate(categorias):
+            fl = c.get("fluxo", "")
+            rows_c.append([
+                c.get("categoria", ""),
+                fl,
+                str(c.get("qtd", 0)),
+                _r(c.get("total", 0.0)),
+            ])
+            ri = i + 1
+            if fl == "ENTRADA":
+                color_cmds_c.append(("TEXTCOLOR", (1, ri), (1, ri), _VERDE))
+                color_cmds_c.append(("TEXTCOLOR", (3, ri), (3, ri), _VERDE))
+            elif fl == "SAIDA":
+                color_cmds_c.append(("TEXTCOLOR", (1, ri), (1, ri), _VERMELHO))
+                color_cmds_c.append(("TEXTCOLOR", (3, ri), (3, ri), _VERMELHO))
+        t_c = Table([cab_c] + rows_c, colWidths=cw_c)
+        t_c.setStyle(TableStyle(
+            _cab_style() + _body_style() + [_alt_rows(1, len(rows_c))] + [
+                ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+            ] + color_cmds_c
+        ))
+        story.append(t_c)
+
+    # Extrato Analítico
+    itens = dados.get("itens", [])
+    story.append(_sp())
+    story.append(_secao("Extrato Detalhado de Movimentações"))
+    story.append(_sp())
+    if itens:
+        cab_i = ["Data", "Beneficiário", "Categoria", "Fluxo", "Método", "Valor", "Obs"]
+        cw_i  = [_LU * 0.10, _LU * 0.20, _LU * 0.18, _LU * 0.10, _LU * 0.12, _LU * 0.12, _LU * 0.18]
+        rows_i = []
+        color_cmds_i = []
+        for i, r in enumerate(itens):
+            fl = r.get("fluxo", "")
+            beneficiario = r.get("nome_fornecedor") or r.get("nome_pessoa") or "—"
+            if beneficiario == "—" and r.get("obs") and r.get("obs").startswith("Fornecedor: "):
+                corpo = r["obs"][len("Fornecedor: "):]
+                beneficiario = corpo.split(" | ", 1)[0].strip() if " | " in corpo else corpo.strip()
+
+            dt_br = r.get("data", "")
+            if "-" in dt_br:
+                try:
+                    ano, mes, dia = dt_br.split("-")
+                    dt_br = f"{dia}/{mes}/{ano}"
+                except Exception:
+                    pass
+
+            obs_txt = r.get("obs", "") or ""
+            if len(obs_txt) > 30:
+                obs_txt = obs_txt[:28] + "…"
+
+            rows_i.append([
+                dt_br,
+                beneficiario,
+                r.get("categoria", ""),
+                fl,
+                r.get("metodo", "—") or "—",
+                _r(r.get("valor", 0.0)),
+                obs_txt,
+            ])
+            ri = i + 1
+            if fl == "ENTRADA":
+                color_cmds_i.append(("TEXTCOLOR", (3, ri), (3, ri), _VERDE))
+                color_cmds_i.append(("TEXTCOLOR", (5, ri), (5, ri), _VERDE))
+            elif fl == "SAIDA":
+                color_cmds_i.append(("TEXTCOLOR", (3, ri), (3, ri), _VERMELHO))
+                color_cmds_i.append(("TEXTCOLOR", (5, ri), (5, ri), _VERMELHO))
+
+        t_i = Table([cab_i] + rows_i, colWidths=cw_i)
+        t_i.setStyle(TableStyle(
+            _cab_style() + _body_style() + [_alt_rows(1, len(rows_i))] + [
+                ("ALIGN", (5, 0), (5, -1), "RIGHT"),
+            ] + color_cmds_i
+        ))
+        story.append(t_i)
+    else:
+        story.append(Paragraph("Sem movimentações registradas para este período.", _ST_SEM_DADOS))
+
+    _rodape(story)
+    doc.build(story)
+    if abrir_ao_concluir:
+        abrir_pdf(caminho)
+    return caminho
+
+
 # ── Abrir PDF no visualizador padrão do Windows ───────────────────────────────
 
 def abrir_pdf(caminho: str) -> None:
