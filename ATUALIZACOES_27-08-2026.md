@@ -120,9 +120,87 @@ Este documento registra todas as alterações arquiteturais, correções de segu
 
 ---
 
-## 5. Histórico de Commits desta Sessão
+## 5. Fase 2 — Integração de Boletos, Vínculo de Parcela e Estorno Atômico
+
+### 5.1 Alteração de Schema e Chave Estrangeira
+* **Adição da Coluna**: `movimentacoes_extras.id_boleto_parcela` (INTEGER, NULL, FK para `cad_boletos_parcelas(id) ON DELETE SET NULL`).
+* **Índice**: Criado `CREATE INDEX ix_mov_boleto_parcela ON movimentacoes_extras(id_boleto_parcela)`.
+* **Foreign Keys**: Garantida a execução de `PRAGMA foreign_keys = ON` na abertura de cada conexão em `database.conectar()`.
+
+### 5.2 Correções de Integração de Boletos e Contas
+1. **`_registrar_saida_boleto`**:
+   - Categoria atualizada de 257 (inativada) para **262** (`compra_fornecedor`).
+   - Grava `id_fornecedor = b['id_fornecedor']` (evita `NULL`).
+   - Grava `id_boleto_parcela = id_parcela` vinculando a saída à parcela específica quitada.
+2. **`boleto_quitar_parcela` e `boleto_quitar`**:
+   - Atualizadas para passar `id_parcela=id_parcela` explicitamente para `_registrar_saida_boleto`.
+3. **Bloqueio de Exclusão Rastreável em `boleto_excluir`**:
+   - Se qualquer parcela do boleto tiver movimentação real de caixa vinculada em `movimentacoes_extras.id_boleto_parcela`, a exclusão é bloqueada impedindo a perda de rastreabilidade financeira.
+4. **Estorno Atômico em `mov_extra_excluir`**:
+   - Se o registro excluído no caixa estiver vinculado a uma parcela (`id_boleto_parcela IS NOT NULL`), o sistema estorna atomicamente a parcela (`pago = 0`, `data_pago = NULL`, `valor_pago = 0.0`) e reabre o boleto (`status = 'ABERTO'`).
+
+### 5.3 Aplicação em Produção da Fase 2
+* Criada e executada a migração idempotente `_migrar_schema_fase2(conn)` chamada em `inicializar_banco()`.
+* Aplicada com sucesso no Google Drive em **27/08/2026**. `PRAGMA integrity_check` retornou **`['ok']`**.
+
+---
+
+## 6. Fase 3 — Reestruturação da Tela de Movimentações (`views/extras.py`)
+
+### 6.1 Interface Operacional e Usabilidade
+* **Seletor de Fluxo Superior**: Botões visuais `[ ⬆ Saídas / Despesas ]`, `[ ⬇ Entradas / Troco ]`, `[ 📋 Pagar Boletos ]` e `[ 📊 Relatórios & Gastos ]`.
+* **Preservação Estrita de Fluxo**: O valor gravado em `movimentacoes_extras.fluxo` provém 100% de `categoria['fluxo']`. Categorias como `Consumo`, `Corrida Extra` e `Reentrega` são gravadas inviolavelmente como `NEUTRO`.
+* **Formatação de Valor**: Suporte a digitação direta (`150` -> `150,00`) acionado tanto no `on_blur` quanto no `on_submit` (tecla Enter).
+* **Dropdown Dinâmico e Modal de Fornecedores**: Seleção estrita por ID com botão de atalho `[+]` que abre o modal `_dialogo_novo_fornecedor` sem sair do fluxo de caixa.
+* **Quitação Direta de Boletos**: Aba integrada listando parcelas a vencer/vencidas nos próximos 60 dias com botão "Quitar" e lançamento automático de saída.
+* **Compatibilidade `sqlite3.Row`**: Conversão universal para dicionários (`dict(r)`), prevenindo erros de `.get()` em drivers SQLite padrão.
+
+### 6.2 Correção do Build do Executável (`GestaoLoja.spec`)
+* Corrigido o empacotamento de assets do Flet via `collect_data_files('flet')` na lista `datas`.
+* Removida a referência legada ao arquivo obsoleto `file_version_info.txt`.
+* Compilação real com PyInstaller testada e concluída com sucesso (gerado `dist/GestaoLoja/GestaoLoja.exe` de 27,5 MB).
+
+---
+
+## 7. Fase 3 (Etapa 4) — Relatórios & Gastos, Exportações e Controle de Acesso
+
+### 7.1 Controle de Acesso Estrito por Perfil
+* O botão `[ 📊 Relatórios & Gastos ]` e todos os relatórios financeiros consolidados respeitam a permissão `database.sessao_tem_acesso("GERENTE")`.
+* **Operador (Adilson)**: Aba de relatórios e KPIs de gastos totais **100% ocultos**.
+* **Gerente (Jessica) / Admin (Richard)**: Acesso completo aos filtros de período, KPIs, resumos e exportações.
+
+### 7.2 Backend Agregador (`database.mov_extra_relatorio_periodo`)
+* Implementada consulta analítica e agregada única retornando:
+  - **Totais Gerais**: Entradas, Saídas, Saldo Líquido, Saídas em Dinheiro (Gaveta), Saídas em PIX e Neutro.
+  - **Resumo por Categoria**: Quantidade e valor consolidado por subtipo.
+  - **Gastos por Fornecedor (Saídas)**: Agrupamento estrito por `id_fornecedor` e fornecedores canônicos.
+  - **Resumo por Forma de Pagamento**: Agrupamento por método (`PIX`, `Dinheiro`, etc.).
+  - **Extrato Analítico**: Lista cronológica de todos os lançamentos do período.
+
+### 7.3 Layout e UX da Aba de Relatórios
+* **Filtros Rápidos de Período**: Botões `[ Hoje ]`, `[ 7 Dias ]`, `[ Mês Atual ]`, `[ Mês Anterior ]` e seletores com `DatePicker`.
+* **Cards Visuais de KPI**: 6 contêineres com ícones e cores temáticas de saldo e fluxo.
+* **Tabelas de Resumo Lado a Lado**: Montadas com `ft.ResponsiveRow` (`col={"sm": 12, "md": 6, "lg": 4}`), posicionando as tabelas de Categoria, Fornecedor e Método lado a lado em telas normais.
+* **Extrato Analítico Paginado**:
+  - Inicia **recolhido por padrão** para manter a tela limpa e veloz.
+  - Ao expandir, pagina os lançamentos de **20 em 20 registros**, com botões `[ ◀ Anterior ]` e `[ Próxima ▶ ]` e contadores de página.
+* **Módulos de Exportação**:
+  - **Excel**: `relatorios.excel_gerador.excel_movimentacoes` (Gera planilha XLSX formatada com abas e cores).
+  - **PDF**: `relatorios.pdf_gerador.gerar_pdf_movimentacoes` (Gera relatório em A4 com tabelas ReportLab).
+
+### 7.4 Validação de Dados no Formulário
+* Adicionada validação de campo obrigatório para `dd_metodo` em todos os lançamentos de fluxo real (`SAIDA` / `ENTRADA`), impedindo novos registros em "Não informado".
+
+---
+
+## 8. Histórico Completo de Commits da Sessão (27/08/2026)
 
 1. **`ab1a19f`** — `feat(database): Implementa trava permanente de seguranca para ambiente de producao, retentativa ativa de boot e protecao contra escrita acidental`
 2. **`77f1157`** — `feat(database): Adiciona migracao de schema e dados da Fase 1 (aplicada em producao em 2026-08-27)`
+3. **`43ffc2a`** — `feat(extras): Reestrutura tela de Movimentações de Caixa com fluxo por botões, subtipos ativos, quitação de boletos e permissões`
+4. **`db81aa9`** — `feat(extras): Adiciona aba de Relatórios & Consulta de Movimentações com KPIs, exportacao Excel/PDF e controle de perfil`
+5. **`e30120f`** — `fix(extras): Corrige layout de renderizacao das tabelas de resumo e extrato analitico na aba de Relatorios`
+6. **`a5748ef`** — `feat(extras): Aplica 4 ajustes de relatorios, validacao de metodo e layout responsivo com extrato paginado`
 
-Ambos os commits foram enviados e sincronizados com `origin/main` no GitHub.
+Todos os commits foram testados, validados e sincronizados com a branch `main` no repositório remoto.
+
