@@ -343,6 +343,7 @@ def inicializar_banco():
         _migrar_id_pedido_fiado(conn)
         _migrar_agenda(conn)
         _migrar_schema_fase1(conn)
+        _migrar_schema_fase2(conn)
         conn.commit()
         _popular_dados_iniciais(conn)
         conn.commit()
@@ -1106,6 +1107,48 @@ def _migrar_schema_fase1(conn: sqlite3.Connection):
         conn.isolation_level = old_iso
 
 
+def _migrar_schema_fase2(conn: sqlite3.Connection):
+    """
+    Migração de Schema e Dados — Fase 2 (Integração de Boletos e Contas a Pagar).
+    - Adiciona coluna 'id_boleto_parcela' em movimentacoes_extras com FK -> cad_boletos_parcelas(id).
+    - Cria índice ix_mov_boleto_parcela em movimentacoes_extras(id_boleto_parcela).
+    - Corrige registros legados de boletos em movimentacoes_extras para apontar para a categoria canônica 262.
+    - Executa em transação atômica única com rollback em caso de falha. Idempotente.
+    """
+    old_iso = conn.isolation_level
+    conn.isolation_level = None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+
+        # 1. DDL: Coluna id_boleto_parcela em movimentacoes_extras
+        cols_mov = {r["name"] for r in conn.execute("PRAGMA table_info(movimentacoes_extras)")}
+        if "id_boleto_parcela" not in cols_mov:
+            conn.execute(
+                "ALTER TABLE movimentacoes_extras "
+                "ADD COLUMN id_boleto_parcela INTEGER REFERENCES cad_boletos_parcelas(id) ON DELETE SET NULL"
+            )
+
+        # 2. DDL: Índice de performance para estorno e rastreabilidade
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_mov_boleto_parcela ON movimentacoes_extras(id_boleto_parcela)")
+
+        # 3. DML: Correção defensiva de registros históricos de quitação de boleto
+        row_cat = conn.execute("SELECT id FROM cad_categorias_extra WHERE codigo = 'compra_fornecedor'").fetchone()
+        id_cat_compra = row_cat["id"] if row_cat else 262
+
+        conn.execute("""
+            UPDATE movimentacoes_extras
+            SET id_categoria = ?
+            WHERE id_categoria = 257
+        """, (id_cat_compra,))
+
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.isolation_level = old_iso
+
+
 # ══════════════════════════════════════════════
 #  DADOS INICIAIS
 # ══════════════════════════════════════════════
@@ -1425,9 +1468,10 @@ def _categoria_id(conn, descricao: str) -> int | None:
 
 
 def _registrar_saida_boleto(conn, id_boleto: int, valor: float,
-                            data_pago: str, metodo: str = None) -> int | None:
+                            data_pago: str, metodo: str = None,
+                            id_parcela: int = None) -> int | None:
     """
-    Insere a movimentação de saída no caixa referente ao pagamento de um boleto,
+    Insere a movimentação de saída no caixa referente ao pagamento de um boleto/parcela,
     usando a MESMA conexão/transação da quitação (atômico: ou grava os dois, ou
     nenhum). Retorna o id da movimentação, ou None se não houver valor a lançar.
     """
@@ -1435,7 +1479,7 @@ def _registrar_saida_boleto(conn, id_boleto: int, valor: float,
         return None
 
     b = conn.execute(
-        """SELECT b.descricao, b.metodo_avista, f.nome AS nome_fornecedor
+        """SELECT b.id, b.descricao, b.metodo_avista, b.id_fornecedor, f.nome AS nome_fornecedor
            FROM cad_boletos b
            JOIN cad_fornecedores f ON f.id = b.id_fornecedor
            WHERE b.id = ?""",
@@ -1444,14 +1488,28 @@ def _registrar_saida_boleto(conn, id_boleto: int, valor: float,
     if not b:
         return None
 
-    id_cat = _categoria_id(conn, CATEGORIA_PAGAMENTO_FORNECEDOR)
-    obs = f"Boleto #{id_boleto} — {b['nome_fornecedor']}: {b['descricao']}"
+    # Busca a categoria canônica consolidada (ID 262)
+    row_cat = conn.execute(
+        "SELECT id FROM cad_categorias_extra WHERE codigo = 'compra_fornecedor'"
+    ).fetchone()
+    id_cat = row_cat["id"] if row_cat else 262
+
+    # Informações da parcela para detalhamento do histórico
+    num_parc_txt = ""
+    if id_parcela:
+        p = conn.execute(
+            "SELECT num_parcela FROM cad_boletos_parcelas WHERE id = ?", (id_parcela,)
+        ).fetchone()
+        if p:
+            num_parc_txt = f" (Parc. {p['num_parcela']})"
+
+    obs = f"Boleto #{id_boleto} — {b['nome_fornecedor']}: {b['descricao']}{num_parc_txt}"
 
     cur = conn.execute(
         """INSERT INTO movimentacoes_extras
-           (data, id_pessoa, id_categoria, fluxo, metodo, valor, obs)
-           VALUES (?, NULL, ?, 'SAIDA', ?, ?, ?)""",
-        (data_pago, id_cat, metodo or b["metodo_avista"], valor, obs),
+           (data, id_pessoa, id_categoria, fluxo, metodo, valor, obs, id_fornecedor, id_boleto_parcela)
+           VALUES (?, NULL, ?, 'SAIDA', ?, ?, ?, ?, ?)""",
+        (data_pago, id_cat, metodo or b["metodo_avista"], valor, obs, b["id_fornecedor"], id_parcela),
     )
     return cur.lastrowid
 
@@ -1460,25 +1518,20 @@ def boleto_quitar(id_boleto: int, data_pago: str = None,
                   metodo: str = None, valor_pago: float = None,
                   registrar_caixa: bool = True) -> bool:
     """
-    Quita todas as parcelas em aberto de um boleto e lança a saída no caixa.
-
-    O valor lançado é a soma das parcelas EM ABERTO (não o valor_total do
-    boleto), para não cobrar de novo o que já foi pago parcela a parcela.
-    `valor_pago` sobrescreve esse total quando o usuário ajusta o valor na
-    confirmação (desconto/juros) — a quitação em si não muda.
-    Retorna False se não havia nada em aberto (evita lançamento duplicado).
+    Quita todas as parcelas em aberto de um boleto e lança a saída no caixa
+    com vínculo individual para cada parcela quitada.
     """
     from datetime import date as _date
     dp = data_pago or _date.today().isoformat()
     conn = conectar()
     try:
         em_aberto = conn.execute(
-            """SELECT COALESCE(SUM(valor), 0) AS total, COUNT(*) AS qtd
-               FROM cad_boletos_parcelas
-               WHERE id_boleto = ? AND pago = 0""",
+            """SELECT id, valor FROM cad_boletos_parcelas
+               WHERE id_boleto = ? AND pago = 0
+               ORDER BY num_parcela""",
             (id_boleto,),
-        ).fetchone()
-        if em_aberto["qtd"] == 0:
+        ).fetchall()
+        if not em_aberto:
             return False   # já estava totalmente quitado — nada a lançar
 
         conn.execute(
@@ -1492,8 +1545,16 @@ def boleto_quitar(id_boleto: int, data_pago: str = None,
             (dp, id_boleto),
         )
         if registrar_caixa:
-            valor = valor_pago if valor_pago is not None else em_aberto["total"]
-            _registrar_saida_boleto(conn, id_boleto, valor, dp, metodo)
+            if len(em_aberto) == 1:
+                val = valor_pago if valor_pago is not None else em_aberto[0]["valor"]
+                _registrar_saida_boleto(
+                    conn, id_boleto, val, dp, metodo, id_parcela=em_aberto[0]["id"]
+                )
+            else:
+                for parc in em_aberto:
+                    _registrar_saida_boleto(
+                        conn, id_boleto, parc["valor"], dp, metodo, id_parcela=parc["id"]
+                    )
         conn.commit()
         return True
     finally:
@@ -1504,9 +1565,8 @@ def boleto_quitar_parcela(id_parcela: int, data_pago: str,
                           metodo: str = None, valor_pago: float = None,
                           registrar_caixa: bool = True) -> bool:
     """
-    Quita uma parcela específica e lança a saída correspondente no caixa.
-    Retorna False se a parcela não existe ou já estava paga (evita duplicar
-    o lançamento em caso de clique repetido).
+    Quita uma parcela específica e lança a saída correspondente no caixa
+    vinculada diretamente ao id_parcela.
     """
     conn = conectar()
     try:
@@ -1534,7 +1594,9 @@ def boleto_quitar_parcela(id_parcela: int, data_pago: str,
             )
         if registrar_caixa:
             valor = valor_pago if valor_pago is not None else p["valor"]
-            _registrar_saida_boleto(conn, id_boleto, valor, data_pago, metodo)
+            _registrar_saida_boleto(
+                conn, id_boleto, valor, data_pago, metodo, id_parcela=id_parcela
+            )
         conn.commit()
         return True
     finally:
@@ -1542,8 +1604,29 @@ def boleto_quitar_parcela(id_parcela: int, data_pago: str,
 
 
 def boleto_excluir(id_boleto: int) -> bool:
+    """
+    Remove um boleto e suas parcelas em cascata.
+    BLOQUEIA a exclusão se houver parcelas com saídas de caixa registradas
+    (referenciadas em movimentacoes_extras.id_boleto_parcela), disparando RuntimeError
+    para preservar a rastreabilidade contábil.
+    """
     conn = conectar()
     try:
+        saidas_caixa = conn.execute(
+            """SELECT me.id, me.data, me.valor, bp.num_parcela
+               FROM movimentacoes_extras me
+               JOIN cad_boletos_parcelas bp ON bp.id = me.id_boleto_parcela
+               WHERE bp.id_boleto = ?""",
+            (id_boleto,),
+        ).fetchall()
+
+        if saidas_caixa:
+            ids_movs = [str(r["id"]) for r in saidas_caixa]
+            raise RuntimeError(
+                f"Não é possível excluir o boleto #{id_boleto}: existem {len(saidas_caixa)} saída(s) de caixa "
+                f"vinculada(s) (Movimentação #{', #'.join(ids_movs)}). Estorne a saída de caixa antes de excluir o boleto."
+            )
+
         cur = conn.execute("DELETE FROM cad_boletos WHERE id = ?", (id_boleto,))
         conn.commit()
         return cur.rowcount > 0
@@ -2445,12 +2528,42 @@ def mov_extra_atualizar(id_mov: int, **campos) -> bool:
 
 
 def mov_extra_excluir(id_mov: int) -> bool:
-    """Remove uma movimentação. Retorna True se excluída."""
+    """
+    Remove uma movimentação. Se a movimentação for oriunda da quitação de um boleto/parcela
+    (id_boleto_parcela preenchido), reverte atomicamente o status da parcela para 'pago = 0'
+    e do boleto pai para 'ABERTO' dentro da MESMA transação antes de excluir a saída.
+    """
     conn = conectar()
     try:
-        cur = conn.execute(
-            "DELETE FROM movimentacoes_extras WHERE id = ?", (id_mov,)
-        )
+        # 1. Verifica se a movimentação existe e se possui vínculo com parcela
+        mov = conn.execute(
+            "SELECT id, id_boleto_parcela FROM movimentacoes_extras WHERE id = ?",
+            (id_mov,),
+        ).fetchone()
+        if not mov:
+            return False
+
+        id_parcela = mov["id_boleto_parcela"]
+        if id_parcela:
+            # 2. Reverte a parcela para em aberto
+            p = conn.execute(
+                "SELECT id_boleto FROM cad_boletos_parcelas WHERE id = ?",
+                (id_parcela,),
+            ).fetchone()
+            if p:
+                id_boleto = p["id_boleto"]
+                conn.execute(
+                    "UPDATE cad_boletos_parcelas SET pago = 0, data_pago = NULL WHERE id = ?",
+                    (id_parcela,),
+                )
+                # Reverte o boleto pai para ABERTO
+                conn.execute(
+                    "UPDATE cad_boletos SET status = 'ABERTO' WHERE id = ?",
+                    (id_boleto,),
+                )
+
+        # 3. Exclui a movimentação do caixa
+        cur = conn.execute("DELETE FROM movimentacoes_extras WHERE id = ?", (id_mov,))
         conn.commit()
         return cur.rowcount > 0
     finally:
