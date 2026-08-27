@@ -258,19 +258,19 @@ def view(page: ft.Page) -> ft.Control:
     hoje_br = date.today().strftime("%d/%m/%Y")
 
     # ── 1. Dados e Permissões da Sessão ───────────────────────────────────────
-    categorias_todas = database.categoria_extra_listar()
-    metodos_db       = database.metodo_pag_listar()
-    funcionarios_db  = database.pessoa_listar(tipo="INTERNO",    apenas_ativos=True)
-    entregadores_db  = database.pessoa_listar(tipo="ENTREGADOR", apenas_ativos=True)
-    pessoas_todas    = database.pessoa_listar(apenas_ativos=True)
-    fornecedores_db  = database.fornecedor_listar(apenas_ativos=True)
+    categorias_todas = [dict(c) for c in database.categoria_extra_listar()]
+    metodos_db       = [dict(m) for m in database.metodo_pag_listar()]
+    funcionarios_db  = [dict(p) for p in database.pessoa_listar(tipo="INTERNO", apenas_ativos=True)]
+    entregadores_db  = [dict(p) for p in database.pessoa_listar(tipo="ENTREGADOR", apenas_ativos=True)]
+    pessoas_todas    = [dict(p) for p in database.pessoa_listar(apenas_ativos=True)]
+    fornecedores_db  = [dict(f) for f in database.fornecedor_listar(apenas_ativos=True)]
 
     # Filtra apenas categorias ativas E com permissão mínima da sessão
     categorias_validas = [
         c for c in categorias_todas
         if c["ativo"] == 1 and database.sessao_tem_acesso(c["min_perfil"])
     ]
-    cat_map = {r["id"]: dict(r) for r in categorias_validas}
+    cat_map = {r["id"]: r for r in categorias_validas}
 
     # Separação de categorias por agrupamento de fluxo
     # Saídas operacionais (inclui neutros como consumo/corridas/reentregas)
@@ -796,7 +796,7 @@ def view(page: ft.Page) -> ft.Control:
 
     def _atualizar_tabela_extrato():
         data_iso = _data_br_para_iso(tf_data.value or hoje_br)
-        movs = database.mov_extra_listar_por_data(data_iso)
+        movs = [dict(m) for m in database.mov_extra_listar_por_data(data_iso)]
 
         def _on_editar(m):
             def handler(e):
