@@ -715,6 +715,12 @@ def view(page: ft.Page) -> ft.Control:
             page.update()
             return
 
+        # Método de pagamento é obrigatório para todas as categorias com movimentação financeira real
+        if cod not in ("consumo", "corrida_extra", "reentrega") and not dd_metodo.value:
+            txt_erro.value = "Selecione o método de pagamento."
+            page.update()
+            return
+
         fluxo_banco = cat["fluxo"]
         metodo = dd_metodo.value if linha_metodo.visible else None
         obs = tf_obs.value.strip() or None
@@ -1142,55 +1148,119 @@ def view(page: ft.Page) -> ft.Control:
         ) if lin_met else ft.Text("Nenhum método registrado no período.", italic=True, color=ft.Colors.GREY_500)
 
         col_tabela_resumos.controls.clear()
-        col_tabela_resumos.controls.extend([
-            ft.Container(
-                padding=ft.Padding.all(16),
-                bgcolor=ft.Colors.GREY_900,
-                border_radius=8,
-                border=ft.Border.all(1, ft.Colors.GREY_800),
-                content=ft.Column([
-                    ft.Row([
-                        ft.Icon(ft.Icons.CATEGORY, size=18, color=ft.Colors.BLUE_400),
-                        ft.Text("Resumo por Categoria", size=15, weight=ft.FontWeight.BOLD),
-                    ], spacing=8),
-                    ft.Divider(height=1),
-                    ft.Row([tab_cat], scroll=ft.ScrollMode.AUTO),
-                ], spacing=10),
-            ),
-            ft.Container(
-                padding=ft.Padding.all(16),
-                bgcolor=ft.Colors.GREY_900,
-                border_radius=8,
-                border=ft.Border.all(1, ft.Colors.GREY_800),
-                content=ft.Column([
-                    ft.Row([
-                        ft.Icon(ft.Icons.STORE, size=18, color=ft.Colors.ORANGE_400),
-                        ft.Text("Gastos por Fornecedor (Saídas)", size=15, weight=ft.FontWeight.BOLD),
-                    ], spacing=8),
-                    ft.Divider(height=1),
-                    ft.Row([tab_forn], scroll=ft.ScrollMode.AUTO),
-                ], spacing=10),
-            ),
-            ft.Container(
-                padding=ft.Padding.all(16),
-                bgcolor=ft.Colors.GREY_900,
-                border_radius=8,
-                border=ft.Border.all(1, ft.Colors.GREY_800),
-                content=ft.Column([
-                    ft.Row([
-                        ft.Icon(ft.Icons.PAYMENT, size=18, color=ft.Colors.GREEN_400),
-                        ft.Text("Resumo por Forma de Pagamento", size=15, weight=ft.FontWeight.BOLD),
-                    ], spacing=8),
-                    ft.Divider(height=1),
-                    ft.Row([tab_met], scroll=ft.ScrollMode.AUTO),
-                ], spacing=10),
-            ),
-        ])
+        col_tabela_resumos.controls.append(
+            ft.ResponsiveRow(
+                columns=12,
+                spacing=14,
+                controls=[
+                    ft.Container(
+                        col={"sm": 12, "md": 12, "lg": 4},
+                        padding=ft.Padding.all(16),
+                        bgcolor=ft.Colors.GREY_900,
+                        border_radius=8,
+                        border=ft.Border.all(1, ft.Colors.GREY_800),
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Icon(ft.Icons.CATEGORY, size=18, color=ft.Colors.BLUE_400),
+                                ft.Text("Resumo por Categoria", size=15, weight=ft.FontWeight.BOLD),
+                            ], spacing=8),
+                            ft.Divider(height=1),
+                            ft.Row([tab_cat], scroll=ft.ScrollMode.AUTO),
+                        ], spacing=10),
+                    ),
+                    ft.Container(
+                        col={"sm": 12, "md": 6, "lg": 4},
+                        padding=ft.Padding.all(16),
+                        bgcolor=ft.Colors.GREY_900,
+                        border_radius=8,
+                        border=ft.Border.all(1, ft.Colors.GREY_800),
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Icon(ft.Icons.STORE, size=18, color=ft.Colors.ORANGE_400),
+                                ft.Text("Gastos por Fornecedor", size=15, weight=ft.FontWeight.BOLD),
+                            ], spacing=8),
+                            ft.Divider(height=1),
+                            ft.Row([tab_forn], scroll=ft.ScrollMode.AUTO),
+                        ], spacing=10),
+                    ),
+                    ft.Container(
+                        col={"sm": 12, "md": 6, "lg": 4},
+                        padding=ft.Padding.all(16),
+                        bgcolor=ft.Colors.GREY_900,
+                        border_radius=8,
+                        border=ft.Border.all(1, ft.Colors.GREY_800),
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Icon(ft.Icons.PAYMENT, size=18, color=ft.Colors.GREEN_400),
+                                ft.Text("Forma de Pagamento", size=15, weight=ft.FontWeight.BOLD),
+                            ], spacing=8),
+                            ft.Divider(height=1),
+                            ft.Row([tab_met], scroll=ft.ScrollMode.AUTO),
+                        ], spacing=10),
+                    ),
+                ],
+            )
+        )
 
-        # 5. Extrato Analítico
+        # 5. Extrato Analítico (Recolhível e Paginado 20 em 20)
+        _renderizar_extrato_analitico()
+
+    _rel_analitico_expandido = {"v": False}
+    _rel_pagina_atual = {"v": 1}
+    ITENS_POR_PAGINA = 20
+
+    def _renderizar_extrato_analitico():
+        dados = _relatorio_cache.get("dados", {})
         itens = dados.get("itens", [])
+        total_itens = len(itens)
+
+        def _toggle_expandir(e):
+            _rel_analitico_expandido["v"] = not _rel_analitico_expandido["v"]
+            _renderizar_extrato_analitico()
+            page.update()
+
+        def _mudar_pagina(delta):
+            total_pags = max(1, (total_itens + ITENS_POR_PAGINA - 1) // ITENS_POR_PAGINA)
+            nova_pag = _rel_pagina_atual["v"] + delta
+            if 1 <= nova_pag <= total_pags:
+                _rel_pagina_atual["v"] = nova_pag
+                _renderizar_extrato_analitico()
+                page.update()
+
+        txt_btn = "Ocultar Extrato Analítico [^]" if _rel_analitico_expandido["v"] else f"Ver Extrato Analítico Completo ({total_itens} registros) [v]"
+        btn_toggle = ft.OutlinedButton(
+            txt_btn,
+            icon=ft.Icons.VISIBILITY_OFF if _rel_analitico_expandido["v"] else ft.Icons.VISIBILITY,
+            on_click=_toggle_expandir,
+        )
+
+        col_analitico_rel.controls.clear()
+        if not _rel_analitico_expandido["v"]:
+            col_analitico_rel.controls.append(
+                ft.Container(
+                    padding=ft.Padding.all(12),
+                    bgcolor=ft.Colors.GREY_900,
+                    border_radius=8,
+                    border=ft.Border.all(1, ft.Colors.GREY_800),
+                    content=ft.Row([
+                        btn_toggle,
+                        ft.Text("Extrato analítico recolhido. Clique para visualizar e paginar os lançamentos detalhados.", size=12, color=ft.Colors.GREY_500, italic=True),
+                    ], spacing=16, wrap=True, alignment=ft.MainAxisAlignment.START),
+                )
+            )
+            return
+
+        # Modo Expandido: Paginação de 20 em 20
+        total_pags = max(1, (total_itens + ITENS_POR_PAGINA - 1) // ITENS_POR_PAGINA)
+        if _rel_pagina_atual["v"] > total_pags:
+            _rel_pagina_atual["v"] = total_pags
+
+        idx_inicio = (_rel_pagina_atual["v"] - 1) * ITENS_POR_PAGINA
+        idx_fim    = min(idx_inicio + ITENS_POR_PAGINA, total_itens)
+        itens_pag  = itens[idx_inicio:idx_fim]
+
         lin_itens = []
-        for r in itens:
+        for r in itens_pag:
             fl = r["fluxo"]
             cor = ft.Colors.GREEN_400 if fl == "ENTRADA" else (ft.Colors.RED_400 if fl == "SAIDA" else ft.Colors.GREY_400)
             entidade = r["nome_fornecedor"] or r["nome_pessoa"] or "—"
@@ -1218,7 +1288,27 @@ def view(page: ft.Page) -> ft.Control:
             column_spacing=14,
         ) if lin_itens else ft.Text("Nenhum lançamento no período filtrado.", italic=True, color=ft.Colors.GREY_500)
 
-        col_analitico_rel.controls.clear()
+        controles_paginacao = ft.Row([
+            ft.IconButton(
+                icon=ft.Icons.CHEVRON_LEFT,
+                tooltip="Página anterior",
+                disabled=(_rel_pagina_atual["v"] <= 1),
+                on_click=lambda e: _mudar_pagina(-1),
+            ),
+            ft.Text(
+                f"Página {_rel_pagina_atual['v']} de {total_pags} (Exibindo {len(itens_pag)} de {total_itens} registros)",
+                size=12,
+                weight=ft.FontWeight.BOLD,
+                color=ft.Colors.GREY_300,
+            ),
+            ft.IconButton(
+                icon=ft.Icons.CHEVRON_RIGHT,
+                tooltip="Próxima página",
+                disabled=(_rel_pagina_atual["v"] >= total_pags),
+                on_click=lambda e: _mudar_pagina(1),
+            ),
+        ], alignment=ft.MainAxisAlignment.CENTER, spacing=10)
+
         col_analitico_rel.controls.append(
             ft.Container(
                 padding=ft.Padding.all(16),
@@ -1227,11 +1317,13 @@ def view(page: ft.Page) -> ft.Control:
                 border=ft.Border.all(1, ft.Colors.GREY_800),
                 content=ft.Column([
                     ft.Row([
-                        ft.Icon(ft.Icons.LIST_ALT, size=18, color=ft.Colors.CYAN_400),
-                        ft.Text(f"Lançamentos Analíticos do Período ({len(itens)} registros)", size=15, weight=ft.FontWeight.BOLD),
-                    ], spacing=8),
+                        btn_toggle,
+                        controles_paginacao,
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, wrap=True),
                     ft.Divider(height=1),
                     ft.Row([tab_analitico], scroll=ft.ScrollMode.AUTO),
+                    ft.Divider(height=1),
+                    controles_paginacao,
                 ], spacing=10),
             )
         )
