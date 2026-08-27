@@ -677,16 +677,10 @@ def view(page: ft.Page) -> ft.Control:
             wrap=True,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
-                ft.Row(
-                    spacing=6,
-                    controls=[
-                        ft.Icon(ft.Icons.FLASH_ON, size=16, color=ft.Colors.AMBER_400),
-                        ft.Text("Ações Rápidas:", size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_300),
-                    ],
-                ),
+                ft.Text("Ações Rápidas:", size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_300),
                 _criar_btn_atalho("Novo Pedido", ft.Icons.POINT_OF_SALE, "PDV", ft.Colors.TEAL_800),
-                _criar_btn_atalho("Fluxo de Caixa", ft.Icons.ACCOUNT_BALANCE_WALLET, "Fluxo de Caixa"),
-                _criar_btn_atalho("Relatório Diário", ft.Icons.PIE_CHART_OUTLINE, "Relatório Diário"),
+                _criar_btn_atalho("Fluxo de Caixa", ft.Icons.ACCOUNT_BALANCE_WALLET, "Fluxo Caixa"),
+                _criar_btn_atalho("Relatório Diário", ft.Icons.PIE_CHART_OUTLINE, "Rel. Diário"),
                 _criar_btn_atalho("Fornecedores", ft.Icons.LOCAL_SHIPPING_OUTLINED, "Fornecedores"),
                 _criar_btn_atalho("Estoque", ft.Icons.INVENTORY_2_OUTLINED, "Estoque"),
                 _criar_btn_atalho("Entregadores", ft.Icons.TWO_WHEELER, "Entregadores"),

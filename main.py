@@ -653,24 +653,75 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
         ),
     )
 
+    ALIASES_TELAS = {
+        "fluxo de caixa": "Fluxo Caixa",
+        "fluxo caixa": "Fluxo Caixa",
+        "fluxo": "Fluxo Caixa",
+        "caixa": "Fluxo Caixa",
+        "relatorio diario": "Rel. Diário",
+        "relatório diário": "Rel. Diário",
+        "relatorio": "Rel. Diário",
+        "relatório": "Rel. Diário",
+        "rel. diario": "Rel. Diário",
+        "rel. diário": "Rel. Diário",
+        "relatorio periodo": "Rel. Período",
+        "relatório período": "Rel. Período",
+        "rel. periodo": "Rel. Período",
+        "rel. período": "Rel. Período",
+        "pdv": "PDV",
+        "vendas": "PDV",
+        "pedidos": "PDV",
+        "novo pedido": "PDV",
+        "fornecedores": "Fornecedores",
+        "boletos": "Fornecedores",
+        "contas a pagar": "Fornecedores",
+        "estoque": "Estoque",
+        "produtos": "Estoque",
+        "entregadores": "Entregadores",
+        "motoboys": "Entregadores",
+        "funcionarios": "Funcionários",
+        "funcionários": "Funcionários",
+        "equipe": "Funcionários",
+        "escala geral": "Escala Geral",
+        "escala": "Escala Geral",
+        "fiados": "Fiados",
+        "parametros": "Parâmetros",
+        "parâmetros": "Parâmetros",
+        "configuracoes": "Parâmetros",
+        "configurações": "Parâmetros",
+        "movim e caixa": "Movim. e Caixa",
+        "movimentacoes": "Movim. e Caixa",
+        "dashboard": "Dashboard",
+        "inicio": "Dashboard",
+    }
+
     def navegar_para(destino):
         """
-        Navega para uma tela por índice (int) ou por rótulo (str, case-insensitive).
-        Ex: page.navegar("PDV"), page.navegar("Fluxo de Caixa"), page.navegar("Fornecedores").
+        Navega para uma tela por índice (int) ou por rótulo/alias (str, case-insensitive).
+        Ex: page.navegar("PDV"), page.navegar("Fluxo de Caixa"), page.navegar("Relatório Diário").
         """
         if isinstance(destino, int):
             idx = destino
         else:
             destino_norm = str(destino).strip().lower()
+            alvo = ALIASES_TELAS.get(destino_norm, destino_norm)
             idx = None
             for i, t in enumerate(telas_perm):
-                if t["label"].strip().lower() == destino_norm:
+                rotulo = t["label"].strip().lower()
+                if rotulo == alvo.lower() or rotulo == destino_norm:
                     idx = i
                     break
         if idx is not None and 0 <= idx < len(telas_perm):
             _idx_selecionado["v"] = idx
             _build_menu()
             carregar_view(idx)
+        else:
+            page.overlay.append(ft.SnackBar(
+                content=ft.Text(f"Acesso à tela '{destino}' restrito ao perfil de acesso ({perfil})."),
+                bgcolor=ft.Colors.ORANGE_800,
+                open=True,
+            ))
+            page.update()
 
     page.navegar = navegar_para
 
