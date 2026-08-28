@@ -22,6 +22,10 @@ def _encerrar_instancias_anteriores() -> None:
     """Encerra silenciosamente qualquer processo GestaoLoja.exe anterior ao atual."""
     pid_atual = os.getpid()
     try:
+        pid_pai = os.getppid()
+    except Exception:
+        pid_pai = -1
+    try:
         resultado = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq GestaoLoja.exe", "/FO", "CSV", "/NH"],
             capture_output=True,
@@ -36,7 +40,7 @@ def _encerrar_instancias_anteriores() -> None:
                 pid = int(partes[1])
             except ValueError:
                 continue
-            if pid != pid_atual:
+            if pid not in (pid_atual, pid_pai):
                 subprocess.run(
                     ["taskkill", "/F", "/PID", str(pid)],
                     capture_output=True,
