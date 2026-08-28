@@ -193,7 +193,62 @@ Este documento registra todas as alterações arquiteturais, correções de segu
 
 ---
 
-## 8. Histórico Completo de Commits da Sessão (27/08/2026)
+## 8. Feature — Escala de Turnos Mensal (Planejamento Visual e Impressão para Mural)
+
+### 8.1 Contexto e Objetivo Operacional
+A gerência montava manualmente em papel uma escala mensal de quais colaboradoras trabalham em quais dias da semana e turnos (DIA / NOITE), passando a limpo para fixação física no mural do estabelecimento. Desenvolvemos uma solução visual dedicada no sistema integrada ao banco de dados e com gerador de PDF para impressão direta.
+
+### 8.2 Schema do Banco de Dados (`database.py`)
+Criada a migração idempotente `_migrar_schema_escala_turnos(conn)` que define a tabela dedicada de turnos:
+* **Tabela `escala_turnos_planejamento`**:
+  - `id`: Chave primária autoincremento.
+  - `data`: Data do turno (`YYYY-MM-DD`).
+  - `id_pessoa`: FK para `cad_pessoas(id)` com `ON DELETE CASCADE` (para funcionárias cadastradas).
+  - `nome_avulso`: Texto livre para diaristas e extras avulsos sem cadastro formal.
+  - `turno`: `CHECK(turno IN ('DIA', 'NOITE'))`.
+  - `funcao`: Texto livre para papel desempenhado por extras (para funcionárias cadastradas, o cargo oficial vem via `LEFT JOIN cad_pessoas`).
+  - `chk_escala_identificacao`: Constraint que exige que **OU** `id_pessoa` **OU** `nome_avulso` esteja preenchido (exclusão mútua estrita).
+* **Índices de Integridade e Performance**:
+  - `ux_escala_pessoa_turno`: Garante unicidade por pessoa cadastrada e turno. Impede duplicidade no mesmo turno, mas permite "dobras" (mesma pessoa no DIA e na NOITE na mesma data).
+  - `ux_escala_avulso_turno`: Garante unicidade case-insensitive para extras avulsos.
+  - `ix_escala_turnos_data`: Índice de busca por data e mês.
+
+### 8.3 Interface de Usuário (`views/escala_turnos.py`)
+* **Calendário Mensal (Master-Detail)**:
+  - **Lado Esquerdo (60%)**: Grade de semanas (`calendar.Calendar(firstweekday=6)`). Cada card de dia exibe o resumo dos turnos de relance (`DIA: Amanda, Yasmin` / `NOITE: Bernardo`), com realce de borda para o dia selecionado e dia atual. Sem emojis, em conformidade visual com o app.
+  - **Lado Direito (40%)**: Painel do dia selecionado listando todas as colaboradoras escaladas divididas em `Turno DIA` e `Turno NOITE`, com badges de destaque `EXTRA` para diaristas avulsas e botão de exclusão individual.
+* **Modal de Inclusão (`AlertDialog`)**:
+  - Botão fixo `+ Adicionar Pessoa` no topo do painel do dia, mantendo a lista de pessoas rolável e livre de interferências visuais.
+  - Modal com auto-dimensionamento exato (`ft.Column(tight=True)`), contendo Dropdown de funcionárias ativas + opção *"Outro / Extra Avulso"*, seletores de turno `[ Turno DIA ]` / `[ Turno NOITE ]` e botões Cancelar / Salvar.
+* **Controle de Acesso por Perfil**:
+  - **GERENTE / ADMIN**: Controle completo de inclusão, exclusão e impressão de escala.
+  - **OPERADOR**: Modo somente-leitura. Botão de adicionar e ícones de exclusão ocultos, substituídos por nota informativa.
+
+### 8.4 Geração de PDF para Mural (`relatorios/pdf_gerador.py`)
+* Implementada a função `gerar_pdf_escala_turnos(ano, mes, dados, abrir_ao_concluir=True)`.
+* Formato **A4 Paisagem (Landscape)** com ReportLab.
+* Grade de 7 colunas (DOM a SÁB) ocupando a folha inteira, com cabeçalho azul corporativo e listas formatadas de `DIA:` e `NOITE:`.
+* Abertura automática no visualizador padrão do Windows para impressão imediata via `Ctrl+P`.
+
+### 8.5 Item no Menu Principal (`main.py`)
+* Adicionado o item `"Escala de Turnos"` com ícone `ft.Icons.BADGE_OUTLINED` e `min_perfil: "OPERADOR"`.
+
+---
+
+## 9. Correção de Ambiguidade de Data em Movimentações Extras (`views/extras.py`)
+
+### 9.1 Diagnóstico de Risco Operacional
+* No formulário *"Nova Saída de Caixa"*, a função de gravação utilizava `tf_data.value`, que era o mesmo campo de filtro posicionado no rodapé dentro de *"Extrato de Movimentações do Dia"*.
+* Se o operador alterasse a data no rodapé para consultar o extrato de um dia anterior e depois lançasse uma saída no topo, a despesa era gravada silenciosamente na data do extrato anterior em vez de hoje.
+
+### 9.2 Solução Implementada
+* **Campo Explícito no Formulário (`tf_data_mov`)**: Adicionado o campo `Data do Lançamento *` com `DatePicker` dedicado na primeira linha do formulário ao lado do subtipo. Inicializa sempre com a data atual (`hoje_br`).
+* **Isolamento do Extrato (`tf_data`)**: Renomeado para `Data do Extrato`. Mudar a data do extrato agora altera exclusivamente a consulta, sem afetar o formulário.
+* **Gravação e Sincronização**: `_salvar()` lê exclusivamente `tf_data_mov.value`. Após gravar com sucesso, o extrato sincroniza automaticamente para a data gravada para exibição imediata e o formulário reseta para a data atual.
+
+---
+
+## 10. Histórico Completo de Commits da Sessão (27/08/2026)
 
 1. **`ab1a19f`** — `feat(database): Implementa trava permanente de seguranca para ambiente de producao, retentativa ativa de boot e protecao contra escrita acidental`
 2. **`77f1157`** — `feat(database): Adiciona migracao de schema e dados da Fase 1 (aplicada em producao em 2026-08-27)`
@@ -201,6 +256,10 @@ Este documento registra todas as alterações arquiteturais, correções de segu
 4. **`db81aa9`** — `feat(extras): Adiciona aba de Relatórios & Consulta de Movimentações com KPIs, exportacao Excel/PDF e controle de perfil`
 5. **`e30120f`** — `fix(extras): Corrige layout de renderizacao das tabelas de resumo e extrato analitico na aba de Relatorios`
 6. **`a5748ef`** — `feat(extras): Aplica 4 ajustes de relatorios, validacao de metodo e layout responsivo com extrato paginado`
+7. **`9d288f0`** — `docs: atualiza documentacao tecnica com relatorios da Fase 3 e correcoes operacionais`
+8. **`8ec495d`** — `feat(escala): implementa Escala de Turnos mensal com modal, suporte a extras e PDF mural A4`
+9. **`42ca190`** — `fix(escala_turnos): remove altura artificial do modal e ajusta auto-dimensionamento`
+10. **`8ae157f`** — `fix(extras): adiciona campo explicito de data no formulario de movimentacoes e isola do filtro do extrato`
 
 Todos os commits foram testados, validados e sincronizados com a branch `main` no repositório remoto.
 
