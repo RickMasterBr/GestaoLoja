@@ -287,7 +287,7 @@ def view(page: ft.Page) -> ft.Control:
 
     _editando  = {"id": None}
     txt_titulo = ft.Text("Novo Pedido", size=18, weight=ft.FontWeight.BOLD)
-    txt_perf   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
+    txt_perf   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True, visible=(database.config_obter("debug", "0") == "1"))
 
     # ── Tabela de pedidos do dia ──────────────────────────────────────────
     col_tabela    = ft.Column(spacing=0, expand=True)

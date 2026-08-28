@@ -164,7 +164,7 @@ def view(page: ft.Page) -> ft.Control:
         style=_estilo_inativo,
     )
 
-    txt_perf = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
+    txt_perf = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True, visible=(database.config_obter("debug", "0") == "1"))
 
     # ══════════════════════════════════════════════════════════════════════════
     #  SEÇÃO 1 — ESCALA MENSAL

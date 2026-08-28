@@ -310,7 +310,7 @@ def view(page: ft.Page) -> ft.Column:
     row_resumo_diario = ft.Row(spacing=12, wrap=True)
     col_conteudo_diario = ft.Column(spacing=8, expand=True)
     col_categorias_diario = ft.Column(spacing=8)
-    txt_perf_diario   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
+    txt_perf_diario   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True, visible=(database.config_obter("debug", "0") == "1"))
 
     dd_cat_diario = ft.Dropdown(
         label="Categoria",
@@ -583,7 +583,7 @@ def view(page: ft.Page) -> ft.Column:
     row_resumo_periodo = ft.Row(spacing=12, wrap=True)
     col_conteudo_periodo = ft.Column(spacing=8, expand=True)
     col_categorias_periodo = ft.Column(spacing=8)
-    txt_perf_periodo   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
+    txt_perf_periodo   = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True, visible=(database.config_obter("debug", "0") == "1"))
 
     dd_cat_periodo = ft.Dropdown(
         label="Categoria",

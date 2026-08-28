@@ -169,7 +169,57 @@ def view(page: ft.Page) -> ft.Control:
     pessoas_db = database.pessoa_listar(tipo="INTERNO", apenas_ativos=True)
     id_padrao  = str(pessoas_db[0]["id"]) if pessoas_db else None
 
-    txt_perf = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True)
+    txt_perf = ft.Text("", size=11, color=ft.Colors.GREY_500, italic=True, visible=(database.config_obter("debug", "0") == "1"))
+
+    lbl_tit_dlg_escala = ft.Text("Escala do Mês", size=15, weight=ft.FontWeight.BOLD)
+    col_grade_escala = ft.Column(spacing=4)
+
+    def _fechar_modal_escala(e=None):
+        dlg_escala.open = False
+        page.update()
+        _carregar_seguro()
+
+    dlg_escala = ft.AlertDialog(
+        modal=True,
+        title=ft.Row(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                lbl_tit_dlg_escala,
+                ft.IconButton(ft.Icons.CLOSE, on_click=_fechar_modal_escala),
+            ],
+        ),
+        content=ft.Container(
+            width=720,
+            content=ft.Column(
+                tight=True,
+                spacing=10,
+                scroll=ft.ScrollMode.AUTO,
+                controls=[
+                    ft.Text("Altere os dias de trabalho, faltas ou folgas. As alterações são salvas automaticamente.", size=12, color=ft.Colors.GREY_400),
+                    ft.Divider(height=1),
+                    ft.Row(
+                        scroll=ft.ScrollMode.AUTO,
+                        controls=[col_grade_escala],
+                    ),
+                ],
+            ),
+        ),
+        actions=[
+            ft.ElevatedButton(
+                "Concluir e Atualizar Holerite",
+                icon=ft.Icons.CHECK,
+                style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN_700, color=ft.Colors.WHITE),
+                on_click=_fechar_modal_escala,
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(dlg_escala)
+
+    def _abrir_modal_escala(e=None):
+        dlg_escala.open = True
+        page.update()
 
     def _ao_mudar_filtro(e=None):
         if dd_funcionario.value:
@@ -351,16 +401,11 @@ def view(page: ft.Page) -> ft.Control:
 
             linhas_grade.append(ft.Row(controls=celulas, spacing=4))
 
-        bloco1 = _card(
-            "Escala do Mês",
-            ft.Row(
-                scroll=ft.ScrollMode.AUTO,
-                controls=[ft.Column(spacing=4, controls=linhas_grade)],
-            ),
-        )
+        lbl_tit_dlg_escala.value = f"Escala — {func['nome']} ({_NOME_MES[mes]}/{ano})"
+        col_grade_escala.controls = linhas_grade
 
         # ══════════════════════════════════════════════════════════════
-        #  BLOCO 2 — Holerite
+        #  BLOCO 2 — Holerite e Resumo da Escala
         # ══════════════════════════════════════════════════════════════
         conn = database.conectar()
         try:
@@ -372,6 +417,7 @@ def view(page: ft.Page) -> ft.Control:
                 ).fetchone()[0]
 
             dias_trabalhou = _contar("TRABALHOU")
+            dias_folga     = _contar("FOLGA")
             dias_falta     = _contar("FALTA")
             dias_extra     = _contar("EXTRA")
             dias_feriado   = _contar("FERIADO")
@@ -894,8 +940,57 @@ def view(page: ft.Page) -> ft.Control:
             *([] if secao_ponto is None else [secao_ponto]),
         )
 
+        def _badge_escala(label: str, qtd: int, cor: str, bg_cor: str):
+            return ft.Container(
+                padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+                border_radius=6,
+                bgcolor=bg_cor,
+                content=ft.Row(
+                    spacing=4,
+                    tight=True,
+                    controls=[
+                        ft.Text(f"{qtd}", size=12, weight=ft.FontWeight.BOLD, color=cor),
+                        ft.Text(label, size=12, color=cor),
+                    ],
+                ),
+            )
+
+        btn_ver_escala = ft.ElevatedButton(
+            "Ver / Editar Escala",
+            icon=ft.Icons.CALENDAR_MONTH,
+            style=ft.ButtonStyle(bgcolor=ft.Colors.BLUE_800, color=ft.Colors.WHITE),
+            on_click=_abrir_modal_escala,
+        )
+
+        card_resumo_escala = ft.Card(
+            content=ft.Container(
+                padding=ft.Padding.symmetric(horizontal=16, vertical=12),
+                content=ft.Row(
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    wrap=True,
+                    controls=[
+                        ft.Row(
+                            spacing=8,
+                            wrap=True,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[
+                                ft.Text("Escala do Período:", size=13, weight=ft.FontWeight.BOLD),
+                                _badge_escala("trabalhados", dias_trabalhou, ft.Colors.GREEN_300, ft.Colors.with_opacity(0.15, ft.Colors.GREEN)),
+                                _badge_escala("folgas", dias_folga, ft.Colors.BLUE_GREY_300, ft.Colors.with_opacity(0.15, ft.Colors.BLUE_GREY)),
+                                _badge_escala("faltas", dias_falta, ft.Colors.RED_300, ft.Colors.with_opacity(0.15, ft.Colors.RED)),
+                                _badge_escala("feriados", dias_feriado, ft.Colors.BLUE_300, ft.Colors.with_opacity(0.15, ft.Colors.BLUE)),
+                                _badge_escala("extras", dias_extra, ft.Colors.AMBER_300, ft.Colors.with_opacity(0.15, ft.Colors.AMBER)),
+                            ],
+                        ),
+                        btn_ver_escala,
+                    ],
+                ),
+            ),
+        )
+
         col_conteudo.controls.clear()
-        col_conteudo.controls += [bloco1, bloco2]
+        col_conteudo.controls += [card_resumo_escala, bloco2]
         _ms = (time.perf_counter() - _t0) * 1000
         _perf_logger.debug(f"{'funcionarios._carregar > TOTAL':<55} {_ms:8.1f} ms")
         txt_perf.value = f"funcionarios._carregar: {_ms:.0f}ms | {time.strftime('%H:%M:%S')}"
