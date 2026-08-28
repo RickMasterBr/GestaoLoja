@@ -319,17 +319,17 @@ def view(page: ft.Page) -> ft.Control:
         tabela_col.controls.append(ft.Row(
             spacing=0,
             controls=[
-                ft.Container(expand=3, content=ft.Text(
+                ft.Container(expand=3, padding=ft.Padding(right=8, left=0, top=0, bottom=0), content=ft.Text(
                     "Nome", size=11, weight=ft.FontWeight.BOLD)),
-                ft.Container(width=140, content=ft.Text(
+                ft.Container(width=125, padding=ft.Padding(right=6, left=0, top=0, bottom=0), content=ft.Text(
                     "Telefone", size=11, weight=ft.FontWeight.BOLD)),
-                ft.Container(expand=2, content=ft.Text(
+                ft.Container(expand=4, padding=ft.Padding(right=8, left=0, top=0, bottom=0), content=ft.Text(
                     "E-mail", size=11, weight=ft.FontWeight.BOLD)),
-                ft.Container(width=160, content=ft.Text(
+                ft.Container(width=145, padding=ft.Padding(right=6, left=0, top=0, bottom=0), content=ft.Text(
                     "CNPJ / CPF", size=11, weight=ft.FontWeight.BOLD)),
-                ft.Container(expand=2, content=ft.Text(
+                ft.Container(expand=2, padding=ft.Padding(right=6, left=0, top=0, bottom=0), content=ft.Text(
                     "Vendedor", size=11, weight=ft.FontWeight.BOLD)),
-                ft.Container(width=80, content=ft.Text(
+                ft.Container(width=75, content=ft.Text(
                     "Status", size=11, weight=ft.FontWeight.BOLD)),
                 ft.Container(width=180, content=ft.Text(
                     "Ações", size=11, weight=ft.FontWeight.BOLD)),
@@ -363,12 +363,20 @@ def view(page: ft.Page) -> ft.Control:
                 spacing=0,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Container(expand=3, content=ft.Text(f["nome"], size=13)),
-                    ft.Container(width=140, content=ft.Text(f["telefone"] or "—", size=12, color=ft.Colors.GREY_500)),
-                    ft.Container(expand=2, content=ft.Text(f["email"] or "—", size=12, color=ft.Colors.GREY_500)),
-                    ft.Container(width=160, content=ft.Text(f["cnpj_cpf"] or "—", size=12, color=ft.Colors.GREY_500)),
-                    ft.Container(expand=2, content=ft.Text(f["vendedor"] or "—", size=12, color=ft.Colors.GREY_500)),
-                    ft.Container(width=80, content=ft.Text(
+                    ft.Container(expand=3, padding=ft.Padding(right=8, left=0, top=0, bottom=0), content=ft.Text(f["nome"], size=13)),
+                    ft.Container(width=125, padding=ft.Padding(right=6, left=0, top=0, bottom=0), content=ft.Text(f["telefone"] or "—", size=12, color=ft.Colors.GREY_500)),
+                    ft.Container(expand=4, padding=ft.Padding(right=8, left=0, top=0, bottom=0), content=ft.Text(
+                        f["email"] or "—", size=12, color=ft.Colors.GREY_500,
+                        no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                        tooltip=f["email"] if f["email"] else None,
+                    )),
+                    ft.Container(width=145, padding=ft.Padding(right=6, left=0, top=0, bottom=0), content=ft.Text(f["cnpj_cpf"] or "—", size=12, color=ft.Colors.GREY_500)),
+                    ft.Container(expand=2, padding=ft.Padding(right=6, left=0, top=0, bottom=0), content=ft.Text(
+                        f["vendedor"] or "—", size=12, color=ft.Colors.GREY_500,
+                        no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                        tooltip=f["vendedor"] if f["vendedor"] else None,
+                    )),
+                    ft.Container(width=75, content=ft.Text(
                         txt_status, size=12, color=cor_status, weight=ft.FontWeight.BOLD,
                     )),
                     ft.Container(width=180, content=ft.Row(spacing=2, controls=[

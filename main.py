@@ -622,7 +622,7 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
                 ft.Container(
                     border_radius=8,
                     ink=True,
-                    tooltip=t["label"],
+                    tooltip=None if _menu_expandido["v"] else t["label"],
                     bgcolor=bg_cor,
                     padding=padding,
                     on_click=_make_nav_handler(i),
@@ -836,9 +836,14 @@ def _carregar_app_principal(page: ft.Page, perfil: str, on_login=None, _t_boot: 
     )
 
     def _ao_fechar(_e):
-        ctypes.windll.kernel32.TerminateProcess(
-            ctypes.windll.kernel32.GetCurrentProcess(), 0
-        )
+        try:
+            database.checkpoint_truncate()
+        except Exception:
+            pass
+        finally:
+            ctypes.windll.kernel32.TerminateProcess(
+                ctypes.windll.kernel32.GetCurrentProcess(), 0
+            )
 
     page.on_disconnect = _ao_fechar
 

@@ -387,14 +387,14 @@ def view(page: ft.Page) -> ft.Control:
 
         # Tabela
         cab = ft.Row(spacing=0, controls=[
-            ft.Container(expand=3, content=ft.Text("Produto",     size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
-            ft.Container(width=120, content=ft.Text("Categoria",  size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
-            ft.Container(width=55,  content=ft.Text("Un.",        size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
-            ft.Container(width=85,  content=ft.Text("Qtd Atual",  size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
-            ft.Container(width=85,  content=ft.Text("Qtd Mín.",   size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
-            ft.Container(width=90,  content=ft.Text("Custo Unit.",size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
-            ft.Container(width=90,  content=ft.Text("Valor Total",size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
-            ft.Container(width=70,  content=ft.Text("Status",     size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(expand=3, padding=ft.Padding(right=12, left=0, top=0, bottom=0), content=ft.Text("Produto",     size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(width=130, padding=ft.Padding(right=8, left=0, top=0, bottom=0), content=ft.Text("Categoria",  size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(width=55, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text("Un.",        size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(width=85, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text("Qtd Atual",  size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(width=85, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text("Qtd Mín.",   size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(width=90, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text("Custo Unit.",size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(width=90, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text("Valor Total",size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(width=75, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text("Status",     size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
             ft.Container(width=210, content=ft.Text("Ações",      size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
         ])
 
@@ -432,14 +432,14 @@ def view(page: ft.Page) -> ft.Control:
                 spacing=0,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Container(expand=3, content=ft.Text(p["nome"], size=12)),
-                    ft.Container(width=120, content=ft.Text(p["nome_categoria"] or "—", size=12, color=ft.Colors.GREY_500)),
-                    ft.Container(width=55,  content=ft.Text(p["unidade"], size=12)),
-                    ft.Container(width=85,  content=ft.Text(_fmt_qtd(qtd_a), size=12, color=cor_qtd, weight=ft.FontWeight.BOLD if cor_qtd else ft.FontWeight.NORMAL)),
-                    ft.Container(width=85,  content=ft.Text(_fmt_qtd(qtd_m), size=12, color=ft.Colors.GREY_500)),
-                    ft.Container(width=90,  content=ft.Text(_fmt_moeda(p["preco_custo"]), size=12)),
-                    ft.Container(width=90,  content=ft.Text(_fmt_moeda(vt), size=12)),
-                    ft.Container(width=70,  content=_chip_status(qtd_a, qtd_m)),
+                    ft.Container(expand=3, padding=ft.Padding(right=12, left=0, top=0, bottom=0), content=ft.Text(p["nome"], size=12)),
+                    ft.Container(width=130, padding=ft.Padding(right=8, left=0, top=0, bottom=0), content=ft.Text(p["nome_categoria"] or "—", size=12, color=ft.Colors.GREY_500)),
+                    ft.Container(width=55, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text(p["unidade"], size=12)),
+                    ft.Container(width=85, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text(_fmt_qtd(qtd_a), size=12, color=cor_qtd, weight=ft.FontWeight.BOLD if cor_qtd else ft.FontWeight.NORMAL)),
+                    ft.Container(width=85, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text(_fmt_qtd(qtd_m), size=12, color=ft.Colors.GREY_500)),
+                    ft.Container(width=90, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text(_fmt_moeda(p["preco_custo"]), size=12)),
+                    ft.Container(width=90, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text(_fmt_moeda(vt), size=12)),
+                    ft.Container(width=75, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=_chip_status(qtd_a, qtd_m)),
                     ft.Container(width=210, content=ft.Row(spacing=0, controls=[
                         _btn_mov("ENTRADA", p),
                         _btn_mov("SAIDA",   p),
@@ -835,11 +835,11 @@ def view(page: ft.Page) -> ft.Control:
     def _refresh_prods():
         prods = database.estoque_produto_listar(apenas_ativos=False)
         cab = ft.Row(spacing=0, controls=[
-            ft.Container(expand=2, content=ft.Text("Nome",      size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
-            ft.Container(width=120, content=ft.Text("Categoria",size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
-            ft.Container(width=55,  content=ft.Text("Un.",      size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
-            ft.Container(width=85,  content=ft.Text("Qtd Mín.", size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
-            ft.Container(width=90,  content=ft.Text("Custo",    size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(expand=2, padding=ft.Padding(right=12, left=0, top=0, bottom=0), content=ft.Text("Nome",      size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(width=130, padding=ft.Padding(right=8, left=0, top=0, bottom=0), content=ft.Text("Categoria",size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(width=55, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text("Un.",      size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(width=85, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text("Qtd Mín.", size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
+            ft.Container(width=90, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text("Custo",    size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
             ft.Container(width=120, content=ft.Text("Ações",    size=11, color=ft.Colors.GREY_500, weight=ft.FontWeight.BOLD)),
         ])
         tabela_prods_col.controls = [cab, ft.Divider(height=1)]
@@ -870,14 +870,14 @@ def view(page: ft.Page) -> ft.Control:
                 spacing=0,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Container(expand=2,  content=ft.Column(spacing=0, controls=[
+                    ft.Container(expand=2, padding=ft.Padding(right=12, left=0, top=0, bottom=0), content=ft.Column(spacing=0, controls=[
                         ft.Text(p["nome"], size=12),
                         ft.Text("Inativo" if not ativo else "", size=10, color=ft.Colors.GREY_600),
                     ])),
-                    ft.Container(width=120, content=ft.Text(p["nome_categoria"] or "—", size=12, color=ft.Colors.GREY_500)),
-                    ft.Container(width=55,  content=ft.Text(p["unidade"], size=12)),
-                    ft.Container(width=85,  content=ft.Text(_fmt_qtd(p["quantidade_minima"]), size=12)),
-                    ft.Container(width=90,  content=ft.Text(_fmt_moeda(p["preco_custo"]), size=12)),
+                    ft.Container(width=130, padding=ft.Padding(right=8, left=0, top=0, bottom=0), content=ft.Text(p["nome_categoria"] or "—", size=12, color=ft.Colors.GREY_500)),
+                    ft.Container(width=55, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text(p["unidade"], size=12)),
+                    ft.Container(width=85, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text(_fmt_qtd(p["quantidade_minima"]), size=12)),
+                    ft.Container(width=90, padding=ft.Padding(right=4, left=0, top=0, bottom=0),  content=ft.Text(_fmt_moeda(p["preco_custo"]), size=12)),
                     ft.Container(width=120, content=ft.Row(spacing=0, controls=[
                         ft.TextButton("Editar",   on_click=lambda e, _ed=_editar:   _ed()),
                         ft.TextButton(

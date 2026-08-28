@@ -712,7 +712,7 @@ def view(page: ft.Page) -> ft.Control:
                     "Saída", size=12, weight=ft.FontWeight.BOLD,
                     color=ft.Colors.GREY_500,
                 )),
-                ft.Container(width=75),
+                ft.Container(width=95),
                 ft.Container(width=28),
             ],
         ))
@@ -903,13 +903,14 @@ def view(page: ft.Page) -> ft.Control:
                     tf_fim,
                     tf_sai,
                     ft.Container(
-                        width=75,
+                        width=95,
                         content=ft.ElevatedButton(
                             "Salvar",
                             on_click=_salvar_ponto,
                             style=ft.ButtonStyle(
                                 bgcolor=ft.Colors.TEAL_700,
                                 color=ft.Colors.WHITE,
+                                padding=ft.Padding(left=10, right=10, top=0, bottom=0),
                             ),
                         ),
                     ),

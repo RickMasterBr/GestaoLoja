@@ -289,12 +289,39 @@ def sincronizar_banco() -> dict:
         }
 
 
+def checkpoint_truncate() -> dict:
+    """
+    Executa PRAGMA wal_checkpoint(TRUNCATE) para descarregar o WAL e zerar o arquivo .db-wal.
+    Lê o retorno (busy, log, checkpointed) e grava no perf_log.txt.
+    Nunca levanta exceções para não travar o encerramento da aplicação.
+    """
+    try:
+        _path = get_db_path()
+        conn = sqlite3.connect(_path, timeout=2)
+        try:
+            row = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            busy, log_frames, ckpt_frames = row[0], row[1], row[2]
+            _perf_logger.info(
+                f"[checkpoint_truncate] status: busy={busy}, log_frames={log_frames}, checkpointed_frames={ckpt_frames}"
+            )
+            if busy == 1:
+                _perf_logger.warning(
+                    f"[checkpoint_truncate] AVISO: Checkpoint bloqueado por leitores/escritores ativos (busy=1)."
+                )
+            return {"sucesso": True, "busy": busy, "log": log_frames, "checkpointed": ckpt_frames}
+        finally:
+            conn.close()
+    except Exception as ex:
+        _perf_logger.error(f"[checkpoint_truncate] Erro ao executar checkpoint no fechamento: {ex}")
+        return {"sucesso": False, "erro": str(ex)}
+
+
 # ══════════════════════════════════════════════
 #  CONEXÃO E INICIALIZAÇÃO
 # ══════════════════════════════════════════════
 
 def conectar() -> sqlite3.Connection:
-    """Retorna uma conexão com foreign keys habilitadas.
+    """Retorna uma conexão com foreign keys habilitadas e autocheckpoint otimizado.
     WAL mode é setado uma única vez em inicializar_banco() e persiste no arquivo.
     """
     _path = get_db_path()
@@ -302,6 +329,7 @@ def conectar() -> sqlite3.Connection:
         conn = sqlite3.connect(_path, timeout=10)
     conn.row_factory = sqlite3.Row          # acesso por nome de coluna
     conn.execute("PRAGMA busy_timeout=8000")  # 8 s de espera no nível do engine SQLite
+    conn.execute("PRAGMA wal_autocheckpoint=100")  # autocheckpoint a cada 100 páginas (~400 KB)
     with _t("conectar > PRAGMA foreign_keys=ON"):
         conn.execute("PRAGMA foreign_keys=ON")  # integridade referencial
     return conn

@@ -358,6 +358,17 @@ def view(page: ft.Page) -> ft.Control:
         cal = calendar.Calendar(firstweekday=6)
         semanas = cal.monthdatescalendar(ano, mes)
 
+        def _resumo_nomes(lst):
+            if not lst:
+                return ""
+            primeiros = []
+            for p in lst:
+                n = (p["nome_exibicao"] or "").strip()
+                pts = n.split()
+                primeiros.append(pts[0] if pts else n)
+            txt = ", ".join(primeiros)
+            return (txt[:18] + "…") if len(txt) > 20 else txt
+
         linhas_grid = [cab_dias]
 
         for sem in semanas:
@@ -376,27 +387,27 @@ def view(page: ft.Page) -> ft.Control:
 
                 if eh_do_mes:
                     if lista_dia:
-                        nomes_d = ", ".join(p["nome_exibicao"] for p in lista_dia)
-                        if len(nomes_d) > 22:
-                            nomes_d = nomes_d[:20] + "…"
+                        nomes_d = _resumo_nomes(lista_dia)
+                        todos_d = ", ".join(p["nome_exibicao"] for p in lista_dia)
                         resumos_turno.append(
                             ft.Container(
                                 padding=ft.Padding(left=4, right=4, top=1, bottom=1),
                                 border_radius=3,
                                 bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.BLUE_400),
+                                tooltip=f"DIA: {todos_d}",
                                 content=ft.Text(f"DIA: {nomes_d}", size=9, color=ft.Colors.BLUE_200, weight=ft.FontWeight.W_500),
                             )
                         )
 
                     if lista_noite:
-                        nomes_n = ", ".join(p["nome_exibicao"] for p in lista_noite)
-                        if len(nomes_n) > 22:
-                            nomes_n = nomes_n[:20] + "…"
+                        nomes_n = _resumo_nomes(lista_noite)
+                        todos_n = ", ".join(p["nome_exibicao"] for p in lista_noite)
                         resumos_turno.append(
                             ft.Container(
                                 padding=ft.Padding(left=4, right=4, top=1, bottom=1),
                                 border_radius=3,
                                 bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.PURPLE_400),
+                                tooltip=f"NOITE: {todos_n}",
                                 content=ft.Text(f"NOITE: {nomes_n}", size=9, color=ft.Colors.PURPLE_200, weight=ft.FontWeight.W_500),
                             )
                         )
