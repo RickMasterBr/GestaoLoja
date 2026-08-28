@@ -282,6 +282,7 @@ Criada a migração idempotente `_migrar_schema_escala_turnos(conn)` que define 
 10. **`8ae157f`** — `fix(extras): adiciona campo explicito de data no formulario de movimentacoes e isola do filtro do extrato`
 11. **`4237340`** — `docs: atualiza ATUALIZACOES_27-08-2026.md com Escala de Turnos e correcao de data em extras`
 12. **`5f7597c`** — `feat(funcionarios): compacta resumo de escala com modal de edicao e oculta debug perf em producao`
+13. **`a1ef375`** — `docs: registra secao 10 de reestruturacao do layout de funcionarios em ATUALIZACOES_27-08-2026.md`
 
 Todos os commits foram testados, validados e sincronizados com a branch `main` no repositório remoto.
 
