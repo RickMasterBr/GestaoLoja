@@ -291,7 +291,7 @@ def view(page: ft.Page) -> ft.Control:
 
     # ── 3. Controles do Topo (Data e Seletor de Fluxo) ────────────────────────
     tf_data = ft.TextField(
-        label="Data",
+        label="Data do Extrato",
         value=hoje_br,
         width=135,
         text_align=ft.TextAlign.CENTER,
@@ -309,7 +309,7 @@ def view(page: ft.Page) -> ft.Control:
 
     btn_calendario = ft.IconButton(
         icon=ft.Icons.CALENDAR_MONTH,
-        tooltip="Selecionar data",
+        tooltip="Selecionar data do extrato",
         on_click=lambda e: (setattr(date_picker, "open", True), page.update()),
     )
 
@@ -344,6 +344,28 @@ def view(page: ft.Page) -> ft.Control:
 
     # ── 4. Controles do Formulário de Lançamento ──────────────────────────────
     lbl_titulo_form = ft.Text("Nova Saída de Caixa", size=18, weight=ft.FontWeight.BOLD)
+
+    tf_data_mov = ft.TextField(
+        label="Data do Lançamento *",
+        value=hoje_br,
+        width=140,
+        text_align=ft.TextAlign.CENTER,
+        hint_text="DD/MM/AAAA",
+    )
+
+    def _on_date_mov_picked(e):
+        if e.control.value:
+            tf_data_mov.value = e.control.value.strftime("%d/%m/%Y")
+            page.update()
+
+    date_picker_mov = ft.DatePicker(on_change=_on_date_mov_picked)
+    page.overlay.append(date_picker_mov)
+
+    btn_calendario_mov = ft.IconButton(
+        icon=ft.Icons.CALENDAR_MONTH,
+        tooltip="Selecionar data do lançamento",
+        on_click=lambda e: (setattr(date_picker_mov, "open", True), page.update()),
+    )
 
     dd_subtipo = ft.Dropdown(
         label="Subtipo / Categoria *",
@@ -407,12 +429,12 @@ def view(page: ft.Page) -> ft.Control:
         sugestao = "SERVICO" if cod == "manutencao" else "PRODUTO"
         _dialogo_novo_fornecedor(page, _ao_cadastrar_novo_fornecedor, tipo_sugerido=sugestao)
 
-    btn_novo_forn = ft.IconButton(
+    btn_novo_f = ft.IconButton(
         icon=ft.Icons.PERSON_ADD_ALT_1,
         tooltip="Cadastrar novo fornecedor",
         on_click=_abrir_novo_fornecedor,
     )
-    linha_fornecedor = ft.Row([dd_fornecedor, btn_novo_forn], visible=False)
+    linha_fornecedor = ft.Row([dd_fornecedor, btn_novo_f], visible=False)
 
     dd_metodo = ft.Dropdown(
         label="Método de Pagamento *",
@@ -420,7 +442,7 @@ def view(page: ft.Page) -> ft.Control:
         value="Dinheiro",
         expand=True,
     )
-    linha_metodo = ft.Row([dd_metodo], visible=True)
+    linha_metodo = ft.Container(content=dd_metodo, expand=True, visible=True)
 
     tf_valor = ft.TextField(
         label="Valor (R$) *",
@@ -564,7 +586,7 @@ def view(page: ft.Page) -> ft.Control:
     btn_aba_boletos.on_click    = lambda e: _trocar_aba("BOLETO")
     btn_aba_relatorios.on_click = lambda e: _trocar_aba("RELATORIOS")
 
-    # ── 7. Seção de Boletos em Aberto ─────────────────────────────────────────
+    # ── 7. Seção de Boletos a Pagar ───────────────────────────────────────────
     col_lista_boletos = ft.Column(spacing=8, expand=True)
 
     def _carregar_tabela_boletos():
@@ -660,7 +682,7 @@ def view(page: ft.Page) -> ft.Control:
     # ── 8. Salvar Lançamento (Manual / Edição) ─────────────────────────────────
 
     def _limpar_form():
-        data_anterior = tf_data.value
+        tf_data_mov.value = hoje_br
         dd_subtipo.value = None
         dd_pessoa.value = None
         dd_fornecedor.value = None
@@ -676,7 +698,6 @@ def view(page: ft.Page) -> ft.Control:
         btn_salvar.text = "Salvar Lançamento"
         btn_cancelar.visible = False
         lbl_titulo_form.value = "Nova Saída de Caixa" if _estado["fluxo_ui"] == "SAIDA" else "Nova Entrada de Caixa"
-        tf_data.value = data_anterior
 
     def _salvar(e):
         txt_erro.value = ""
@@ -727,7 +748,11 @@ def view(page: ft.Page) -> ft.Control:
         if cod == "consumo":
             obs = _montar_obs_consumo(obs)
 
-        data_iso = _data_br_para_iso(tf_data.value)
+        data_iso = _data_br_para_iso(tf_data_mov.value)
+        if not data_iso:
+            txt_erro.value = "Informe uma data válida para o lançamento (DD/MM/AAAA)."
+            page.update()
+            return
 
         try:
             if _estado["editando_id"] is not None:
@@ -756,6 +781,8 @@ def view(page: ft.Page) -> ft.Control:
                 )
                 msg = "Movimentação registrada com sucesso!"
 
+            # Sincroniza extrato com a data do lançamento para exibição imediata
+            tf_data.value = tf_data_mov.value
             _limpar_form()
             _atualizar_tabela_extrato()
 
@@ -782,6 +809,16 @@ def view(page: ft.Page) -> ft.Control:
         on_click=lambda e: (_limpar_form(), page.update()),
     )
 
+    linha_subtipo_data = ft.Row([
+        ft.Row([tf_data_mov, btn_calendario_mov], spacing=2),
+        dd_subtipo,
+    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+    linha_valores_metodo = ft.Row([
+        tf_valor,
+        linha_metodo,
+    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
     card_formulario = ft.Card(
         content=ft.Container(
             padding=ft.Padding.all(20),
@@ -790,11 +827,10 @@ def view(page: ft.Page) -> ft.Control:
                 controls=[
                     lbl_titulo_form,
                     ft.Divider(height=1),
-                    dd_subtipo,
+                    linha_subtipo_data,
                     linha_pessoa,
                     linha_fornecedor,
-                    linha_metodo,
-                    tf_valor,
+                    linha_valores_metodo,
                     tf_obs,
                     txt_erro,
                     ft.Row([btn_salvar, btn_cancelar], spacing=10),
