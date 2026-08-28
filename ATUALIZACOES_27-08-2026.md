@@ -248,7 +248,27 @@ Criada a migração idempotente `_migrar_schema_escala_turnos(conn)` que define 
 
 ---
 
-## 10. Histórico Completo de Commits da Sessão (27/08/2026)
+## 10. Ajuste de Layout na Tela de Funcionários (`views/funcionarios.py`)
+
+### 10.1 Motivação e Diagnóstico
+* Anteriormente, a grade completa de semanas × dias com Dropdowns em cada célula ocupava mais de 500px na vertical, empurrando o Holerite (conteúdo principal da tela) para fora do campo de visão imediato do usuário.
+* Além disso, a linha de instrumentação de debug (`txt_perf`) ficava visível em produção em várias telas.
+
+### 10.2 Solução Implementada
+* **Resumo Compacto de Escala na Página Principal (`card_resumo_escala`)**:
+  - Exibe badges visuais e organizados em uma única linha compacta: `Escala do Período: [ 22 trabalhados ] [ 6 folgas ] [ 2 faltas ] [ 1 feriado ] [ 0 extras ]` ao lado do botão `[ Ver / Editar Escala ]`.
+* **Modal de Edição de Escala (`dlg_escala` — `AlertDialog`)**:
+  - Abre a grade mensal completa (semanas × dias com dropdowns individuais por dia).
+  - Sem altura fixa artificial, com `Column(tight=True, scroll=ft.ScrollMode.AUTO)`.
+  - Ao fechar o modal (via `X` ou botão `[ Concluir e Atualizar Holerite ]`), os totais de escala e todo o holerite financeiro são recalculados e atualizados instantaneamente.
+* **Visibilidade Direta do Holerite**:
+  - O Card do Holerite do Período agora fica posicionado imediatamente abaixo dos filtros, 100% visível na tela sem necessidade de rolagem.
+* **Ocultação de Debug em Produção (`txt_perf`)**:
+  - As tags de tempo de execução (`txt_perf`) em `views/funcionarios.py`, `views/escala_geral.py`, `views/fluxo_caixa.py`, `views/pdv.py`, `views/relatorio_diario.py` e `views/relatorio_periodo.py` foram ocultadas por padrão via `visible=(database.config_obter("debug", "0") == "1")`.
+
+---
+
+## 11. Histórico Completo de Commits da Sessão (27/08/2026)
 
 1. **`ab1a19f`** — `feat(database): Implementa trava permanente de seguranca para ambiente de producao, retentativa ativa de boot e protecao contra escrita acidental`
 2. **`77f1157`** — `feat(database): Adiciona migracao de schema e dados da Fase 1 (aplicada em producao em 2026-08-27)`
@@ -260,6 +280,8 @@ Criada a migração idempotente `_migrar_schema_escala_turnos(conn)` que define 
 8. **`8ec495d`** — `feat(escala): implementa Escala de Turnos mensal com modal, suporte a extras e PDF mural A4`
 9. **`42ca190`** — `fix(escala_turnos): remove altura artificial do modal e ajusta auto-dimensionamento`
 10. **`8ae157f`** — `fix(extras): adiciona campo explicito de data no formulario de movimentacoes e isola do filtro do extrato`
+11. **`4237340`** — `docs: atualiza ATUALIZACOES_27-08-2026.md com Escala de Turnos e correcao de data em extras`
+12. **`5f7597c`** — `feat(funcionarios): compacta resumo de escala com modal de edicao e oculta debug perf em producao`
 
 Todos os commits foram testados, validados e sincronizados com a branch `main` no repositório remoto.
 
